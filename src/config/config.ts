@@ -11,6 +11,7 @@ const execAsync = promisify(exec);
 
 export interface IvanConfig {
   openAiApiKey: string;
+  anthropicApiKey: string;
   repository: string;
 }
 
@@ -45,17 +46,17 @@ export class ConfigManager {
       {
         type: 'input',
         name: 'repository',
-        message: 'Enter the remote repository URL (e.g., https://github.com/user/repo):',
+        message: 'Enter the SSH repository URL (e.g., git@github.com:user/repo.git):',
         validate: (input: string) => {
           if (!input || input.trim() === '') {
             return 'Repository URL is required';
           }
 
           const trimmed = input.trim();
-          const gitUrlPattern = /^(https?:\/\/|git@)[\w.-]+[/:] [\w.-]+\/[\w.-]+$/;
+          const sshUrlPattern = /^git@[\w.-]+:[\w.-]+\/[\w.-]+\.git$/;
 
-          if (!gitUrlPattern.test(trimmed)) {
-            return 'Please enter a valid repository URL (e.g., https://github.com/user/repo or git@github.com:user/repo.git)';
+          if (!sshUrlPattern.test(trimmed)) {
+            return 'Please enter a valid SSH repository URL (e.g., git@github.com:user/repo.git)';
           }
 
           return true;
@@ -73,12 +74,25 @@ export class ConfigManager {
           }
           return true;
         }
+      },
+      {
+        type: 'password',
+        name: 'anthropicApiKey',
+        message: 'Enter your Anthropic API key (for task planning):',
+        mask: '*',
+        validate: (input: string) => {
+          if (!input || input.trim() === '') {
+            return 'Anthropic API key is required';
+          }
+          return true;
+        }
       }
     ]);
 
     const config: IvanConfig = {
       repository: answers.repository,
-      openAiApiKey: answers.openAiApiKey
+      openAiApiKey: answers.openAiApiKey,
+      anthropicApiKey: answers.anthropicApiKey
     };
 
     this.saveConfig(config);
@@ -125,17 +139,17 @@ export class ConfigManager {
       {
         type: 'input',
         name: 'repository',
-        message: 'Enter the remote repository URL (e.g., https://github.com/user/repo):',
+        message: 'Enter the SSH repository URL (e.g., git@github.com:user/repo.git):',
         validate: (input: string) => {
           if (!input || input.trim() === '') {
             return 'Repository URL is required';
           }
 
           const trimmed = input.trim();
-          const gitUrlPattern = /^(https?:\/\/|git@)[\w.-]+[/:] [\w.-]+\/[\w.-]+$/;
+          const sshUrlPattern = /^git@[\w.-]+:[\w.-]+\/[\w.-]+\.git$/;
 
-          if (!gitUrlPattern.test(trimmed)) {
-            return 'Please enter a valid repository URL (e.g., https://github.com/user/repo or git@github.com:user/repo.git)';
+          if (!sshUrlPattern.test(trimmed)) {
+            return 'Please enter a valid SSH repository URL (e.g., git@github.com:user/repo.git)';
           }
 
           return true;
@@ -153,12 +167,25 @@ export class ConfigManager {
           }
           return true;
         }
+      },
+      {
+        type: 'password',
+        name: 'anthropicApiKey',
+        message: 'Enter your Anthropic API key (for task planning):',
+        mask: '*',
+        validate: (input: string) => {
+          if (!input || input.trim() === '') {
+            return 'Anthropic API key is required';
+          }
+          return true;
+        }
       }
     ]);
 
     const config: IvanConfig = {
       repository: answers.repository,
-      openAiApiKey: answers.openAiApiKey
+      openAiApiKey: answers.openAiApiKey,
+      anthropicApiKey: answers.anthropicApiKey
     };
 
     this.saveConfig(config);

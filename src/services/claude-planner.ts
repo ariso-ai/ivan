@@ -1,5 +1,10 @@
-import { spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
+import { promisify } from 'util';
+import * as path from 'path';
+import * as os from 'os';
 import chalk from 'chalk';
+
+const execAsync = promisify(exec);
 
 export interface TaskPlan {
   title: string;
@@ -12,89 +17,120 @@ export interface TaskPlanResponse {
 }
 
 export class ClaudePlannerService {
+  private repository: string;
+  private anthropicApiKey: string;
+
+  constructor(repository: string, anthropicApiKey: string) {
+    this.repository = repository;
+    this.anthropicApiKey = anthropicApiKey;
+  }
+
   async planTasks(userRequest: string): Promise<TaskPlanResponse> {
     console.log(chalk.gray('🤔 Planning tasks with Claude Code...'));
 
-    const prompt = `You are a task planner. Break down the following request into individual tasks to be executed independently by Claude Code. Read the relevant parts of the current codebase to determine the best way to go about this 
-Each task should be:
-- Self-contained and executable independently
-- Clear and specific about what needs to be done
-- Should not be single atomic changes, should be larger chunks of work
-- Named with a short, branch-friendly identifier (alphanumeric, hyphens only)
-
-If the task being requested is already very simple, please return only a single task outlining what the user wants.
-
-Do not return more than 5 tasks.
-
-User Request: ${userRequest}
-
-Respond ONLY with a JSON object in this exact format, no other text:
-{
-  "tasks": [
-    {
-      "title": "short-task-name",
-      "description": "Detailed description of what this task should accomplish",
-      "order": 1
-    }
-  ]
-}`;
-
     try {
-      return new Promise((resolve, reject) => {
-        console.log(chalk.gray('Calling Claude CLI...'));
+      const homeDir = os.homedir();
+      const scriptPath = path.join(process.cwd(), 'dist', 'scripts', 'task-planner.js');
+
+
+      console.log(chalk.gray('Starting planning container...'));
+
+      // Start container in background
+      const containerName = `ivan-planner-${Date.now()}`;
+      const startCommand = `docker run -d --name ${containerName} \
+        -e USER_REQUEST="${userRequest.replace(/"/g, '\\"')}" \
+        -e REPOSITORY="${this.repository}" \
+        -e HOST_HOME="${homeDir}" \
+        -e ANTHROPIC_API_KEY="${this.anthropicApiKey}" \
+        -w /workspace \
+        node:24-alpine \
+        sleep 300`;
+
+      await execAsync(startCommand);
+
+      let stdout = '';
+      let stderr = '';
+
+      try {
+        // Create app directory and copy scripts to container
+        await execAsync(`docker exec ${containerName} mkdir -p /app`);
+        await execAsync(`docker cp "${scriptPath}" ${containerName}:/app/task-planner.js`);
         
-        const claudeProcess = spawn('claude', [
-          '-p',
-          prompt,
-          '--output-format',
-          'json'
+        const setupScript = path.join(process.cwd(), 'src', 'scripts', 'setup-container.sh');
+        await execAsync(`docker cp "${setupScript}" ${containerName}:/app/setup-container.sh`);
+
+        // Copy SSH and git configs
+        await execAsync(`docker exec ${containerName} mkdir -p /root/.ssh /root/.claude/plugins`);
+        await execAsync(`docker cp "${homeDir}/.ssh/." ${containerName}:/root/.ssh/`).catch(() => {});
+        await execAsync(`docker cp "${homeDir}/.claude/." ${containerName}:/root/.claude/`).catch(() => {});
+        await execAsync(`docker cp "${homeDir}/.gitconfig" ${containerName}:/root/.gitconfig`).catch(() => {});
+
+        console.log('running docker')
+        // Execute setup and task planning with streaming output
+        const dockerProcess = spawn('docker', [
+          'exec', containerName, 'sh', '-c',
+          'chmod +x /app/setup-container.sh && /app/setup-container.sh && echo "Starting task planner..." && CLAUDE_CONFIG_DIR=/root/.claude node /app/task-planner.js'
         ]);
 
-        let stdout = '';
-        let stderr = '';
-
-        claudeProcess.stdout.on('data', (data) => {
+        dockerProcess.stdout.on('data', (data) => {
           const chunk = data.toString();
           stdout += chunk;
-          // Stream output for debugging
-          process.stdout.write(chalk.dim(chunk));
+          process.stdout.write(chunk);
         });
 
-        claudeProcess.stderr.on('data', (data) => {
+        dockerProcess.stderr.on('data', (data) => {
           const chunk = data.toString();
           stderr += chunk;
-          process.stderr.write(chalk.red(chunk));
+          process.stderr.write(chunk);
         });
 
-        claudeProcess.on('close', (code) => {
-          if (code !== 0) {
-            reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
-            return;
-          }
+        await new Promise<void>((resolve, reject) => {
+          dockerProcess.on('close', (code) => {
+            if (code !== 0) {
+              reject(new Error(`Docker exec exited with code ${code}`));
+            } else {
+              resolve();
+            }
+          });
 
-          try {
-            // Parse the Claude CLI response
-            const claudeResponse = JSON.parse(stdout);
-            
-            // Extract the JSON from the result field (may be wrapped in ```json blocks)
-            let resultContent = claudeResponse.result;
-            
-            // Remove markdown code blocks if present
-            resultContent = resultContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            
-            const response = JSON.parse(resultContent) as TaskPlanResponse;
-            
-            console.log(chalk.green(`\n✓ Planned ${response.tasks.length} tasks`));
-            resolve(response);
-          } catch (parseError) {
-            reject(new Error(`Failed to parse Claude response: ${parseError}`));
-          }
+          dockerProcess.on('error', (error) => {
+            reject(new Error(`Failed to execute docker command: ${error}`));
+          });
         });
 
-        claudeProcess.on('error', (error) => {
-          reject(new Error(`Failed to start Claude CLI: ${error}`));
-        });
-      });
+        console.log(chalk.gray('=== CONTAINER OUTPUT START ==='));
+        console.log(stdout);
+        console.log(chalk.gray('=== CONTAINER OUTPUT END ==='));
+
+        if (stderr) {
+          console.log(chalk.yellow('=== CONTAINER STDERR START ==='));
+          console.log(stderr);
+          console.log(chalk.yellow('=== CONTAINER STDERR END ==='));
+        }
+      } finally {
+        // Clean up container
+        await execAsync(`docker rm -f ${containerName}`).catch(() => {});
+      }
+
+      // Extract the JSON response from between the markers
+      const startMarker = 'TASK_PLAN_START';
+      const endMarker = 'TASK_PLAN_END';
+
+      const startIndex = stdout.indexOf(startMarker);
+      const endIndex = stdout.indexOf(endMarker);
+
+      if (startIndex === -1 || endIndex === -1) {
+        console.log(chalk.red('Failed to find task plan in output:'));
+        console.log(stdout);
+        throw new Error('Task plan markers not found in output');
+      }
+
+      const jsonString = stdout.substring(startIndex + startMarker.length, endIndex).trim();
+      const response = JSON.parse(jsonString) as TaskPlanResponse;
+
+      console.log(chalk.green(`✓ Planned ${response.tasks.length} tasks`));
+      return response;
+
     } catch (error) {
       console.error(chalk.red('Failed to plan tasks:'), error);
       throw new Error('Task planning failed');

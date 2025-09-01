@@ -14,7 +14,7 @@ export class OrchestrationAgent {
   constructor(config: IvanConfig, dbManager: DatabaseManager) {
     this.config = config;
     this.dbManager = dbManager;
-    this.claudePlanner = new ClaudePlannerService();
+    this.claudePlanner = new ClaudePlannerService(config.repository, config.anthropicApiKey);
     this.jobManager = new JobManager(dbManager.getDatabase());
   }
 

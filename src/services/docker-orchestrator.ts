@@ -37,9 +37,8 @@ export class DockerOrchestrator {
       // Build Docker command
       const dockerCommand = `docker run --rm \
         --name ${containerName} \
-        -v ${homeDir}/.claude:${homeDir}/.claude:ro \
-        -v ${homeDir}/.ssh:${homeDir}/.ssh:ro \
         -v ${scriptPath}:/app/task-executor.js:ro \
+        -v ${homeDir}/.ivan/db.sqlite:${homeDir}/.ivan/db.sqlite \
         -e TASK_ID="${task.id}" \
         -e TASK_TITLE="${task.title}" \
         -e TASK_DESCRIPTION="${task.description}" \
@@ -47,10 +46,23 @@ export class DockerOrchestrator {
         -e REPOSITORY="${this.repository}" \
         -e OPENAI_API_KEY="${this.openAiApiKey}" \
         -e IVAN_DB_PATH="${homeDir}/.ivan/db.sqlite" \
-        -v ${homeDir}/.ivan/db.sqlite:${homeDir}/.ivan/db.sqlite \
+        -e CLAUDE_DIR="${homeDir}/.claude" \
+        -e SSH_DIR="${homeDir}/.ssh" \
+        -e GIT_CONFIG="${homeDir}/.gitconfig" \
         -w /workspace \
-        node:20-alpine \
-        node /app/task-executor.js`;
+        node:24-alpine \
+        sh -c "apk add --no-cache git openssh && \
+               mkdir -p /root/.ssh /root/.claude/plugins && \
+               cp -r \${CLAUDE_DIR}/* /root/.claude/ 2>/dev/null || true && \
+               cp -r \${SSH_DIR}/* /root/.ssh/ 2>/dev/null || true && \
+               cp \${GIT_CONFIG} /root/.gitconfig 2>/dev/null || true && \
+               chmod 600 /root/.ssh/* 2>/dev/null || true && \
+               ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true && \
+               git config --global user.name 'Ivan Agent' 2>/dev/null || true && \
+               git config --global user.email 'ivan@agent.local' 2>/dev/null || true && \
+               npm i -g @anthropic-ai/claude-code && \
+               echo 'Starting task executor...' && \
+               CLAUDE_CONFIG_DIR=/root/.claude node /app/task-executor.js"`;
 
       console.log(chalk.gray('Starting Docker container...'));
 
