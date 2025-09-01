@@ -1,8 +1,5 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import chalk from 'chalk';
-
-const execAsync = promisify(exec);
 
 export interface TaskPlan {
   title: string;
@@ -15,17 +12,20 @@ export interface TaskPlanResponse {
 }
 
 export class ClaudePlannerService {
-  async planTasks(userRequest: string, repository: string): Promise<TaskPlanResponse> {
+  async planTasks(userRequest: string): Promise<TaskPlanResponse> {
     console.log(chalk.gray('🤔 Planning tasks with Claude Code...'));
 
-    const prompt = `You are a task planner. Break down the following request into individual, atomic tasks that can be executed independently by Claude Code.
+    const prompt = `You are a task planner. Break down the following request into individual tasks to be executed independently by Claude Code. Read the relevant parts of the current codebase to determine the best way to go about this 
 Each task should be:
 - Self-contained and executable independently
 - Clear and specific about what needs to be done
-- Small enough to be completed in a single session
+- Should not be single atomic changes, should be larger chunks of work
 - Named with a short, branch-friendly identifier (alphanumeric, hyphens only)
 
-Repository: ${repository}
+If the task being requested is already very simple, please return only a single task outlining what the user wants.
+
+Do not return more than 5 tasks.
+
 User Request: ${userRequest}
 
 Respond ONLY with a JSON object in this exact format, no other text:
@@ -40,13 +40,61 @@ Respond ONLY with a JSON object in this exact format, no other text:
 }`;
 
     try {
-      const command = `echo '${prompt.replace(/'/g, "'\\''")}' | claude --json`;
-      const { stdout } = await execAsync(command);
+      return new Promise((resolve, reject) => {
+        console.log(chalk.gray('Calling Claude CLI...'));
+        
+        const claudeProcess = spawn('claude', [
+          '-p',
+          prompt,
+          '--output-format',
+          'json'
+        ]);
 
-      const response = JSON.parse(stdout) as TaskPlanResponse;
+        let stdout = '';
+        let stderr = '';
 
-      console.log(chalk.green(`✓ Planned ${response.tasks.length} tasks`));
-      return response;
+        claudeProcess.stdout.on('data', (data) => {
+          const chunk = data.toString();
+          stdout += chunk;
+          // Stream output for debugging
+          process.stdout.write(chalk.dim(chunk));
+        });
+
+        claudeProcess.stderr.on('data', (data) => {
+          const chunk = data.toString();
+          stderr += chunk;
+          process.stderr.write(chalk.red(chunk));
+        });
+
+        claudeProcess.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
+            return;
+          }
+
+          try {
+            // Parse the Claude CLI response
+            const claudeResponse = JSON.parse(stdout);
+            
+            // Extract the JSON from the result field (may be wrapped in ```json blocks)
+            let resultContent = claudeResponse.result;
+            
+            // Remove markdown code blocks if present
+            resultContent = resultContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+            
+            const response = JSON.parse(resultContent) as TaskPlanResponse;
+            
+            console.log(chalk.green(`\n✓ Planned ${response.tasks.length} tasks`));
+            resolve(response);
+          } catch (parseError) {
+            reject(new Error(`Failed to parse Claude response: ${parseError}`));
+          }
+        });
+
+        claudeProcess.on('error', (error) => {
+          reject(new Error(`Failed to start Claude CLI: ${error}`));
+        });
+      });
     } catch (error) {
       console.error(chalk.red('Failed to plan tasks:'), error);
       throw new Error('Task planning failed');
