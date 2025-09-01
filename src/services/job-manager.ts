@@ -12,7 +12,7 @@ export class JobManager {
 
   async createJob(title: string, description: string, repository: string): Promise<number> {
     console.log(chalk.gray('📝 Creating job...'));
-    
+
     const result = await this.db
       .insertInto('jobs')
       .values({
@@ -30,14 +30,14 @@ export class JobManager {
     if (!jobId) {
       throw new Error('Failed to create job');
     }
-    
+
     console.log(chalk.green(`✓ Created job #${jobId}`));
     return jobId;
   }
 
   async createTasks(jobId: number, tasks: TaskPlan[]): Promise<void> {
     console.log(chalk.gray(`📋 Creating ${tasks.length} tasks for job #${jobId}...`));
-    
+
     const taskValues = tasks.map(task => ({
       job_id: jobId,
       title: task.title,
@@ -98,3 +98,4 @@ export class JobManager {
       .executeTakeFirst();
   }
 }
+

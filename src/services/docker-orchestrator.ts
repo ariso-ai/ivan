@@ -21,11 +21,11 @@ export class DockerOrchestrator {
 
   async runTask(task: TaskTable): Promise<void> {
     console.log(chalk.blue(`\n🐳 Running task: ${task.title}`));
-    
+
     if (!task.id) {
       throw new Error('Task ID is required');
     }
-    
+
     await this.jobManager.updateTaskStatus(task.id, 'in_progress');
 
     try {
@@ -53,15 +53,15 @@ export class DockerOrchestrator {
         node /app/task-executor.js`;
 
       console.log(chalk.gray('Starting Docker container...'));
-      
+
       const { stdout, stderr } = await execAsync(dockerCommand);
-      
+
       if (stdout) console.log(chalk.gray(stdout));
       if (stderr) console.error(chalk.yellow(stderr));
 
       await this.jobManager.updateTaskStatus(task.id, 'completed');
       console.log(chalk.green(`✓ Task ${task.title} completed`));
-      
+
     } catch (error) {
       console.error(chalk.red(`✗ Task ${task.title} failed:`), error);
       await this.jobManager.updateTaskStatus(task.id, 'failed');
@@ -71,16 +71,17 @@ export class DockerOrchestrator {
 
   async runAllTasks(jobId: number): Promise<void> {
     const tasks = await this.jobManager.getJobTasks(jobId);
-    
+
     console.log(chalk.cyan(`\n🚀 Running ${tasks.length} tasks for job #${jobId}\n`));
 
     for (const task of tasks) {
       try {
         await this.runTask(task);
         console.log(chalk.gray('─'.repeat(50)));
-      } catch (error) {
+      } catch {
         console.error(chalk.red(`Failed to run task ${task.title}, continuing with next task...`));
       }
     }
   }
 }
+

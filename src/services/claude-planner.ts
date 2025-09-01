@@ -17,7 +17,7 @@ export interface TaskPlanResponse {
 export class ClaudePlannerService {
   async planTasks(userRequest: string, repository: string): Promise<TaskPlanResponse> {
     console.log(chalk.gray('🤔 Planning tasks with Claude Code...'));
-    
+
     const prompt = `You are a task planner. Break down the following request into individual, atomic tasks that can be executed independently by Claude Code.
 Each task should be:
 - Self-contained and executable independently
@@ -42,9 +42,9 @@ Respond ONLY with a JSON object in this exact format, no other text:
     try {
       const command = `echo '${prompt.replace(/'/g, "'\\''")}' | claude --json`;
       const { stdout } = await execAsync(command);
-      
+
       const response = JSON.parse(stdout) as TaskPlanResponse;
-      
+
       console.log(chalk.green(`✓ Planned ${response.tasks.length} tasks`));
       return response;
     } catch (error) {
@@ -53,3 +53,4 @@ Respond ONLY with a JSON object in this exact format, no other text:
     }
   }
 }
+

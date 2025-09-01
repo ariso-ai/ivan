@@ -3,7 +3,10 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
+import { Kysely, SqliteDialect } from 'kysely';
 import Database from 'better-sqlite3';
+import OpenAI from 'openai';
+import { Database as DatabaseSchema } from '../database/types.js';
 
 const execAsync = promisify(exec);
 
@@ -30,7 +33,16 @@ async function executeCommand(command: string): Promise<{ stdout: string; stderr
 
 async function generateCommitMessage(changes: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
-  
+
+  if (!apiKey) {
+    console.warn('OpenAI API key not provided, using default commit message');
+    return `feat: complete task ${process.env.TASK_TITLE}`;
+  }
+
+  const openai = new OpenAI({
+    apiKey: apiKey
+  });
+
   const prompt = `Based on the following git diff, generate a concise and meaningful commit message. 
 The message should follow conventional commit format (feat:, fix:, docs:, etc.) and be under 72 characters.
 Respond with ONLY the commit message, no other text.
@@ -39,31 +51,24 @@ Changes:
 ${changes.substring(0, 2000)}`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful assistant that generates clear, concise git commit messages.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 100
-      })
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that generates clear, concise git commit messages.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 100
     });
 
-    const data = await response.json() as any;
-    return data.choices[0].message.content.trim();
+    const message = completion.choices[0]?.message?.content?.trim();
+    return message || `feat: complete task ${process.env.TASK_TITLE}`;
   } catch (error) {
     console.error('Failed to generate commit message:', error);
     return `feat: complete task ${process.env.TASK_TITLE}`;
@@ -72,8 +77,8 @@ ${changes.substring(0, 2000)}`;
 
 async function main() {
   const env = process.env as unknown as TaskExecutorEnv;
-  
-  console.log(`\n📦 Task Executor Starting`);
+
+  console.log('\n📦 Task Executor Starting');
   console.log(`Task: ${env.TASK_TITLE}`);
   console.log(`Description: ${env.TASK_DESCRIPTION}\n`);
 
@@ -94,24 +99,24 @@ async function main() {
 
     // Check for changes
     const { stdout: statusOutput } = await executeCommand('git status --porcelain');
-    
+
     if (statusOutput.trim()) {
       console.log('📝 Changes detected, preparing commit...');
-      
+
       // Add all changes
       await executeCommand('git add -A');
-      
+
       // Get diff for commit message
       const { stdout: diffOutput } = await executeCommand('git diff --cached');
-      
+
       // Generate commit message
       console.log('✍️  Generating commit message...');
       const commitMessage = await generateCommitMessage(diffOutput);
-      
+
       // Commit changes
       console.log(`💾 Committing: ${commitMessage}`);
       await executeCommand(`git commit -m "${commitMessage}"`);
-      
+
       console.log('✅ Task completed successfully!');
     } else {
       console.log('ℹ️  No changes were made by Claude Code');
@@ -119,32 +124,50 @@ async function main() {
 
     // Update task status in database
     if (env.IVAN_DB_PATH && fs.existsSync(env.IVAN_DB_PATH)) {
-      const db = new Database(env.IVAN_DB_PATH);
-      db.prepare(`
-        UPDATE tasks 
-        SET status = 'completed', 
-            completed_at = datetime('now'),
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(parseInt(env.TASK_ID));
-      db.close();
+      const sqlite = new Database(env.IVAN_DB_PATH);
+      const db = new Kysely<DatabaseSchema>({
+        dialect: new SqliteDialect({
+          database: sqlite
+        })
+      });
+
+      await db
+        .updateTable('tasks')
+        .set({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', parseInt(env.TASK_ID))
+        .execute();
+
+      await db.destroy();
     }
 
   } catch (error) {
     console.error('❌ Task execution failed:', error);
-    
+
     // Update task status to failed
     if (env.IVAN_DB_PATH && fs.existsSync(env.IVAN_DB_PATH)) {
-      const db = new Database(env.IVAN_DB_PATH);
-      db.prepare(`
-        UPDATE tasks 
-        SET status = 'failed', 
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(parseInt(env.TASK_ID));
-      db.close();
+      const sqlite = new Database(env.IVAN_DB_PATH);
+      const db = new Kysely<DatabaseSchema>({
+        dialect: new SqliteDialect({
+          database: sqlite
+        })
+      });
+
+      await db
+        .updateTable('tasks')
+        .set({
+          status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', parseInt(env.TASK_ID))
+        .execute();
+
+      await db.destroy();
     }
-    
+
     process.exit(1);
   }
 }
