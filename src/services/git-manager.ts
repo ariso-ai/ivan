@@ -49,7 +49,8 @@ export class GitManager {
     this.ensureGitRepo();
 
     try {
-      execSync(`git checkout -b "${branchName}"`, {
+      const escapedBranchName = branchName.replace(/"/g, '\\"');
+      execSync(`git checkout -b "${escapedBranchName}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
@@ -76,7 +77,8 @@ export class GitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      execSync(`git commit -m "${message}"`, {
+      const escapedMessage = message.replace(/"/g, '\\"');
+      execSync(`git commit -m "${escapedMessage}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
@@ -86,11 +88,27 @@ export class GitManager {
     }
   }
 
+  async createEmptyCommit(message: string): Promise<void> {
+    this.ensureGitRepo();
+
+    try {
+      const escapedMessage = message.replace(/"/g, '\\"');
+      execSync(`git commit --allow-empty -m "${escapedMessage}"`, {
+        cwd: this.workingDir,
+        stdio: 'pipe'
+      });
+      console.log(chalk.green(`✅ Created empty commit: ${message}`));
+    } catch (error) {
+      throw new Error(`Failed to create empty commit: ${error}`);
+    }
+  }
+
   async pushBranch(branchName: string): Promise<void> {
     this.ensureGitRepo();
 
     try {
-      execSync(`git push -u origin "${branchName}"`, {
+      const escapedBranchName = branchName.replace(/"/g, '\\"');
+      execSync(`git push -u origin "${escapedBranchName}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
@@ -104,7 +122,9 @@ export class GitManager {
     this.ensureGitRepo();
 
     try {
-      const result = execSync(`gh pr create --title "${title}" --body "${body}"`, {
+      const escapedTitle = title.replace(/"/g, '\\"');
+      const escapedBody = body.replace(/"/g, '\\"');
+      const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}"`, {
         cwd: this.workingDir,
         encoding: 'utf8',
         stdio: 'pipe'

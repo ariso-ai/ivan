@@ -6,7 +6,8 @@ export class ClaudeExecutor {
     console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
 
     try {
-      const claudeCommand = `claude --print "${taskDescription}" --verbose --dangerously-skip-permissions`;
+      const escapedTask = taskDescription.replace(/"/g, '\\"');
+      const claudeCommand = `claude --print "${escapedTask}" --verbose --dangerously-skip-permissions`;
 
       console.log(chalk.gray(`Running: ${claudeCommand}`));
       console.log(chalk.gray(`Working directory: ${workingDir}`));
