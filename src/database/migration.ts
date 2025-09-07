@@ -1,56 +1,66 @@
-import { Kysely } from 'kysely';
+import { Kysely, sql } from 'kysely';
+import chalk from 'chalk';
+import { Database } from './types.js';
+import { migrations } from './migrations/index.js';
 
-export interface Migration {
-  id: string;
-  name: string;
-  up: (db: Kysely<any>) => Promise<void>;
-  down: (db: Kysely<any>) => Promise<void>;
-}
+export class MigrationManager {
+  private db: Kysely<Database>;
 
-export class MigrationRunner {
-  private db: Kysely<any>;
-
-  constructor(db: Kysely<any>) {
+  constructor(db: Kysely<Database>) {
     this.db = db;
   }
 
-  public async runMigrations(migrations: Migration[]): Promise<void> {
+  async runMigrations(): Promise<void> {
+    console.log(chalk.blue('🔄 Running database migrations...'));
+
     await this.createMigrationsTable();
 
     for (const migration of migrations) {
-      const exists = await this.migrationExists(migration.id);
-      if (!exists) {
-        await migration.up(this.db);
-        await this.recordMigration(migration.id, migration.name);
+      if (!(await this.hasMigrationRun(migration.id))) {
+        try {
+          await sql.raw(migration.up).execute(this.db);
+          await this.recordMigration(migration.id, migration.name);
+          console.log(chalk.green(`✅ Migration ${migration.id}: ${migration.name}`));
+        } catch (error) {
+          console.error(chalk.red(`❌ Failed to run migration ${migration.id}:`), error);
+          throw error;
+        }
       }
     }
+
+    console.log(chalk.green('✅ Database migrations completed'));
   }
 
   private async createMigrationsTable(): Promise<void> {
-    await this.db.schema
-      .createTable('migrations')
-      .ifNotExists()
-      .addColumn('id', 'text', (col) => col.primaryKey())
-      .addColumn('name', 'text', (col) => col.notNull())
-      .addColumn('executed_at', 'text', (col) => col.notNull().defaultTo('CURRENT_TIMESTAMP'))
-      .execute();
+    const migrationsSql = `
+      CREATE TABLE IF NOT EXISTS migrations (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await sql.raw(migrationsSql).execute(this.db);
   }
 
-  private async migrationExists(id: string): Promise<boolean> {
-    const result = await this.db
-      .selectFrom('migrations')
-      .where('id', '=', id)
-      .selectAll()
-      .executeTakeFirst();
+  private async hasMigrationRun(migrationId: number): Promise<boolean> {
+    try {
+      const result = await this.db
+        .selectFrom('migrations')
+        .select('id')
+        .where('id', '=', migrationId)
+        .executeTakeFirst();
 
-    return !!result;
+      return result !== undefined;
+    } catch {
+      return false;
+    }
   }
 
-  private async recordMigration(id: string, name: string): Promise<void> {
+  private async recordMigration(migrationId: number, name: string): Promise<void> {
     await this.db
       .insertInto('migrations')
       .values({
-        id,
+        id: migrationId,
         name,
         executed_at: new Date().toISOString()
       })
