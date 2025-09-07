@@ -174,7 +174,6 @@ export class ClaudeExecutor {
 
       const result = await this.executeWithSignalHandling('sh', ['-c', claudeCommand], {
         cwd: workingDir,
-        silent: true  // Don't stream JSON output
       });
 
       const parsed = JSON.parse(result);
