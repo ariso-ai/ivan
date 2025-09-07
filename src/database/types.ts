@@ -11,6 +11,7 @@ export interface Task {
   description: string;
   status: 'active' | 'not_started' | 'completed';
   pr_link: string | null;
+  execution_log: string | null;
 }
 
 export interface Migration {

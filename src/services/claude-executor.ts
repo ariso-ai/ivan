@@ -1,41 +1,46 @@
 import { execSync } from 'child_process';
 import chalk from 'chalk';
-import fs from 'fs';
-import path from 'path';
 
 export class ClaudeExecutor {
-  async executeTask(taskDescription: string, workingDir: string): Promise<void> {
+  async executeTask(taskDescription: string, workingDir: string): Promise<string> {
     console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
-    
+
     try {
-      const claudeCommand = `claude -p "${taskDescription}"`;
-      
+      const claudeCommand = `claude "${taskDescription}" --verbose --dangerously-skip-permissions`;
+
       console.log(chalk.gray(`Running: ${claudeCommand}`));
-      
+
       const result = execSync(claudeCommand, {
         cwd: workingDir,
         encoding: 'utf8',
         stdio: 'pipe'
       });
-      
+
       console.log(chalk.green('✅ Claude Code execution completed'));
-      
+
       if (result) {
         console.log(chalk.gray('Output:'));
         console.log(result);
       }
-      
-    } catch (error: any) {
+
+      return result || '';
+
+    } catch (error: unknown) {
       console.error(chalk.red('❌ Claude Code execution failed:'));
-      
-      if (error.stdout) {
-        console.log('STDOUT:', error.stdout);
+
+      const err = error as Error & { stdout?: string; stderr?: string };
+      let errorLog = `Claude Code execution failed: ${err.message}`;
+
+      if (err.stdout) {
+        console.log('STDOUT:', err.stdout);
+        errorLog += `\nSTDOUT: ${err.stdout}`;
       }
-      if (error.stderr) {
-        console.error('STDERR:', error.stderr);
+      if (err.stderr) {
+        console.error('STDERR:', err.stderr);
+        errorLog += `\nSTDERR: ${err.stderr}`;
       }
-      
-      throw new Error(`Claude Code execution failed: ${error.message}`);
+
+      throw new Error(errorLog);
     }
   }
 
@@ -54,3 +59,4 @@ export class ClaudeExecutor {
     }
   }
 }
+

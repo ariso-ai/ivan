@@ -7,7 +7,7 @@ export class OpenAIService {
   constructor() {
     const configManager = new ConfigManager();
     const config = configManager.getConfig();
-    
+
     if (!config?.openaiApiKey) {
       throw new Error('OpenAI API key not found in configuration');
     }

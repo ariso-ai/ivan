@@ -4,6 +4,7 @@ import { JobManager } from './job-manager.js';
 import { GitManager } from './git-manager.js';
 import { ClaudeExecutor } from './claude-executor.js';
 import { OpenAIService } from './openai-service.js';
+import { RepositoryManager } from './repository-manager.js';
 import { Task } from '../database.js';
 
 export class TaskExecutor {
@@ -11,12 +12,16 @@ export class TaskExecutor {
   private gitManager: GitManager;
   private claudeExecutor: ClaudeExecutor;
   private openaiService: OpenAIService;
+  private repositoryManager: RepositoryManager;
+  private workingDir: string;
 
   constructor() {
     this.jobManager = new JobManager();
-    this.gitManager = new GitManager();
     this.claudeExecutor = new ClaudeExecutor();
     this.openaiService = new OpenAIService();
+    this.repositoryManager = new RepositoryManager();
+    this.workingDir = '';
+    this.gitManager = new GitManager(''); // Will be set in executeWorkflow
   }
 
   async executeWorkflow(): Promise<void> {
@@ -26,8 +31,15 @@ export class TaskExecutor {
 
       this.claudeExecutor.validateClaudeCodeInstallation();
 
-      const { job, tasks } = await this.jobManager.promptForTasks();
-      
+      this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
+      this.gitManager = new GitManager(this.workingDir);
+
+      const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
+      console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
+      console.log('');
+
+      const { tasks } = await this.jobManager.promptForTasks(this.workingDir);
+
       console.log('');
       console.log(chalk.blue.bold('📋 Executing tasks...'));
 
@@ -37,7 +49,7 @@ export class TaskExecutor {
 
       console.log('');
       console.log(chalk.green.bold('🎉 All tasks completed successfully!'));
-      
+
     } catch (error) {
       console.error(chalk.red.bold('❌ Workflow failed:'), error);
       throw error;
@@ -49,22 +61,30 @@ export class TaskExecutor {
   private async executeTask(task: Task): Promise<void> {
     console.log('');
     console.log(chalk.cyan.bold(`📝 Task: ${task.description}`));
-    
+
     let spinner = ora('Updating task status...').start();
-    
+
     try {
       await this.jobManager.updateTaskStatus(task.uuid, 'active');
       spinner.succeed('Task marked as active');
 
+      spinner = ora('Cleaning up and syncing with main branch...').start();
+      await this.gitManager.cleanupAndSyncMain();
+      spinner.succeed('Repository cleaned and synced with main');
+
       const branchName = this.gitManager.generateBranchName(task.description);
-      
+
       spinner = ora(`Creating branch: ${branchName}`).start();
       await this.gitManager.createBranch(branchName);
       spinner.succeed(`Branch created: ${branchName}`);
 
       spinner = ora('Executing task with Claude Code...').start();
-      await this.claudeExecutor.executeTask(task.description, process.cwd());
+      const executionLog = await this.claudeExecutor.executeTask(task.description, this.workingDir);
       spinner.succeed('Claude Code execution completed');
+
+      spinner = ora('Storing execution log...').start();
+      await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
+      spinner.succeed('Execution log stored');
 
       const changedFiles = this.gitManager.getChangedFiles();
       if (changedFiles.length === 0) {
@@ -109,8 +129,19 @@ export class TaskExecutor {
       if (spinner.isSpinning) {
         spinner.fail('Task execution failed');
       }
+
+      // Store error log if execution failed
+      try {
+        const errorLog = error instanceof Error ? error.message : String(error);
+        await this.jobManager.updateTaskExecutionLog(task.uuid, `ERROR: ${errorLog}`);
+        console.log(chalk.gray('Error log stored to database'));
+      } catch (logError) {
+        console.error(chalk.red('Failed to store error log:'), logError);
+      }
+
       console.error(chalk.red(`❌ Failed to execute task: ${task.description}`), error);
       throw error;
     }
   }
 }
+

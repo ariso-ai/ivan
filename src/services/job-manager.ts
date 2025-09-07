@@ -10,7 +10,7 @@ export class JobManager {
     this.dbManager = new DatabaseManager();
   }
 
-  async promptForTasks(): Promise<{ job: Job; tasks: Task[] }> {
+  async promptForTasks(workingDir: string): Promise<{ job: Job; tasks: Task[] }> {
     console.log(chalk.blue.bold('🎯 What would you like to work on today?'));
     console.log('');
 
@@ -29,7 +29,7 @@ export class JobManager {
     ]);
 
     const inputTasks = taskInput.split(',').map((task: string) => task.trim()).filter(Boolean);
-    
+
     let finalTasks = inputTasks;
 
     if (inputTasks.length === 1) {
@@ -47,7 +47,7 @@ export class JobManager {
       }
     }
 
-    const job = await this.createJob(taskInput, finalTasks);
+    const job = await this.createJob(taskInput, finalTasks, workingDir);
     const tasks = await this.createTasks(job.uuid, finalTasks);
 
     console.log('');
@@ -95,12 +95,12 @@ export class JobManager {
     return tasks;
   }
 
-  private async createJob(description: string, tasks: string[]): Promise<Job> {
+  async createJob(description: string, tasks: string[], workingDir: string): Promise<Job> {
     const job: Job = {
       uuid: randomUUID(),
       description,
       created_at: new Date().toISOString(),
-      directory: process.cwd()
+      directory: workingDir
     };
 
     const db = this.dbManager.getKysely();
@@ -115,7 +115,8 @@ export class JobManager {
       job_uuid: jobUuid,
       description,
       status: 'not_started' as const,
-      pr_link: null
+      pr_link: null,
+      execution_log: null
     }));
 
     const db = this.dbManager.getKysely();
@@ -142,7 +143,17 @@ export class JobManager {
       .execute();
   }
 
+  async updateTaskExecutionLog(taskUuid: string, executionLog: string): Promise<void> {
+    const db = this.dbManager.getKysely();
+    await db
+      .updateTable('tasks')
+      .set({ execution_log: executionLog })
+      .where('uuid', '=', taskUuid)
+      .execute();
+  }
+
   close(): void {
     this.dbManager.close();
   }
 }
+
