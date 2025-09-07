@@ -48,6 +48,51 @@ export class JobManager {
       if (shouldBreakDown) {
         finalTasks = await this.generateTaskBreakdownWithClaude(inputTasks[0], workingDir);
       }
+    } else if (inputTasks.length > 1) {
+      // For manually entered multiple tasks, also offer selection
+      console.log('');
+      console.log(chalk.cyan('You entered the following tasks:'));
+      inputTasks.forEach((task: string, index: number) => {
+        console.log(chalk.gray(`  ${index + 1}. ${task}`));
+      });
+      console.log('');
+
+      const { selectionMode } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'selectionMode',
+          message: 'How would you like to proceed?',
+          choices: [
+            { name: 'Execute all tasks', value: 'all' },
+            { name: 'Select specific tasks to execute', value: 'select' }
+          ],
+          default: 'all'
+        }
+      ]);
+
+      if (selectionMode === 'select') {
+        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>([
+          {
+            type: 'checkbox',
+            name: 'selectedTasks',
+            message: 'Select tasks to execute (use space to select, enter to confirm):',
+            choices: inputTasks.map((task: string, index: number) => ({
+              name: `${index + 1}. ${task}`,
+              value: task,
+              checked: true
+            })),
+            validate: (input: string[]) => {
+              if (input.length === 0) {
+                return 'Please select at least one task';
+              }
+              return true;
+            }
+          } as any
+        ]);
+
+        finalTasks = selectedTasks;
+        console.log(chalk.green(`✅ Selected ${selectedTasks.length} task(s)`));
+      }
     }
 
     const job = await this.createJob(taskInput, finalTasks, workingDir);
@@ -84,18 +129,52 @@ export class JobManager {
       });
       console.log('');
 
-      const { confirmed } = await inquirer.prompt([
+      const { selectionMode } = await inquirer.prompt([
         {
-          type: 'confirm',
-          name: 'confirmed',
-          message: 'Do you want to proceed with these generated tasks?',
-          default: true
+          type: 'list',
+          name: 'selectionMode',
+          message: 'How would you like to proceed?',
+          choices: [
+            { name: 'Execute all tasks', value: 'all' },
+            { name: 'Select specific tasks to execute', value: 'select' },
+            { name: 'Use original task instead', value: 'original' }
+          ],
+          default: 'all'
         }
       ]);
 
-      if (!confirmed) {
+      if (selectionMode === 'original') {
         console.log(chalk.yellow('Using original task instead'));
         return [originalTask];
+      }
+
+      if (selectionMode === 'select') {
+        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>([
+          {
+            type: 'checkbox',
+            name: 'selectedTasks',
+            message: 'Select tasks to execute (use space to select, enter to confirm):',
+            choices: tasks.map((task: string, index: number) => ({
+              name: `${index + 1}. ${task}`,
+              value: task,
+              checked: true
+            })),
+            validate: (input: string[]) => {
+              if (input.length === 0) {
+                return 'Please select at least one task';
+              }
+              return true;
+            }
+          } as any
+        ]);
+
+        if (selectedTasks.length === 0) {
+          console.log(chalk.yellow('No tasks selected, using original task'));
+          return [originalTask];
+        }
+
+        console.log(chalk.green(`✅ Selected ${selectedTasks.length} task(s)`));
+        return selectedTasks;
       }
 
       return tasks;

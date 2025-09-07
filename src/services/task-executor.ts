@@ -49,9 +49,48 @@ export class TaskExecutor {
       const { tasks } = await this.jobManager.promptForTasks(this.workingDir);
 
       console.log('');
+      
+      // Ask if user wants to confirm before each task
+      let confirmBeforeEach = false;
+      if (tasks.length > 1) {
+        const inquirer = (await import('inquirer')).default;
+        const { shouldConfirm } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'shouldConfirm',
+            message: 'Would you like to confirm before executing each task?',
+            default: false
+          }
+        ]);
+        confirmBeforeEach = shouldConfirm;
+      }
+
       console.log(chalk.blue.bold('📋 Executing tasks...'));
 
-      for (const task of tasks) {
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+        
+        if (confirmBeforeEach) {
+          console.log('');
+          console.log(chalk.yellow(`Task ${i + 1} of ${tasks.length}: ${task.description}`));
+          
+          const inquirer = (await import('inquirer')).default;
+          const { shouldExecute } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'shouldExecute',
+              message: 'Execute this task?',
+              default: true
+            }
+          ]);
+
+          if (!shouldExecute) {
+            console.log(chalk.gray('⏭️  Skipping task'));
+            await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
+            continue;
+          }
+        }
+
         await this.executeTask(task);
       }
 
