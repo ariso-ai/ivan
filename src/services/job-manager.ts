@@ -2,12 +2,15 @@ import { randomUUID } from 'crypto';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { DatabaseManager, Job, Task } from '../database.js';
+import { ClaudeExecutor } from './claude-executor.js';
 
 export class JobManager {
   private dbManager: DatabaseManager;
+  private claudeExecutor: ClaudeExecutor;
 
   constructor() {
     this.dbManager = new DatabaseManager();
+    this.claudeExecutor = new ClaudeExecutor();
   }
 
   async promptForTasks(workingDir: string): Promise<{ job: Job; tasks: Task[] }> {
@@ -43,7 +46,7 @@ export class JobManager {
       ]);
 
       if (shouldBreakDown) {
-        finalTasks = await this.promptForTaskBreakdown(inputTasks[0]);
+        finalTasks = await this.generateTaskBreakdownWithClaude(inputTasks[0], workingDir);
       }
     }
 
@@ -61,38 +64,47 @@ export class JobManager {
     return { job, tasks };
   }
 
-  private async promptForTaskBreakdown(originalTask: string): Promise<string[]> {
+  private async generateTaskBreakdownWithClaude(originalTask: string, workingDir: string): Promise<string[]> {
     console.log('');
-    console.log(chalk.yellow('Break down the task into smaller tasks. Enter each task on a new line.'));
-    console.log(chalk.gray('Press Enter twice when finished.'));
+    console.log(chalk.yellow('🤖 Using Claude Code to break down the task...'));
     console.log('');
 
-    const tasks: string[] = [];
-    let taskNumber = 1;
+    try {
+      const tasks = await this.claudeExecutor.generateTaskBreakdown(originalTask, workingDir);
 
-    while (true) {
-      const { task } = await inquirer.prompt([
+      if (tasks.length === 0) {
+        console.log(chalk.red('Claude Code returned no tasks, falling back to original task'));
+        return [originalTask];
+      }
+
+      console.log('');
+      console.log(chalk.cyan('Generated tasks:'));
+      tasks.forEach((task, index) => {
+        console.log(chalk.gray(`  ${index + 1}. ${task}`));
+      });
+      console.log('');
+
+      const { confirmed } = await inquirer.prompt([
         {
-          type: 'input',
-          name: 'task',
-          message: `Task ${taskNumber}:`,
-          default: taskNumber === 1 ? originalTask : ''
+          type: 'confirm',
+          name: 'confirmed',
+          message: 'Do you want to proceed with these generated tasks?',
+          default: true
         }
       ]);
 
-      if (!task || task.trim().length === 0) {
-        if (tasks.length === 0) {
-          console.log(chalk.red('Please enter at least one task'));
-          continue;
-        }
-        break;
+      if (!confirmed) {
+        console.log(chalk.yellow('Using original task instead'));
+        return [originalTask];
       }
 
-      tasks.push(task.trim());
-      taskNumber++;
-    }
+      return tasks;
 
-    return tasks;
+    } catch (error) {
+      console.error(chalk.red('Failed to generate task breakdown:'), error);
+      console.log(chalk.yellow('Falling back to original task'));
+      return [originalTask];
+    }
   }
 
   async createJob(description: string, tasks: string[], workingDir: string): Promise<Job> {
