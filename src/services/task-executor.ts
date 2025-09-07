@@ -29,10 +29,18 @@ export class TaskExecutor {
       console.log(chalk.blue.bold('🚀 Starting Ivan workflow'));
       console.log('');
 
+      console.log(chalk.blue('🔍 Validating dependencies...'));
       this.claudeExecutor.validateClaudeCodeInstallation();
+      console.log(chalk.green('✅ Claude Code CLI is installed'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
       this.gitManager = new GitManager(this.workingDir);
+
+      this.gitManager.validateGitHubCliInstallation();
+      console.log(chalk.green('✅ GitHub CLI is installed'));
+
+      this.gitManager.validateGitHubCliAuthentication();
+      console.log(chalk.green('✅ GitHub CLI is authenticated'));
 
       const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));

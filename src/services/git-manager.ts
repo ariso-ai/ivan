@@ -19,6 +19,32 @@ export class GitManager {
     }
   }
 
+  private isGitHubCliInstalled(): boolean {
+    try {
+      execSync('gh --version', { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  validateGitHubCliInstallation(): void {
+    if (!this.isGitHubCliInstalled()) {
+      throw new Error('GitHub CLI (gh) is not installed or not in PATH. Please install it first:\n' +
+        '  macOS: brew install gh\n' +
+        '  Ubuntu/Debian: sudo apt install gh\n' +
+        '  Or visit: https://cli.github.com/');
+    }
+  }
+
+  validateGitHubCliAuthentication(): void {
+    try {
+      execSync('gh auth status', { stdio: 'ignore' });
+    } catch {
+      throw new Error('GitHub CLI is not authenticated. Please run "gh auth login" first.');
+    }
+  }
+
   async createBranch(branchName: string): Promise<void> {
     this.ensureGitRepo();
 

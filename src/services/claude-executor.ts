@@ -6,21 +6,28 @@ export class ClaudeExecutor {
     console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
 
     try {
-      const claudeCommand = `claude "${taskDescription}" --verbose --dangerously-skip-permissions`;
+      const claudeCommand = `claude --print "${taskDescription}" --verbose --dangerously-skip-permissions`;
 
       console.log(chalk.gray(`Running: ${claudeCommand}`));
+      console.log(chalk.gray(`Working directory: ${workingDir}`));
+      console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
 
       const result = execSync(claudeCommand, {
         cwd: workingDir,
         encoding: 'utf8',
-        stdio: 'pipe'
+        stdio: ['pipe', 'pipe', 'pipe'], // Explicitly set stdin, stdout, stderr
+        timeout: 300000 // 5 minute timeout
       });
 
       console.log(chalk.green('✅ Claude Code execution completed'));
 
-      if (result) {
-        console.log(chalk.gray('Output:'));
+      if (result && result.trim()) {
+        console.log(chalk.cyan('📋 Claude Code Output:'));
+        console.log(chalk.gray('─'.repeat(50)));
         console.log(result);
+        console.log(chalk.gray('─'.repeat(50)));
+      } else {
+        console.log(chalk.yellow('⚠️  No output from Claude Code'));
       }
 
       return result || '';
@@ -28,15 +35,32 @@ export class ClaudeExecutor {
     } catch (error: unknown) {
       console.error(chalk.red('❌ Claude Code execution failed:'));
 
-      const err = error as Error & { stdout?: string; stderr?: string };
+      const err = error as Error & { stdout?: string; stderr?: string; status?: number; signal?: string };
       let errorLog = `Claude Code execution failed: ${err.message}`;
 
+      if (err.status) {
+        console.log(chalk.red(`Exit code: ${err.status}`));
+        errorLog += `\nExit code: ${err.status}`;
+      }
+
+      if (err.signal) {
+        console.log(chalk.red(`Signal: ${err.signal}`));
+        errorLog += `\nSignal: ${err.signal}`;
+      }
+
       if (err.stdout) {
-        console.log('STDOUT:', err.stdout);
+        console.log(chalk.cyan('STDOUT:'));
+        console.log(chalk.gray('─'.repeat(30)));
+        console.log(err.stdout);
+        console.log(chalk.gray('─'.repeat(30)));
         errorLog += `\nSTDOUT: ${err.stdout}`;
       }
+
       if (err.stderr) {
-        console.error('STDERR:', err.stderr);
+        console.log(chalk.red('STDERR:'));
+        console.log(chalk.gray('─'.repeat(30)));
+        console.error(err.stderr);
+        console.log(chalk.gray('─'.repeat(30)));
         errorLog += `\nSTDERR: ${err.stderr}`;
       }
 
