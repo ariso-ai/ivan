@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { ConfigManager } from './config.js';
 import { TaskExecutor } from './services/task-executor.js';
+import { DatabaseManager } from './database.js';
 
 const program = new Command();
 const configManager = new ConfigManager();
@@ -40,6 +41,15 @@ async function checkConfiguration(): Promise<boolean> {
   return false;
 }
 
+async function runMigrations(): Promise<void> {
+  const dbManager = new DatabaseManager();
+  try {
+    await dbManager.runMigrations();
+  } finally {
+    dbManager.close();
+  }
+}
+
 async function main() {
   try {
     const args = process.argv.slice(2);
@@ -51,6 +61,8 @@ async function main() {
         console.log(chalk.cyan('Run "ivan" again to start working on tasks.'));
         return;
       }
+
+      await runMigrations();
 
       const taskExecutor = new TaskExecutor();
       await taskExecutor.executeWorkflow();
