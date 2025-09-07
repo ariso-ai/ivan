@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { ConfigManager } from './config.js';
+import { TaskExecutor } from './services/task-executor.js';
 
 const program = new Command();
 const configManager = new ConfigManager();
@@ -47,9 +48,13 @@ async function main() {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
-        console.log(chalk.cyan('Run "ivan --help" to see available commands.'));
+        console.log(chalk.cyan('Run "ivan" again to start working on tasks.'));
         return;
       }
+
+      const taskExecutor = new TaskExecutor();
+      await taskExecutor.executeWorkflow();
+      return;
     }
 
     await program.parseAsync();
