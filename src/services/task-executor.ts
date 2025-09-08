@@ -5,6 +5,7 @@ import { GitManager } from './git-manager.js';
 import { ClaudeExecutor } from './claude-executor.js';
 import { OpenAIService } from './openai-service.js';
 import { RepositoryManager } from './repository-manager.js';
+import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 
 export class TaskExecutor {
@@ -13,14 +14,18 @@ export class TaskExecutor {
   private claudeExecutor: ClaudeExecutor;
   private openaiService: OpenAIService;
   private repositoryManager: RepositoryManager;
+  private configManager: ConfigManager;
   private workingDir: string;
+  private repoInstructions: string | undefined;
 
   constructor() {
     this.jobManager = new JobManager();
     this.claudeExecutor = new ClaudeExecutor();
     this.openaiService = new OpenAIService();
     this.repositoryManager = new RepositoryManager();
+    this.configManager = new ConfigManager();
     this.workingDir = '';
+    this.repoInstructions = undefined;
     this.gitManager = new GitManager(''); // Will be set in executeWorkflow
   }
 
@@ -45,6 +50,28 @@ export class TaskExecutor {
       const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
       console.log('');
+
+      // Check for repository-specific instructions
+      this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
+      if (!this.repoInstructions) {
+        console.log(chalk.yellow('⚠️  No repository-specific instructions found for this repository.'));
+        const inquirer = (await import('inquirer')).default;
+        const { shouldSetInstructions } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'shouldSetInstructions',
+            message: 'Would you like to set repository-specific instructions now?',
+            default: false
+          }
+        ]);
+
+        if (shouldSetInstructions) {
+          this.repoInstructions = await this.configManager.promptForRepoInstructions(this.workingDir);
+        }
+        console.log('');
+      } else {
+        console.log(chalk.green('✅ Repository-specific instructions loaded'));
+      }
 
       const { tasks } = await this.jobManager.promptForTasks(this.workingDir);
 
@@ -126,7 +153,14 @@ export class TaskExecutor {
       spinner.succeed(`Branch created: ${branchName}`);
 
       spinner = ora('Executing task with Claude Code...').start();
-      const executionLog = await this.claudeExecutor.executeTask(task.description, this.workingDir);
+      
+      // Append repository-specific instructions to the task if they exist
+      let taskWithInstructions = task.description;
+      if (this.repoInstructions) {
+        taskWithInstructions = `${task.description}\n\nRepository-specific instructions:\n${this.repoInstructions}`;
+      }
+      
+      const executionLog = await this.claudeExecutor.executeTask(taskWithInstructions, this.workingDir);
       spinner.succeed('Claude Code execution completed');
 
       spinner = ora('Storing execution log...').start();

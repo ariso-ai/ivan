@@ -19,11 +19,18 @@ export class JobManager {
 
     const { taskInput } = await inquirer.prompt([
       {
-        type: 'input',
+        type: 'editor',
         name: 'taskInput',
-        message: 'Enter a task or list of tasks (separate multiple tasks with commas):',
+        message: 'Enter task(s) - one per line (press Enter to open editor):',
+        default: '# Enter your tasks below (one per line)\n# Lines starting with # will be ignored\n\n',
         validate: (input: string) => {
-          if (!input || input.trim().length === 0) {
+          const cleanedInput = input
+            .split('\n')
+            .filter(line => line.trim() && !line.trim().startsWith('#'))
+            .join('\n')
+            .trim();
+          
+          if (!cleanedInput || cleanedInput.length === 0) {
             return 'Please enter at least one task';
           }
           return true;
@@ -31,7 +38,11 @@ export class JobManager {
       }
     ]);
 
-    const inputTasks = taskInput.split(',').map((task: string) => task.trim()).filter(Boolean);
+    // Parse newline-separated tasks, filtering out empty lines and comments
+    const inputTasks = taskInput
+      .split('\n')
+      .map((task: string) => task.trim())
+      .filter((task: string) => task.length > 0 && !task.startsWith('#'));
 
     let finalTasks = inputTasks;
 
@@ -95,7 +106,12 @@ export class JobManager {
       }
     }
 
-    const job = await this.createJob(taskInput, finalTasks, workingDir);
+    // Create a clean description for the job (without comments)
+    const jobDescription = finalTasks.length === 1 
+      ? finalTasks[0] 
+      : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
+    
+    const job = await this.createJob(jobDescription, finalTasks, workingDir);
     const tasks = await this.createTasks(job.uuid, finalTasks);
 
     console.log('');
