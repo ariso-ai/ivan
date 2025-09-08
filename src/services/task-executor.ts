@@ -49,7 +49,7 @@ export class TaskExecutor {
       const { tasks } = await this.jobManager.promptForTasks(this.workingDir);
 
       console.log('');
-      
+
       // Ask if user wants to confirm before each task
       let confirmBeforeEach = false;
       if (tasks.length > 1) {
@@ -69,11 +69,11 @@ export class TaskExecutor {
 
       for (let i = 0; i < tasks.length; i++) {
         const task = tasks[i];
-        
+
         if (confirmBeforeEach) {
           console.log('');
           console.log(chalk.yellow(`Task ${i + 1} of ${tasks.length}: ${task.description}`));
-          
+
           const inquirer = (await import('inquirer')).default;
           const { shouldExecute } = await inquirer.prompt([
             {

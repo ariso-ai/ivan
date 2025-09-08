@@ -119,7 +119,7 @@ export class ClaudeExecutor {
 
     } catch (error: unknown) {
       const err = error as Error & { stdout?: string; stderr?: string; status?: number; signal?: string };
-      
+
       // Check if it was interrupted by user
       if (err.message === 'Command was interrupted') {
         console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
@@ -173,7 +173,7 @@ export class ClaudeExecutor {
       console.log(chalk.gray(`Working directory: ${workingDir}`));
 
       const result = await this.executeWithSignalHandling('sh', ['-c', claudeCommand], {
-        cwd: workingDir,
+        cwd: workingDir
       });
 
       const parsed = JSON.parse(result);
@@ -195,7 +195,7 @@ export class ClaudeExecutor {
 
     } catch (error: unknown) {
       const err = error as Error;
-      
+
       // Check if it was interrupted by user
       if (err.message === 'Command was interrupted') {
         console.log(chalk.yellow('\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'));
