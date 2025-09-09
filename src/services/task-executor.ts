@@ -36,7 +36,7 @@ export class TaskExecutor {
 
       console.log(chalk.blue('🔍 Validating dependencies...'));
       this.claudeExecutor.validateClaudeCodeInstallation();
-      console.log(chalk.green('✅ Claude Code CLI is installed'));
+      console.log(chalk.green('✅ Claude Code SDK configured'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
       this.gitManager = new GitManager(this.workingDir);
@@ -153,13 +153,13 @@ export class TaskExecutor {
       spinner.succeed(`Branch created: ${branchName}`);
 
       spinner = ora('Executing task with Claude Code...').start();
-      
+
       // Append repository-specific instructions to the task if they exist
       let taskWithInstructions = task.description;
       if (this.repoInstructions) {
         taskWithInstructions = `${task.description}\n\nRepository-specific instructions:\n${this.repoInstructions}`;
       }
-      
+
       const executionLog = await this.claudeExecutor.executeTask(taskWithInstructions, this.workingDir);
       spinner.succeed('Claude Code execution completed');
 

@@ -8,6 +8,7 @@ import { DatabaseManager } from './database.js';
 
 interface Config {
   openaiApiKey: string;
+  anthropicApiKey: string;
   version: string;
   repoInstructions?: { [repoPath: string]: string };
 }
@@ -74,27 +75,12 @@ export class ConfigManager {
   }
 
   isClaudeCodeInstalled(): boolean {
-    try {
-      execSync('claude --version', { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
+    // No longer needed with SDK
+    return true;
   }
 
   async setup(): Promise<void> {
     console.log(chalk.blue.bold('🤖 Ivan Configuration Setup'));
-    console.log('');
-
-    if (!this.isClaudeCodeInstalled()) {
-      console.log(chalk.red('❌ Claude Code CLI is not installed or not in PATH'));
-      console.log(chalk.yellow('Please install Claude Code CLI first:'));
-      console.log(chalk.cyan('npm install -g @anthropics/claude-cli'));
-      console.log('or visit: https://docs.anthropic.com/claude/docs/claude-cli');
-      process.exit(1);
-    }
-
-    console.log(chalk.green('✅ Claude Code CLI is installed'));
     console.log('');
 
     const answers = await inquirer.prompt([
@@ -112,11 +98,27 @@ export class ConfigManager {
           return true;
         },
         mask: '*'
+      },
+      {
+        type: 'password',
+        name: 'anthropicApiKey',
+        message: 'Enter your Anthropic API key:',
+        validate: (input: string) => {
+          if (!input || input.trim().length === 0) {
+            return 'Anthropic API key is required';
+          }
+          if (!input.startsWith('sk-ant-')) {
+            return 'Anthropic API key should start with "sk-ant-"';
+          }
+          return true;
+        },
+        mask: '*'
       }
     ]);
 
     const config: Config = {
       openaiApiKey: answers.openaiApiKey.trim(),
+      anthropicApiKey: answers.anthropicApiKey.trim(),
       version: '1.0.0'
     };
 

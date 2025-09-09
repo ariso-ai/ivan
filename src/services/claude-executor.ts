@@ -1,183 +1,166 @@
-import { execSync, spawn } from 'child_process';
+import { query } from '@anthropic-ai/claude-code';
 import chalk from 'chalk';
+import { ConfigManager } from '../config.js';
 
 export class ClaudeExecutor {
-  private executeWithSignalHandling(command: string, args: string[], options: { cwd?: string; timeout?: number; silent?: boolean }): Promise<string> {
-    return new Promise((resolve, reject) => {
-      // Build the full command properly
-      let fullCommand: string;
-      if (command === 'sh' && args[0] === '-c' && args[1]) {
-        // Special handling for sh -c commands
-        fullCommand = args[1];
-      } else if (args.length > 0) {
-        fullCommand = `${command} ${args.join(' ')}`;
-      } else {
-        fullCommand = command;
-      }
+  private configManager: ConfigManager;
 
-      const child = spawn(fullCommand, [], {
-        cwd: options.cwd,
-        stdio: ['inherit', 'pipe', 'pipe'],  // inherit stdin to allow interactive commands
-        shell: true
-      });
-
-      let stdout = '';
-      let stderr = '';
-      let isTerminated = false;
-
-      // Handle Ctrl+C and other signals
-      const cleanup = () => {
-        if (!isTerminated) {
-          isTerminated = true;
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (!child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
-        }
-      };
-
-      // Forward signals to child process
-      process.on('SIGINT', cleanup);
-      process.on('SIGTERM', cleanup);
-
-      // Set timeout if provided
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      if (options.timeout) {
-        timeoutId = setTimeout(() => {
-          cleanup();
-          reject(new Error('Command timed out'));
-        }, options.timeout);
-      }
-
-      child.stdout?.on('data', (data) => {
-        const text = data.toString();
-        stdout += text;
-        // Stream output in real-time for better UX (unless silent mode)
-        if (!options.silent) {
-          process.stdout.write(text);
-        }
-      });
-
-      child.stderr?.on('data', (data) => {
-        const text = data.toString();
-        stderr += text;
-        // Stream errors in real-time (unless silent mode)
-        if (!options.silent) {
-          process.stderr.write(text);
-        }
-      });
-
-      child.on('exit', (code, signal) => {
-        // Use 'exit' instead of 'close' to ensure we catch the exit properly
-        if (timeoutId) globalThis.clearTimeout(timeoutId);
-        process.removeListener('SIGINT', cleanup);
-        process.removeListener('SIGTERM', cleanup);
-
-        if (isTerminated || signal === 'SIGINT' || signal === 'SIGTERM') {
-          reject(new Error('Command was interrupted'));
-        } else if (code === 0) {
-          resolve(stdout);
-        } else {
-          const error = new Error(`Command failed with code ${code}`) as Error & { stdout?: string; stderr?: string; status?: number };
-          error.stdout = stdout;
-          error.stderr = stderr;
-          error.status = code || undefined;
-          reject(error);
-        }
-      });
-
-      child.on('error', (error) => {
-        if (timeoutId) globalThis.clearTimeout(timeoutId);
-        process.removeListener('SIGINT', cleanup);
-        process.removeListener('SIGTERM', cleanup);
-        reject(error);
-      });
-    });
+  constructor() {
+    this.configManager = new ConfigManager();
   }
+
+  private getApiKey(): string {
+    const config = this.configManager.getConfig();
+    if (!config || !config.anthropicApiKey) {
+      throw new Error('Anthropic API key not configured. Please run "ivan config" first.');
+    }
+    return config.anthropicApiKey;
+  }
+
   async executeTask(taskDescription: string, workingDir: string): Promise<string> {
     console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
     console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
 
     try {
-      const escapedTask = taskDescription.replace(/"/g, '\\"');
-      const claudeCommand = `claude --print "${escapedTask}" --verbose --dangerously-skip-permissions`;
+      // Set the API key in environment for the SDK
+      process.env.ANTHROPIC_API_KEY = this.getApiKey();
 
-      console.log(chalk.gray(`Running: ${claudeCommand}`));
       console.log(chalk.gray(`Working directory: ${workingDir}`));
       console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
 
-      const result = await this.executeWithSignalHandling('sh', ['-c', claudeCommand], {
-        cwd: workingDir
-      });
+      let result = '';
+      const abortController = new globalThis.AbortController();
+
+      // Handle Ctrl+C
+      const handleInterrupt = () => {
+        abortController.abort();
+        console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
+      };
+      process.on('SIGINT', handleInterrupt);
+
+      try {
+        // Change to working directory
+        const originalDir = process.cwd();
+        process.chdir(workingDir);
+
+        // Execute the task using the SDK
+        for await (const message of query({
+          prompt: taskDescription,
+          options: {
+            abortController,
+            maxTurns: 10,
+            allowedTools: ['*'], // Allow all tools
+            cwd: workingDir
+          }
+        })) {
+          // Handle different message types based on the SDK types
+          if (message.type === 'assistant') {
+            // Assistant messages contain the actual content
+            if (message.message.content) {
+              for (const content of message.message.content) {
+                if (content.type === 'text') {
+                  console.log(content.text);
+                  result += content.text + '\n';
+                } else if (content.type === 'tool_use') {
+                  console.log(chalk.gray(`Using tool: ${content.name}`));
+                }
+              }
+            }
+          } else if (message.type === 'result') {
+            // Final result message
+            if ('result' in message) {
+              console.log(chalk.green(`Result: ${message.result}`));
+              result += message.result + '\n';
+            }
+          } else if (message.type === 'system') {
+            // System messages for initialization
+            if (message.subtype === 'init') {
+              console.log(chalk.gray(`Initialized with model: ${message.model}`));
+            }
+          }
+        }
+
+        // Restore original directory
+        process.chdir(originalDir);
+      } finally {
+        process.removeListener('SIGINT', handleInterrupt);
+      }
 
       console.log(chalk.green('✅ Claude Code execution completed'));
-
-      // No need to print output again since it's already streamed
-      return result || '';
+      return result;
 
     } catch (error: unknown) {
-      const err = error as Error & { stdout?: string; stderr?: string; status?: number; signal?: string };
+      const err = error as Error & { message?: string };
 
-      // Check if it was interrupted by user
-      if (err.message === 'Command was interrupted') {
-        console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
+      if (err.message?.includes('abort')) {
         throw new Error('Task execution cancelled by user');
       }
 
       console.error(chalk.red('❌ Claude Code execution failed:'));
-      let errorLog = `Claude Code execution failed: ${err.message}`;
-
-      if (err.status) {
-        console.log(chalk.red(`Exit code: ${err.status}`));
-        errorLog += `\nExit code: ${err.status}`;
-      }
-
-      if (err.signal) {
-        console.log(chalk.red(`Signal: ${err.signal}`));
-        errorLog += `\nSignal: ${err.signal}`;
-      }
-
-      // Output is already streamed, so we don't need to print it again
-      if (err.stdout) {
-        errorLog += `\nSTDOUT: ${err.stdout}`;
-      }
-
-      if (err.stderr) {
-        errorLog += `\nSTDERR: ${err.stderr}`;
-      }
-
-      throw new Error(errorLog);
-    }
-  }
-
-  private isClaudeCodeInstalled(): boolean {
-    try {
-      execSync('claude --version', { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
+      throw new Error(`Claude Code execution failed: ${err.message}`);
     }
   }
 
   async generateTaskBreakdown(jobDescription: string, workingDir: string): Promise<string[]> {
     try {
-      const prompt = `Return a new-line separated list of tasks you would do to best accomplish the following: '${jobDescription}'. Respond with ONLY the new line separated list, do not introduce the results.  Each task should be considered as something that should be opened as a pull request. do NOT include tasks like searching, finding/locating files or researching, analyzing the codebase or looking for certain parts of the code.`;
-      const escapedPrompt = prompt.replace(/"/g, '\\"');
-      const claudeCommand = `claude -p "${escapedPrompt}" --output-format json --dangerously-skip-permissions`;
+      // Set the API key in environment for the SDK
+      process.env.ANTHROPIC_API_KEY = this.getApiKey();
+
+      const prompt = `Return a new-line separated list of tasks you would do to best accomplish the following: '${jobDescription}'. Respond with ONLY the new line separated list, do not introduce the results. Each task should be considered as something that should be opened as a pull request. do NOT include tasks like searching, finding/locating files or researching, analyzing the codebase or looking for certain parts of the code.`;
 
       console.log(chalk.blue('🤖 Generating task breakdown with Claude Code...'));
       console.log(chalk.yellow('💡 Press Ctrl+C to cancel'));
-      console.log(chalk.gray(`Running: ${claudeCommand}`));
       console.log(chalk.gray(`Working directory: ${workingDir}`));
 
-      const result = await this.executeWithSignalHandling('sh', ['-c', claudeCommand], {
-        cwd: workingDir
-      });
+      let taskList = '';
+      const abortController = new globalThis.AbortController();
 
-      const parsed = JSON.parse(result);
-      const taskList = parsed.result || parsed.content || '';
+      // Handle Ctrl+C
+      const handleInterrupt = () => {
+        abortController.abort();
+        console.log(chalk.yellow('\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'));
+      };
+      process.on('SIGINT', handleInterrupt);
+
+      try {
+        // Change to working directory
+        const originalDir = process.cwd();
+        process.chdir(workingDir);
+
+        // Generate task breakdown using the SDK
+        for await (const message of query({
+          prompt,
+          options: {
+            abortController,
+            maxTurns: 1,
+            customSystemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
+            allowedTools: [], // No tools needed for this
+            cwd: workingDir
+          }
+        })) {
+          // Handle different message types
+          if (message.type === 'assistant') {
+            // Assistant messages contain the actual content
+            if (message.message.content) {
+              for (const content of message.message.content) {
+                if (content.type === 'text') {
+                  taskList += content.text;
+                }
+              }
+            }
+          } else if (message.type === 'result') {
+            // Final result message
+            if ('result' in message) {
+              taskList += message.result;
+            }
+          }
+        }
+
+        // Restore original directory
+        process.chdir(originalDir);
+      } finally {
+        process.removeListener('SIGINT', handleInterrupt);
+      }
 
       if (!taskList) {
         throw new Error('No task list returned from Claude Code');
@@ -196,9 +179,7 @@ export class ClaudeExecutor {
     } catch (error: unknown) {
       const err = error as Error;
 
-      // Check if it was interrupted by user
-      if (err.message === 'Command was interrupted') {
-        console.log(chalk.yellow('\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'));
+      if (err.message?.includes('abort')) {
         throw new Error('Task breakdown generation cancelled by user');
       }
 
@@ -208,9 +189,10 @@ export class ClaudeExecutor {
   }
 
   validateClaudeCodeInstallation(): void {
-    if (!this.isClaudeCodeInstalled()) {
-      throw new Error('Claude Code CLI is not installed or not in PATH. Please install it first.');
+    // Check if API key is configured
+    const config = this.configManager.getConfig();
+    if (!config || !config.anthropicApiKey) {
+      throw new Error('Anthropic API key is not configured. Please run "ivan config" first.');
     }
   }
 }
-

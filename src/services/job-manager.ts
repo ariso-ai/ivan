@@ -29,7 +29,7 @@ export class JobManager {
             .filter(line => line.trim() && !line.trim().startsWith('#'))
             .join('\n')
             .trim();
-          
+
           if (!cleanedInput || cleanedInput.length === 0) {
             return 'Please enter at least one task';
           }
@@ -107,10 +107,10 @@ export class JobManager {
     }
 
     // Create a clean description for the job (without comments)
-    const jobDescription = finalTasks.length === 1 
-      ? finalTasks[0] 
+    const jobDescription = finalTasks.length === 1
+      ? finalTasks[0]
       : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
-    
+
     const job = await this.createJob(jobDescription, finalTasks, workingDir);
     const tasks = await this.createTasks(job.uuid, finalTasks);
 

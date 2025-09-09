@@ -128,7 +128,7 @@ export class GitManager {
       // Add attribution to @ari-agent in the PR body
       const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ari-agent*`;
       const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
-      
+
       // Create PR and optionally assign to ari-agent (will fail silently if user doesn't have permissions)
       const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}" --assignee ari-agent`, {
         cwd: this.workingDir,
@@ -138,20 +138,20 @@ export class GitManager {
 
       const prUrl = result.trim();
       console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
-      
+
       // Add comment requesting review from @codex
       try {
         execSync(`gh pr comment ${prUrl} --body "@codex review please"`, {
           cwd: this.workingDir,
           stdio: 'pipe'
         });
-        console.log(chalk.green(`✅ Added review request comment for @codex`));
+        console.log(chalk.green('✅ Added review request comment for @codex'));
       } catch (commentError) {
         console.log(chalk.yellow(`⚠️ Could not add review comment: ${commentError}`));
       }
-      
+
       return prUrl;
-    } catch (error) {
+    } catch {
       // If assignee fails, try without it
       try {
         const escapedTitle = title.replace(/"/g, '\\"');
@@ -162,21 +162,21 @@ export class GitManager {
           encoding: 'utf8',
           stdio: 'pipe'
         });
-        
+
         const prUrl = result.trim();
         console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
-        
+
         // Add comment requesting review from @codex
         try {
           execSync(`gh pr comment ${prUrl} --body "@codex review please"`, {
             cwd: this.workingDir,
             stdio: 'pipe'
           });
-          console.log(chalk.green(`✅ Added review request comment for @codex`));
+          console.log(chalk.green('✅ Added review request comment for @codex'));
         } catch (commentError) {
           console.log(chalk.yellow(`⚠️ Could not add review comment: ${commentError}`));
         }
-        
+
         return prUrl;
       } catch (fallbackError) {
         throw new Error(`Failed to create pull request: ${fallbackError}`);
