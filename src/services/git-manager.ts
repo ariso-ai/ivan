@@ -78,7 +78,8 @@ export class GitManager {
         stdio: 'pipe'
       });
       const escapedMessage = message.replace(/"/g, '\\"');
-      execSync(`git commit -m "${escapedMessage}"`, {
+      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
+      execSync(`git commit -m "${commitMessage}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
@@ -93,7 +94,8 @@ export class GitManager {
 
     try {
       const escapedMessage = message.replace(/"/g, '\\"');
-      execSync(`git commit --allow-empty -m "${escapedMessage}"`, {
+      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
+      execSync(`git commit --allow-empty -m "${commitMessage}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
