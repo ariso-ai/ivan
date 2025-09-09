@@ -138,6 +138,18 @@ export class GitManager {
 
       const prUrl = result.trim();
       console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
+      
+      // Add comment requesting review from @codex
+      try {
+        execSync(`gh pr comment ${prUrl} --body "@codex review please"`, {
+          cwd: this.workingDir,
+          stdio: 'pipe'
+        });
+        console.log(chalk.green(`✅ Added review request comment for @codex`));
+      } catch (commentError) {
+        console.log(chalk.yellow(`⚠️ Could not add review comment: ${commentError}`));
+      }
+      
       return prUrl;
     } catch (error) {
       // If assignee fails, try without it
@@ -153,6 +165,18 @@ export class GitManager {
         
         const prUrl = result.trim();
         console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
+        
+        // Add comment requesting review from @codex
+        try {
+          execSync(`gh pr comment ${prUrl} --body "@codex review please"`, {
+            cwd: this.workingDir,
+            stdio: 'pipe'
+          });
+          console.log(chalk.green(`✅ Added review request comment for @codex`));
+        } catch (commentError) {
+          console.log(chalk.yellow(`⚠️ Could not add review comment: ${commentError}`));
+        }
+        
         return prUrl;
       } catch (fallbackError) {
         throw new Error(`Failed to create pull request: ${fallbackError}`);
