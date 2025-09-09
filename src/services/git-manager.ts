@@ -125,8 +125,12 @@ export class GitManager {
 
     try {
       const escapedTitle = title.replace(/"/g, '\\"');
-      const escapedBody = body.replace(/"/g, '\\"');
-      const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}"`, {
+      // Add attribution to @ari-agent in the PR body
+      const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ari-agent*`;
+      const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
+      
+      // Create PR and optionally assign to ari-agent (will fail silently if user doesn't have permissions)
+      const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}" --assignee ari-agent`, {
         cwd: this.workingDir,
         encoding: 'utf8',
         stdio: 'pipe'
@@ -136,7 +140,23 @@ export class GitManager {
       console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
       return prUrl;
     } catch (error) {
-      throw new Error(`Failed to create pull request: ${error}`);
+      // If assignee fails, try without it
+      try {
+        const escapedTitle = title.replace(/"/g, '\\"');
+        const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ari-agent*`;
+        const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
+        const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}"`, {
+          cwd: this.workingDir,
+          encoding: 'utf8',
+          stdio: 'pipe'
+        });
+        
+        const prUrl = result.trim();
+        console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
+        return prUrl;
+      } catch (fallbackError) {
+        throw new Error(`Failed to create pull request: ${fallbackError}`);
+      }
     }
   }
 
