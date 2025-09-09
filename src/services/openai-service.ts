@@ -2,14 +2,26 @@ import OpenAI from 'openai';
 import { ConfigManager } from '../config.js';
 
 export class OpenAIService {
-  private openai: OpenAI;
+  private openai: OpenAI | null = null;
+  private configManager: ConfigManager;
 
   constructor() {
-    const configManager = new ConfigManager();
-    const config = configManager.getConfig();
+    this.configManager = new ConfigManager();
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (this.openai) return;
+
+    let config = this.configManager.getConfig();
+
+    if (!config?.openaiApiKey || config.openaiApiKey === '') {
+      // Prompt for the API key
+      const apiKey = await this.configManager.promptForMissingConfig('openaiApiKey');
+      config = this.configManager.getConfig();
+    }
 
     if (!config?.openaiApiKey) {
-      throw new Error('OpenAI API key not found in configuration');
+      throw new Error('Failed to obtain OpenAI API key');
     }
 
     this.openai = new OpenAI({
@@ -18,6 +30,8 @@ export class OpenAIService {
   }
 
   async generateCommitMessage(diff: string, changedFiles: string[]): Promise<string> {
+    await this.ensureInitialized();
+
     const prompt = `
 Generate a concise git commit message for the following changes.
 
@@ -38,7 +52,7 @@ Rules:
 Return only the commit message, nothing else.`;
 
     try {
-      const response = await this.openai.chat.completions.create({
+      const response = await this.openai!.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -63,6 +77,8 @@ Return only the commit message, nothing else.`;
   }
 
   async generatePullRequestDescription(taskDescription: string, diff: string, changedFiles: string[]): Promise<{ title: string; body: string }> {
+    await this.ensureInitialized();
+
     const prompt = `
 Generate a pull request title and description for the following task and changes.
 
@@ -90,7 +106,7 @@ Format your response as JSON:
 }`;
 
     try {
-      const response = await this.openai.chat.completions.create({
+      const response = await this.openai!.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

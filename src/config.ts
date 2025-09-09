@@ -163,6 +163,62 @@ export class ConfigManager {
     await this.saveConfig(config);
   }
 
+  async promptForMissingConfig(configKey: 'openaiApiKey' | 'anthropicApiKey'): Promise<string> {
+    console.log(chalk.yellow(`⚠️  ${configKey === 'openaiApiKey' ? 'OpenAI' : 'Anthropic'} API key is missing or invalid.`));
+    console.log('');
+
+    const promptConfig = configKey === 'openaiApiKey' ? {
+      type: 'password' as const,
+      name: 'apiKey',
+      message: 'Enter your OpenAI API key:',
+      validate: (input: string) => {
+        if (!input || input.trim().length === 0) {
+          return 'OpenAI API key is required';
+        }
+        if (!input.startsWith('sk-')) {
+          return 'OpenAI API key should start with "sk-"';
+        }
+        return true;
+      },
+      mask: '*'
+    } : {
+      type: 'password' as const,
+      name: 'apiKey',
+      message: 'Enter your Anthropic API key:',
+      validate: (input: string) => {
+        if (!input || input.trim().length === 0) {
+          return 'Anthropic API key is required';
+        }
+        if (!input.startsWith('sk-ant-')) {
+          return 'Anthropic API key should start with "sk-ant-"';
+        }
+        return true;
+      },
+      mask: '*'
+    };
+
+    const answers = await inquirer.prompt([promptConfig]);
+    const apiKey = answers.apiKey.trim();
+
+    // Update the configuration
+    let config = this.getConfig();
+    if (!config) {
+      config = {
+        openaiApiKey: '',
+        anthropicApiKey: '',
+        version: '1.0.0'
+      };
+    }
+
+    config[configKey] = apiKey;
+    await this.saveConfig(config);
+
+    console.log(chalk.green(`✅ ${configKey === 'openaiApiKey' ? 'OpenAI' : 'Anthropic'} API key saved successfully!`));
+    console.log('');
+
+    return apiKey;
+  }
+
   async promptForRepoInstructions(repoPath: string): Promise<string> {
     console.log(chalk.blue.bold('📝 Repository-Specific Instructions'));
     console.log(chalk.gray(`Repository: ${repoPath}`));

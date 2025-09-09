@@ -9,11 +9,19 @@ export class ClaudeExecutor {
     this.configManager = new ConfigManager();
   }
 
-  private getApiKey(): string {
-    const config = this.configManager.getConfig();
-    if (!config || !config.anthropicApiKey) {
-      throw new Error('Anthropic API key not configured. Please run "ivan config" first.');
+  private async getApiKey(): Promise<string> {
+    let config = this.configManager.getConfig();
+    
+    if (!config?.anthropicApiKey || config.anthropicApiKey === '') {
+      // Prompt for the API key
+      const apiKey = await this.configManager.promptForMissingConfig('anthropicApiKey');
+      config = this.configManager.getConfig();
     }
+    
+    if (!config?.anthropicApiKey) {
+      throw new Error('Failed to obtain Anthropic API key');
+    }
+    
     return config.anthropicApiKey;
   }
 
@@ -23,7 +31,7 @@ export class ClaudeExecutor {
 
     try {
       // Set the API key in environment for the SDK
-      process.env.ANTHROPIC_API_KEY = this.getApiKey();
+      process.env.ANTHROPIC_API_KEY = await this.getApiKey();
 
       console.log(chalk.gray(`Working directory: ${workingDir}`));
       console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
@@ -104,7 +112,7 @@ export class ClaudeExecutor {
   async generateTaskBreakdown(jobDescription: string, workingDir: string): Promise<string[]> {
     try {
       // Set the API key in environment for the SDK
-      process.env.ANTHROPIC_API_KEY = this.getApiKey();
+      process.env.ANTHROPIC_API_KEY = await this.getApiKey();
 
       const prompt = `Return a new-line separated list of tasks you would do to best accomplish the following: '${jobDescription}'. Respond with ONLY the new line separated list, do not introduce the results. Each task should be considered as something that should be opened as a pull request. do NOT include tasks like searching, finding/locating files or researching, analyzing the codebase or looking for certain parts of the code.`;
 
@@ -188,11 +196,8 @@ export class ClaudeExecutor {
     }
   }
 
-  validateClaudeCodeInstallation(): void {
-    // Check if API key is configured
-    const config = this.configManager.getConfig();
-    if (!config || !config.anthropicApiKey) {
-      throw new Error('Anthropic API key is not configured. Please run "ivan config" first.');
-    }
+  async validateClaudeCodeInstallation(): Promise<void> {
+    // This will prompt for API key if missing
+    await this.getApiKey();
   }
 }

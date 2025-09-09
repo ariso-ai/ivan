@@ -10,9 +10,9 @@ import { Task } from '../database.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
-  private gitManager: GitManager;
-  private claudeExecutor: ClaudeExecutor;
-  private openaiService: OpenAIService;
+  private gitManager: GitManager | null = null;
+  private claudeExecutor: ClaudeExecutor | null = null;
+  private openaiService: OpenAIService | null = null;
   private repositoryManager: RepositoryManager;
   private configManager: ConfigManager;
   private workingDir: string;
@@ -20,13 +20,24 @@ export class TaskExecutor {
 
   constructor() {
     this.jobManager = new JobManager();
-    this.claudeExecutor = new ClaudeExecutor();
-    this.openaiService = new OpenAIService();
     this.repositoryManager = new RepositoryManager();
     this.configManager = new ConfigManager();
     this.workingDir = '';
     this.repoInstructions = undefined;
-    this.gitManager = new GitManager(''); // Will be set in executeWorkflow
+  }
+
+  private getClaudeExecutor(): ClaudeExecutor {
+    if (!this.claudeExecutor) {
+      this.claudeExecutor = new ClaudeExecutor();
+    }
+    return this.claudeExecutor;
+  }
+
+  private getOpenAIService(): OpenAIService {
+    if (!this.openaiService) {
+      this.openaiService = new OpenAIService();
+    }
+    return this.openaiService;
   }
 
   async executeWorkflow(): Promise<void> {
@@ -35,16 +46,16 @@ export class TaskExecutor {
       console.log('');
 
       console.log(chalk.blue('🔍 Validating dependencies...'));
-      this.claudeExecutor.validateClaudeCodeInstallation();
+      await this.getClaudeExecutor().validateClaudeCodeInstallation();
       console.log(chalk.green('✅ Claude Code SDK configured'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
       this.gitManager = new GitManager(this.workingDir);
 
-      this.gitManager.validateGitHubCliInstallation();
+      this.gitManager!.validateGitHubCliInstallation();
       console.log(chalk.green('✅ GitHub CLI is installed'));
 
-      this.gitManager.validateGitHubCliAuthentication();
+      this.gitManager!.validateGitHubCliAuthentication();
       console.log(chalk.green('✅ GitHub CLI is authenticated'));
 
       const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
@@ -143,13 +154,13 @@ export class TaskExecutor {
       spinner.succeed('Task marked as active');
 
       spinner = ora('Cleaning up and syncing with main branch...').start();
-      await this.gitManager.cleanupAndSyncMain();
+      await this.gitManager!.cleanupAndSyncMain();
       spinner.succeed('Repository cleaned and synced with main');
 
-      const branchName = this.gitManager.generateBranchName(task.description);
+      const branchName = this.gitManager!.generateBranchName(task.description);
 
       spinner = ora(`Creating branch: ${branchName}`).start();
-      await this.gitManager.createBranch(branchName);
+      await this.gitManager!.createBranch(branchName);
       spinner.succeed(`Branch created: ${branchName}`);
 
       spinner = ora('Executing task with Claude Code...').start();
@@ -160,36 +171,36 @@ export class TaskExecutor {
         taskWithInstructions = `${task.description}\n\nRepository-specific instructions:\n${this.repoInstructions}`;
       }
 
-      const executionLog = await this.claudeExecutor.executeTask(taskWithInstructions, this.workingDir);
+      const executionLog = await this.getClaudeExecutor().executeTask(taskWithInstructions, this.workingDir);
       spinner.succeed('Claude Code execution completed');
 
       spinner = ora('Storing execution log...').start();
       await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
       spinner.succeed('Execution log stored');
 
-      const changedFiles = this.gitManager.getChangedFiles();
+      const changedFiles = this.gitManager!.getChangedFiles();
       if (changedFiles.length === 0) {
         console.log(chalk.yellow('⚠️  No changes detected, skipping commit and PR creation'));
         await this.jobManager.updateTaskStatus(task.uuid, 'completed');
         return;
       }
 
-      const diff = this.gitManager.getDiff();
+      const diff = this.gitManager!.getDiff();
 
       spinner = ora('Generating commit message...').start();
-      const commitMessage = await this.openaiService.generateCommitMessage(diff, changedFiles);
+      const commitMessage = await this.getOpenAIService().generateCommitMessage(diff, changedFiles);
       spinner.succeed(`Commit message generated: ${commitMessage}`);
 
       spinner = ora('Committing changes...').start();
-      await this.gitManager.commitChanges(commitMessage);
+      await this.gitManager!.commitChanges(commitMessage);
       spinner.succeed('Changes committed');
 
       spinner = ora('Pushing branch...').start();
-      await this.gitManager.pushBranch(branchName);
+      await this.gitManager!.pushBranch(branchName);
       spinner.succeed('Branch pushed to origin');
 
       spinner = ora('Generating PR description...').start();
-      const { title, body } = await this.openaiService.generatePullRequestDescription(
+      const { title, body } = await this.getOpenAIService().generatePullRequestDescription(
         task.description,
         diff,
         changedFiles
@@ -197,7 +208,7 @@ export class TaskExecutor {
       spinner.succeed('PR description generated');
 
       spinner = ora('Creating pull request...').start();
-      const prUrl = await this.gitManager.createPullRequest(title, body);
+      const prUrl = await this.gitManager!.createPullRequest(title, body);
       spinner.succeed(`Pull request created: ${prUrl}`);
 
       await this.jobManager.updateTaskPrLink(task.uuid, prUrl);
