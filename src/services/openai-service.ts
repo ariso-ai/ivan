@@ -109,13 +109,13 @@ Format your response as JSON:
 
       const parsed = JSON.parse(content);
       return {
-        title: parsed.title || taskDescription,
+        title: `Ivan: ${parsed.title || taskDescription}`,
         body: parsed.body || `Implemented: ${taskDescription}\n\n🤖 Generated with Ivan`
       };
     } catch (error) {
       console.error('Failed to generate PR description:', error);
       return {
-        title: taskDescription,
+        title: `Ivan: ${taskDescription}`,
         body: `Implemented: ${taskDescription}\n\nChanged files:\n${changedFiles.map(file => `- ${file}`).join('\n')}\n\n🤖 Generated with Ivan`
       };
     }
