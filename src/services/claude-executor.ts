@@ -56,7 +56,6 @@ export class ClaudeExecutor {
           prompt: taskDescription,
           options: {
             abortController,
-            maxTurns: 10,
             allowedTools: ['*'], // Allow all tools
             cwd: workingDir
           }
@@ -140,7 +139,6 @@ export class ClaudeExecutor {
           prompt,
           options: {
             abortController,
-            maxTurns: 1,
             customSystemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
             allowedTools: [], // No tools needed for this
             cwd: workingDir
