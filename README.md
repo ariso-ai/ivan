@@ -10,8 +10,11 @@ Ivan is an intelligent CLI tool that automates complex development workflows by 
 - **🤖 Claude Code Integration**: Leverages Anthropic's Claude Code SDK for advanced code generation and modification
 - **🔄 Automated Git Workflow**: Creates branches, commits changes, and opens pull requests automatically
 - **📝 Smart Commit Messages**: Generates conventional commit messages using OpenAI's GPT-4
+- **💬 PR Comment Handling**: Automatically addresses PR review comments with `ivan address` command
+- **🔍 Smart Review Requests**: Generates context-specific review instructions for each PR using AI
+- **⏰ Optional Review Monitoring**: Can wait 30 minutes after task completion to automatically address incoming PR comments
 - **🎯 Repository-Specific Instructions**: Set coding guidelines and patterns that are automatically applied to every task
-- **📊 Progress Tracking**: SQLite database tracks all jobs, tasks, and execution history
+- **📊 Progress Tracking**: SQLite database tracks all jobs, tasks, execution history, and tool calls
 - **🌐 Web Interface**: Built-in web server to view and monitor jobs and tasks in your browser
 - **⚡ Interactive Prompting**: Automatically prompts for missing configuration instead of failing
 
@@ -71,8 +74,28 @@ ivan
 
 Then describe what you want to accomplish. Ivan will:
 1. Break down your request into individual tasks
-2. Execute each task using Claude Code
-3. Create pull requests with proper commits
+2. Ask if you want to wait for PR reviews after completion
+3. Execute each task using Claude Code
+4. Create pull requests with proper commits and AI-generated review instructions
+5. Optionally wait 30 minutes and automatically address any PR comments
+
+### Addressing PR Comments
+
+Automatically handle PR review comments:
+
+```bash
+# Scan all open PRs for unaddressed comments and failing checks
+ivan address
+```
+
+This will:
+1. Find all open PRs with unaddressed inline code comments
+2. Let you select which PRs to address
+3. Create tasks for each unaddressed comment
+4. Automatically implement fixes using Claude Code
+5. Commit changes with co-author attribution
+6. Reply to each comment with the commit that fixed it
+7. Add a review request with specific instructions
 
 ### Example Requests
 
@@ -118,12 +141,23 @@ Set coding guidelines that will be automatically applied to every task:
 
 ## How It Works
 
+### Standard Workflow
 1. **Task Analysis**: Claude Code analyzes your request and breaks it into PR-ready tasks
-2. **Branch Creation**: Creates a new branch for each task (`ivan/task-description`)
-3. **Code Implementation**: Claude Code implements the changes using your repository context
-4. **Smart Commits**: Generates conventional commit messages based on the actual changes
-5. **Pull Request**: Creates a PR with a detailed description of what was implemented
-6. **Cleanup**: Returns to main branch and syncs with upstream
+2. **Review Options**: Asks if you want to wait for PR reviews (optional)
+3. **Branch Creation**: Creates a new branch for each task (`ivan/task-description-timestamp`)
+4. **Code Implementation**: Claude Code implements the changes using your repository context
+5. **Smart Commits**: Generates conventional commit messages based on the actual changes
+6. **Pull Request**: Creates a PR with detailed description and AI-generated review instructions
+7. **Review Monitoring** (optional): Waits 30 minutes for reviews, then automatically addresses comments
+8. **Cleanup**: Returns to main branch and syncs with upstream
+
+### Address Workflow
+1. **PR Scanning**: Finds all open PRs with unaddressed comments or failing checks
+2. **Comment Detection**: Uses GitHub GraphQL API to find unresolved inline code comments
+3. **Task Creation**: Creates address tasks for each comment with proper branch tracking
+4. **Automated Fixes**: Implements fixes using Claude Code with repository context
+5. **Smart Replies**: Replies to each comment with the commit that addressed it
+6. **Review Requests**: Adds context-specific review instructions based on changes
 
 ## Architecture
 
@@ -132,11 +166,14 @@ ivan/
 ├── src/
 │   ├── database/       # SQLite schema and migrations
 │   ├── services/       # Core services
-│   │   ├── claude-executor.ts   # Claude Code SDK integration
-│   │   ├── openai-service.ts    # OpenAI API for commits/PRs
-│   │   ├── job-manager.ts       # Job and task management
-│   │   ├── git-manager.ts       # Git operations and GitHub CLI
-│   │   └── task-executor.ts     # Main workflow orchestration
+│   │   ├── claude-executor.ts       # Claude Code SDK integration
+│   │   ├── openai-service.ts        # OpenAI API for commits/PRs
+│   │   ├── job-manager.ts           # Job and task management
+│   │   ├── git-manager.ts           # Git operations and GitHub CLI
+│   │   ├── task-executor.ts         # Main workflow orchestration
+│   │   ├── address-executor.ts      # PR comment addressing workflow
+│   │   ├── address-task-executor.ts # Individual comment fix execution
+│   │   └── pr-service.ts            # PR comment and check detection
 │   ├── config.ts       # Configuration management
 │   ├── web-server.ts   # Web interface server
 │   └── index.ts        # CLI entry point
@@ -152,9 +189,11 @@ Ivan maintains a local SQLite database to track:
 - **Jobs**: High-level user requests with timestamps and status
 - **Tasks**: Individual tasks within a job, including:
   - Task description
-  - Execution status (not_started, active, completed, failed)
+  - Task type (build or address)
+  - Execution status (not_started, active, completed)
+  - Branch name tracking
   - Pull request links
-  - Execution logs
+  - Execution logs with tool calls
   - Timestamps
 
 ## Development
@@ -172,6 +211,26 @@ npm run lint
 # Type checking
 npm run typecheck
 ```
+
+## Advanced Features
+
+### Execution Logs
+- All Claude Code interactions are logged with tool calls
+- Each response is separated with visual dividers for readability
+- Tool inputs and outputs are captured for debugging
+- Logs are stored in the database for each task
+
+### Smart Review Comments
+- PRs are created with AI-generated review instructions
+- Review comments are specific to the changes made
+- Uses GPT-4o-mini to analyze diffs and generate contextual review requests
+- Replies to PR comments include "Ivan:" prefix for clear attribution
+
+### Comment Detection
+- Uses GitHub GraphQL API to detect resolved status
+- Only processes unresolved inline code comments
+- Ignores top-level PR comments
+- Skips comments that already have replies
 
 ## Security Considerations
 
