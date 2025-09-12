@@ -37,6 +37,7 @@ export class ClaudeExecutor {
       console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
 
       let result = '';
+      let currentResponse = '';
       const abortController = new globalThis.AbortController();
 
       // Handle Ctrl+C
@@ -67,24 +68,53 @@ export class ClaudeExecutor {
               for (const content of message.message.content) {
                 if (content.type === 'text') {
                   console.log(content.text);
-                  result += content.text + '\n';
+                  currentResponse += content.text + '\n';
                 } else if (content.type === 'tool_use') {
                   console.log(chalk.gray(`Using tool: ${content.name}`));
+                  // Add tool call to the log
+                  const toolCall = `[Tool Call: ${content.name}]`;
+                  if (content.input) {
+                    const inputStr = typeof content.input === 'object' 
+                      ? JSON.stringify(content.input, null, 2) 
+                      : String(content.input);
+                    currentResponse += `${toolCall}\n${inputStr}\n\n`;
+                  } else {
+                    currentResponse += `${toolCall}\n\n`;
+                  }
                 }
+              }
+            }
+          } else if (message.type === 'stream_event') {
+            // Stream events may contain tool results
+            if ('event' in message && message.event?.type === 'tool_result') {
+              const toolResult = `[Tool Result]\n${typeof message.event.result === 'object' 
+                ? JSON.stringify(message.event.result, null, 2) 
+                : String(message.event.result)}\n`;
+              currentResponse += toolResult;
+              // Add separation after tool result for next Claude response
+              if (currentResponse.trim()) {
+                result += currentResponse + '\n' + '─'.repeat(80) + '\n\n';
+                currentResponse = '';
               }
             }
           } else if (message.type === 'result') {
             // Final result message
             if ('result' in message) {
               console.log(chalk.green(`Result: ${message.result}`));
-              result += message.result + '\n';
+              currentResponse += message.result + '\n';
             }
           } else if (message.type === 'system') {
             // System messages for initialization
             if (message.subtype === 'init') {
               console.log(chalk.gray(`Initialized with model: ${message.model}`));
+              result += `[System: Initialized with model: ${message.model}]\n\n`;
             }
           }
+        }
+
+        // Add any remaining response
+        if (currentResponse.trim()) {
+          result += currentResponse + '\n' + '─'.repeat(80) + '\n\n';
         }
 
         // Restore original directory

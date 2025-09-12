@@ -8,6 +8,7 @@ import { RepositoryManager } from './repository-manager.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
+import { PRService } from './pr-service.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -101,10 +102,23 @@ export class TaskExecutor {
 
       // Handle build tasks
       if (buildTasks.length > 0) {
+        // Ask about PR comment monitoring upfront
+        let shouldWaitForComments = false;
+        const inquirer = (await import('inquirer')).default;
+        
+        const { waitForComments } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'waitForComments',
+            message: 'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
+            default: false
+          }
+        ]);
+        shouldWaitForComments = waitForComments;
+
         // Ask if user wants to confirm before each task
         let confirmBeforeEach = false;
         if (buildTasks.length > 1) {
-          const inquirer = (await import('inquirer')).default;
           const { shouldConfirm } = await inquirer.prompt([
             {
               type: 'confirm',
@@ -144,10 +158,70 @@ export class TaskExecutor {
 
           await this.executeTask(task);
         }
-      }
 
-      console.log('');
-      console.log(chalk.green.bold('🎉 All tasks completed successfully!'));
+        console.log('');
+        console.log(chalk.green.bold('🎉 All initial tasks completed successfully!'));
+        
+        // Collect PR URLs created during this session by reloading tasks from DB
+        const createdPRUrls: string[] = [];
+        for (const task of buildTasks) {
+          const updatedTask = await this.jobManager.getTask(task.uuid);
+          if (updatedTask && updatedTask.pr_link) {
+            createdPRUrls.push(updatedTask.pr_link);
+          }
+        }
+
+        if (createdPRUrls.length > 0) {
+          // Show PRs created
+          console.log('');
+          console.log(chalk.blue('📋 PRs created:'));
+          createdPRUrls.forEach(url => console.log(chalk.cyan(`  - ${url}`)));
+
+          if (shouldWaitForComments) {
+            // Wait 30 minutes for reviewers to comment
+            console.log('');
+            console.log(chalk.blue('⏰ Waiting 30 minutes for PR reviews...'));
+            console.log(chalk.gray('PRs being monitored:'));
+            createdPRUrls.forEach(url => console.log(chalk.gray(`  - ${url}`)));
+            console.log('');
+            
+            const waitTime = 30 * 60 * 1000; // 30 minutes in milliseconds
+            const startTime = Date.now();
+            const interval = setInterval(() => {
+              const elapsed = Date.now() - startTime;
+              const remaining = waitTime - elapsed;
+              const minutes = Math.floor(remaining / 60000);
+              const seconds = Math.floor((remaining % 60000) / 1000);
+              process.stdout.write(`\r${chalk.blue('⏰')} Time remaining: ${minutes}:${seconds.toString().padStart(2, '0')}  `);
+            }, 1000);
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            clearInterval(interval);
+            console.log('\n');
+            
+            // Check for unaddressed comments on created PRs
+            console.log(chalk.blue('🔍 Checking for PR review comments...'));
+            const prService = new PRService(this.workingDir);
+            const addressTasks = await this.checkAndCreateAddressTasks(createdPRUrls, prService);
+            
+            if (addressTasks.length > 0) {
+              console.log('');
+              console.log(chalk.blue.bold(`📋 Found ${addressTasks.length} comments to address`));
+              
+              // Execute address tasks automatically
+              const addressExecutor = new AddressTaskExecutor();
+              await addressExecutor.executeAddressTasks(addressTasks);
+              
+              console.log('');
+              console.log(chalk.green.bold('🎉 All PR comments addressed successfully!'));
+            } else {
+              console.log(chalk.green('✨ No unaddressed comments found on PRs!'));
+            }
+          } else {
+            console.log(chalk.blue('💡 You can run "ivan address" later to handle any PR comments'));
+          }
+        }
+      }
 
     } catch (error) {
       console.error(chalk.red.bold('❌ Workflow failed:'), error);
@@ -155,6 +229,49 @@ export class TaskExecutor {
     } finally {
       this.jobManager.close();
     }
+  }
+
+  private async checkAndCreateAddressTasks(prUrls: string[], prService: PRService): Promise<Task[]> {
+    const addressTasks: Task[] = [];
+    
+    for (const prUrl of prUrls) {
+      // Extract PR number from URL
+      const prMatch = prUrl.match(/\/pull\/(\d+)/);
+      if (!prMatch) continue;
+      
+      const prNumber = parseInt(prMatch[1]);
+      
+      // Get unaddressed comments for this PR
+      const comments = await prService.getUnaddressedComments(prNumber);
+      
+      if (comments.length > 0) {
+        // Get the branch name for this PR
+        const prInfo = await this.gitManager!.getPRInfo(prNumber);
+        const branch = prInfo.headRefName;
+        
+        // Create address tasks for each comment
+        for (const comment of comments) {
+          let description = `Address PR #${prNumber} comment from @${comment.author}: "${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}"`;          
+          if (comment.path) {
+            description += ` (in ${comment.path}${comment.line ? `:${comment.line}` : ''})`;
+          }
+          
+          // Get the current job ID from one of the build tasks
+          const jobUuid = this.jobManager.getCurrentJobUuid() || (await this.jobManager.getLatestJobId(this.workingDir));
+          
+          // Create the address task
+          const taskUuid = await this.jobManager.createTask(jobUuid, description, 'address');
+          await this.jobManager.updateTaskBranch(taskUuid, branch);
+          
+          const task = await this.jobManager.getTask(taskUuid);
+          if (task) {
+            addressTasks.push(task);
+          }
+        }
+      }
+    }
+    
+    return addressTasks;
   }
 
   private async executeTask(task: Task): Promise<void> {

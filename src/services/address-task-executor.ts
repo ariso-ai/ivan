@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import { JobManager } from './job-manager.js';
 import { GitManager } from './git-manager.js';
 import { ClaudeExecutor } from './claude-executor.js';
+import { OpenAIService } from './openai-service.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 
@@ -11,6 +12,7 @@ export class AddressTaskExecutor {
   private jobManager: JobManager;
   private gitManager: GitManager | null = null;
   private claudeExecutor: ClaudeExecutor | null = null;
+  private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;
   private workingDir: string;
   private repoInstructions: string | undefined;
@@ -26,6 +28,13 @@ export class AddressTaskExecutor {
       this.claudeExecutor = new ClaudeExecutor();
     }
     return this.claudeExecutor;
+  }
+
+  private getOpenAIService(): OpenAIService {
+    if (!this.openaiService) {
+      this.openaiService = new OpenAIService();
+    }
+    return this.openaiService;
   }
 
   async executeAddressTasks(tasks: Task[]): Promise<void> {
@@ -195,7 +204,7 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
             // Reply to the comment with the fix
             spinner = ora('Replying to comment...').start();
             try {
-              const replyBody = `This has been addressed in commit ${commitHash.substring(0, 7)}`;
+              const replyBody = `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
               
               // All comments are review comments (inline code comments) now
               execSync(
@@ -223,11 +232,40 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
           }
         }
 
-        // Add final review comment
-        spinner = ora('Adding review request comment...').start();
+        // Generate and add specific review comment
+        spinner = ora('Generating review request...').start();
         try {
+          // Get the latest commit changes
+          const latestCommit = execSync('git rev-parse HEAD', {
+            cwd: this.workingDir,
+            encoding: 'utf-8'
+          }).trim();
+          
+          const commitDiff = execSync(`git show ${latestCommit} --format="" --unified=3`, {
+            cwd: this.workingDir,
+            encoding: 'utf-8'
+          });
+          
+          const changedFiles = execSync(`git show --name-only --format="" ${latestCommit}`, {
+            cwd: this.workingDir,
+            encoding: 'utf-8'
+          }).trim().split('\n').filter(Boolean);
+          
+          // Generate specific review instructions using OpenAI
+          const reviewInstructions = await this.generateReviewInstructions(
+            commitDiff,
+            changedFiles,
+            parseInt(prNumber)
+          );
+          
+          spinner.succeed('Review request generated');
+          
+          // Add the review comment
+          spinner = ora('Adding review request comment...').start();
+          const reviewComment = `@codex ${reviewInstructions}`;
+          
           execSync(
-            `gh pr comment ${prNumber} --body "@codex please review"`,
+            `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
             {
               cwd: this.workingDir,
               stdio: 'pipe'
@@ -251,35 +289,84 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
 
   private async getUnaddressedComments(prNumber: number): Promise<any[]> {
     try {
-      // Get all review comments (inline code comments only)
-      const reviewCommentsJson = execSync(
-        `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments --paginate`,
+      // Get PR owner and repo name
+      const repoInfo = execSync(
+        'gh repo view --json owner,name',
+        {
+          cwd: this.workingDir,
+          encoding: 'utf-8'
+        }
+      );
+      const { owner, name: repoName } = JSON.parse(repoInfo);
+
+      // Use GraphQL to get review threads with resolved status
+      const graphqlQuery = `
+        query {
+          repository(owner: "${owner.login}", name: "${repoName}") {
+            pullRequest(number: ${prNumber}) {
+              reviewThreads(first: 100) {
+                nodes {
+                  isResolved
+                  comments(first: 100) {
+                    nodes {
+                      id
+                      databaseId
+                      body
+                      author {
+                        login
+                      }
+                      createdAt
+                      path
+                      line
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const graphqlResult = execSync(
+        `gh api graphql -f query='${graphqlQuery}'`,
         {
           cwd: this.workingDir,
           encoding: 'utf-8'
         }
       );
 
-      const reviewComments = JSON.parse(reviewCommentsJson || '[]');
+      const result = JSON.parse(graphqlResult);
+      const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
       const unaddressedComments: any[] = [];
 
-      // Process review comments (inline code comments only)
-      for (const comment of reviewComments) {
-        // Check if this comment has replies
-        if (!comment.in_reply_to_id) {
-          // This is a top-level comment, check if it has replies
-          const hasReplies = reviewComments.some((c: any) => c.in_reply_to_id === comment.id);
-          
-          if (!hasReplies) {
-            unaddressedComments.push({
-              id: comment.id.toString(),
-              author: comment.user.login,
-              body: comment.body,
-              createdAt: comment.created_at,
-              path: comment.path,
-              line: comment.line || comment.original_line
-            });
-          }
+      // Process each thread
+      for (const thread of threads) {
+        // Skip resolved threads
+        if (thread.isResolved) {
+          continue;
+        }
+
+        const comments = thread.comments?.nodes || [];
+        if (comments.length === 0) {
+          continue;
+        }
+
+        // Get the first comment (the main review comment)
+        const firstComment = comments[0];
+        
+        // Check if there are replies (more than one comment in thread)
+        const hasReplies = comments.length > 1;
+        
+        if (!hasReplies && firstComment.path) {
+          // Only include if it's an inline code comment (has a path) and has no replies
+          unaddressedComments.push({
+            id: firstComment.databaseId ? firstComment.databaseId.toString() : firstComment.id,
+            author: firstComment.author.login,
+            body: firstComment.body,
+            createdAt: firstComment.createdAt,
+            path: firstComment.path,
+            line: firstComment.line
+          });
         }
       }
 
@@ -287,6 +374,63 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
     } catch (error) {
       console.error('Error fetching comments:', error);
       return [];
+    }
+  }
+
+  private async generateReviewInstructions(
+    diff: string,
+    changedFiles: string[],
+    prNumber: number
+  ): Promise<string> {
+    try {
+      const openaiService = this.getOpenAIService();
+      const client = await openaiService.getClient();
+      
+      const prompt = `You are reviewing code changes that were made to address PR review comments. 
+Based on the following diff and changed files, generate a concise, specific review request that tells the reviewer what to focus on.
+
+Changed files:
+${changedFiles.join('\n')}
+
+Diff (last commit):
+${diff.substring(0, 8000)}${diff.length > 8000 ? '\n... (diff truncated)' : ''}
+
+Generate a brief (1-2 sentences) review request that:
+1. Mentions the key changes made
+2. Asks the reviewer to verify specific aspects that were addressed
+3. Is conversational and clear
+
+Example format: "please review the updates to the reflection service integration and verify that the null checks properly handle missing configuration objects"
+
+Return ONLY the review request text, without any prefix like "Please review" since @codex will already be prepended.`;
+
+      const completion = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant that generates specific code review requests based on git diffs.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 150
+      });
+
+      const reviewRequest = completion.choices[0]?.message?.content?.trim();
+      
+      if (!reviewRequest) {
+        return 'please review the latest changes and verify all review comments have been properly addressed';
+      }
+
+      return reviewRequest;
+    } catch (error) {
+      console.error('Error generating review instructions:', error);
+      // Fallback to a generic message if OpenAI fails
+      return 'please review the latest changes and verify all review comments have been properly addressed';
     }
   }
 }

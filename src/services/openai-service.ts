@@ -29,6 +29,11 @@ export class OpenAIService {
     });
   }
 
+  async getClient(): Promise<OpenAI> {
+    await this.ensureInitialized();
+    return this.openai!;
+  }
+
   async generateCommitMessage(diff: string, changedFiles: string[]): Promise<string> {
     await this.ensureInitialized();
 

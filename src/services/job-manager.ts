@@ -7,6 +7,7 @@ import { ClaudeExecutor } from './claude-executor.js';
 export class JobManager {
   private dbManager: DatabaseManager;
   private claudeExecutor: ClaudeExecutor;
+  private currentJobUuid: string | null = null;
 
   constructor() {
     this.dbManager = new DatabaseManager();
@@ -112,6 +113,7 @@ export class JobManager {
       : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
 
     const jobUuid = await this.createJob(jobDescription, workingDir);
+    this.currentJobUuid = jobUuid;
     const tasks = await this.createTasks(jobUuid, finalTasks);
 
     const job: Job = {
@@ -305,6 +307,27 @@ export class JobManager {
     await db.insertInto('jobs').values(job).execute();
 
     return job.uuid;
+  }
+
+  async getLatestJobId(workingDir: string): Promise<string> {
+    const db = this.dbManager.getKysely();
+    const job = await db
+      .selectFrom('jobs')
+      .selectAll()
+      .where('directory', '=', workingDir)
+      .orderBy('created_at', 'desc')
+      .limit(1)
+      .executeTakeFirst();
+    
+    if (!job) {
+      throw new Error('No jobs found for this directory');
+    }
+    
+    return job.uuid;
+  }
+
+  getCurrentJobUuid(): string | null {
+    return this.currentJobUuid;
   }
 
   close(): void {
