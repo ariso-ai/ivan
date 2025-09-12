@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { ConfigManager } from './config.js';
 import { TaskExecutor } from './services/task-executor.js';
+import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 
@@ -65,6 +66,23 @@ program
     
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
+  });
+
+program
+  .command('address')
+  .description('Address open PRs with unaddressed comments or failing checks')
+  .action(async () => {
+    const wasConfigured = await checkConfiguration();
+    if (wasConfigured) {
+      console.log('');
+      console.log(chalk.cyan('Run "ivan address" again to address PR issues.'));
+      return;
+    }
+
+    await runMigrations();
+
+    const addressExecutor = new AddressExecutor();
+    await addressExecutor.executeWorkflow();
   });
 
 program
@@ -159,7 +177,7 @@ async function main() {
   try {
     const args = process.argv.slice(2);
     
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'web', 'web-stop', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');

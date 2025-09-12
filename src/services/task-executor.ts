@@ -7,6 +7,7 @@ import { OpenAIService } from './openai-service.js';
 import { RepositoryManager } from './repository-manager.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
+import { AddressTaskExecutor } from './address-task-executor.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -88,48 +89,61 @@ export class TaskExecutor {
 
       console.log('');
 
-      // Ask if user wants to confirm before each task
-      let confirmBeforeEach = false;
-      if (tasks.length > 1) {
-        const inquirer = (await import('inquirer')).default;
-        const { shouldConfirm } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'shouldConfirm',
-            message: 'Would you like to confirm before executing each task?',
-            default: false
-          }
-        ]);
-        confirmBeforeEach = shouldConfirm;
+      // Check if these are address tasks
+      const addressTasks = tasks.filter(t => t.type === 'address');
+      const buildTasks = tasks.filter(t => t.type === 'build');
+
+      // Handle address tasks separately
+      if (addressTasks.length > 0) {
+        const addressExecutor = new AddressTaskExecutor();
+        await addressExecutor.executeAddressTasks(addressTasks);
       }
 
-      console.log(chalk.blue.bold('📋 Executing tasks...'));
-
-      for (let i = 0; i < tasks.length; i++) {
-        const task = tasks[i];
-
-        if (confirmBeforeEach) {
-          console.log('');
-          console.log(chalk.yellow(`Task ${i + 1} of ${tasks.length}: ${task.description}`));
-
+      // Handle build tasks
+      if (buildTasks.length > 0) {
+        // Ask if user wants to confirm before each task
+        let confirmBeforeEach = false;
+        if (buildTasks.length > 1) {
           const inquirer = (await import('inquirer')).default;
-          const { shouldExecute } = await inquirer.prompt([
+          const { shouldConfirm } = await inquirer.prompt([
             {
               type: 'confirm',
-              name: 'shouldExecute',
-              message: 'Execute this task?',
-              default: true
+              name: 'shouldConfirm',
+              message: 'Would you like to confirm before executing each task?',
+              default: false
             }
           ]);
-
-          if (!shouldExecute) {
-            console.log(chalk.gray('⏭️  Skipping task'));
-            await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
-            continue;
-          }
+          confirmBeforeEach = shouldConfirm;
         }
 
-        await this.executeTask(task);
+        console.log(chalk.blue.bold('📋 Executing tasks...'));
+
+        for (let i = 0; i < buildTasks.length; i++) {
+          const task = buildTasks[i];
+
+          if (confirmBeforeEach) {
+            console.log('');
+            console.log(chalk.yellow(`Task ${i + 1} of ${buildTasks.length}: ${task.description}`));
+
+            const inquirer = (await import('inquirer')).default;
+            const { shouldExecute } = await inquirer.prompt([
+              {
+                type: 'confirm',
+                name: 'shouldExecute',
+                message: 'Execute this task?',
+                default: true
+              }
+            ]);
+
+            if (!shouldExecute) {
+              console.log(chalk.gray('⏭️  Skipping task'));
+              await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
+              continue;
+            }
+          }
+
+          await this.executeTask(task);
+        }
       }
 
       console.log('');
@@ -162,6 +176,8 @@ export class TaskExecutor {
       spinner = ora(`Creating branch: ${branchName}`).start();
       await this.gitManager!.createBranch(branchName);
       spinner.succeed(`Branch created: ${branchName}`);
+
+      await this.jobManager.updateTaskBranch(task.uuid, branchName);
 
       spinner = ora('Executing task with Claude Code...').start();
 

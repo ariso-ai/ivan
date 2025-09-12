@@ -111,8 +111,15 @@ export class JobManager {
       ? finalTasks[0]
       : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
 
-    const job = await this.createJob(jobDescription, finalTasks, workingDir);
-    const tasks = await this.createTasks(job.uuid, finalTasks);
+    const jobUuid = await this.createJob(jobDescription, workingDir);
+    const tasks = await this.createTasks(jobUuid, finalTasks);
+
+    const job: Job = {
+      uuid: jobUuid,
+      description: jobDescription,
+      created_at: new Date().toISOString(),
+      directory: workingDir
+    };
 
     console.log('');
     console.log(chalk.green('✅ Job and tasks created successfully!'));
@@ -202,19 +209,6 @@ export class JobManager {
     }
   }
 
-  async createJob(description: string, tasks: string[], workingDir: string): Promise<Job> {
-    const job: Job = {
-      uuid: randomUUID(),
-      description,
-      created_at: new Date().toISOString(),
-      directory: workingDir
-    };
-
-    const db = this.dbManager.getKysely();
-    await db.insertInto('jobs').values(job).execute();
-
-    return job;
-  }
 
   private async createTasks(jobUuid: string, taskDescriptions: string[]): Promise<Task[]> {
     const tasks: Task[] = taskDescriptions.map(description => ({
@@ -223,7 +217,9 @@ export class JobManager {
       description,
       status: 'not_started' as const,
       pr_link: null,
-      execution_log: null
+      execution_log: null,
+      branch: null,
+      type: 'build' as const
     }));
 
     const db = this.dbManager.getKysely();
@@ -257,6 +253,58 @@ export class JobManager {
       .set({ execution_log: executionLog })
       .where('uuid', '=', taskUuid)
       .execute();
+  }
+
+  async updateTaskBranch(taskUuid: string, branch: string): Promise<void> {
+    const db = this.dbManager.getKysely();
+    await db
+      .updateTable('tasks')
+      .set({ branch })
+      .where('uuid', '=', taskUuid)
+      .execute();
+  }
+
+  async createTask(jobUuid: string, description: string, type: 'build' | 'address' = 'build'): Promise<string> {
+    const task: Task = {
+      uuid: randomUUID(),
+      job_uuid: jobUuid,
+      description,
+      status: 'not_started',
+      pr_link: null,
+      execution_log: null,
+      branch: null,
+      type
+    };
+
+    const db = this.dbManager.getKysely();
+    await db.insertInto('tasks').values(task).execute();
+
+    return task.uuid;
+  }
+
+  async getTask(taskUuid: string): Promise<Task | null> {
+    const db = this.dbManager.getKysely();
+    const task = await db
+      .selectFrom('tasks')
+      .selectAll()
+      .where('uuid', '=', taskUuid)
+      .executeTakeFirst();
+
+    return task || null;
+  }
+
+  async createJob(description: string, workingDir: string): Promise<string> {
+    const job: Job = {
+      uuid: randomUUID(),
+      description,
+      created_at: new Date().toISOString(),
+      directory: workingDir
+    };
+
+    const db = this.dbManager.getKysely();
+    await db.insertInto('jobs').values(job).execute();
+
+    return job.uuid;
   }
 
   close(): void {
