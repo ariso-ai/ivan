@@ -98,17 +98,11 @@ ${diff}
 \`\`\`
 
 Generate:
-1. A concise PR title (under 60 characters)
+1. A concise PR title (MUST be under 250 characters to fit GitHub's 256 character limit)
 2. A detailed PR description with:
    - Summary of changes
    - What was implemented
-   - Any notable details
-
-Format your response as JSON:
-{
-  "title": "PR title here",
-  "body": "PR description here"
-}`;
+   - Any notable details`;
 
     try {
       const response = await this.openai!.chat.completions.create({
@@ -119,6 +113,28 @@ Format your response as JSON:
             content: prompt
           }
         ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'pull_request',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: 'The PR title (must be under 250 characters)'
+                },
+                body: {
+                  type: 'string',
+                  description: 'The PR description'
+                }
+              },
+              required: ['title', 'body'],
+              additionalProperties: false
+            }
+          }
+        },
         max_tokens: 500,
         temperature: 0.3
       });
@@ -129,14 +145,24 @@ Format your response as JSON:
       }
 
       const parsed = JSON.parse(content);
+      // Ensure title doesn't exceed GitHub's 256 character limit
+      let title = `Ivan: ${parsed.title || taskDescription}`;
+      if (title.length > 256) {
+        title = title.substring(0, 253) + '...';
+      }
       return {
-        title: `Ivan: ${parsed.title || taskDescription}`,
+        title,
         body: parsed.body || `Implemented: ${taskDescription}\n\n🤖 Generated with Ivan`
       };
     } catch (error) {
       console.error('Failed to generate PR description:', error);
+      // Ensure fallback title doesn't exceed GitHub's 256 character limit
+      let fallbackTitle = `Ivan: ${taskDescription}`;
+      if (fallbackTitle.length > 256) {
+        fallbackTitle = fallbackTitle.substring(0, 253) + '...';
+      }
       return {
-        title: `Ivan: ${taskDescription}`,
+        title: fallbackTitle,
         body: `Implemented: ${taskDescription}\n\nChanged files:\n${changedFiles.map(file => `- ${file}`).join('\n')}\n\n🤖 Generated with Ivan`
       };
     }

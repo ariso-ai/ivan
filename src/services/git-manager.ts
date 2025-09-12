@@ -217,6 +217,45 @@ export class GitManager {
     }
   }
 
+  getMainBranch(): string {
+    this.ensureGitRepo();
+
+    try {
+      // Try to get the default branch from GitHub
+      const remoteInfo = execSync('gh repo view --json defaultBranchRef', {
+        cwd: this.workingDir,
+        encoding: 'utf8',
+        stdio: 'pipe'
+      });
+      const parsed = JSON.parse(remoteInfo);
+      if (parsed?.defaultBranchRef?.name) {
+        return parsed.defaultBranchRef.name;
+      }
+    } catch {
+      // Fallback to checking common branch names
+    }
+
+    // Check if main exists
+    try {
+      execSync('git rev-parse --verify main', {
+        cwd: this.workingDir,
+        stdio: 'ignore'
+      });
+      return 'main';
+    } catch {
+      // Try master
+      try {
+        execSync('git rev-parse --verify master', {
+          cwd: this.workingDir,
+          stdio: 'ignore'
+        });
+        return 'master';
+      } catch {
+        return 'main'; // Default to main
+      }
+    }
+  }
+
   async cleanupAndSyncMain(): Promise<void> {
     this.ensureGitRepo();
 
@@ -284,9 +323,22 @@ export class GitManager {
 
   private async addReviewComment(prUrl: string): Promise<void> {
     try {
-      // Get the latest changes
-      const diff = this.getDiff();
-      const changedFiles = this.getChangedFiles();
+      // Get the diff between main branch and current branch for the PR
+      const currentBranch = this.getCurrentBranch();
+      const mainBranch = this.getMainBranch();
+      
+      // Get diff between main and current branch
+      const diff = execSync(`git diff ${mainBranch}...${currentBranch}`, {
+        cwd: this.workingDir,
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large diffs
+      });
+      
+      // Get list of changed files between main and current branch
+      const changedFiles = execSync(`git diff --name-only ${mainBranch}...${currentBranch}`, {
+        cwd: this.workingDir,
+        encoding: 'utf8'
+      }).trim().split('\n').filter(f => f.trim());
       
       // Generate specific review instructions using OpenAI
       const reviewInstructions = await this.generateReviewInstructions(diff, changedFiles);
@@ -315,6 +367,12 @@ export class GitManager {
 
   private async generateReviewInstructions(diff: string, changedFiles: string[]): Promise<string> {
     try {
+      // Check if we have actual diff content
+      if (!diff || diff.trim().length === 0) {
+        console.log(chalk.yellow('⚠️ No diff found between branches for review instructions'));
+        return 'please review the changes in this PR and verify the implementation meets requirements';
+      }
+      
       const openaiService = this.getOpenAIService();
       const client = await openaiService.getClient();
       
