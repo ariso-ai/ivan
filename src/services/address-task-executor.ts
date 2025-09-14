@@ -199,6 +199,26 @@ export class AddressTaskExecutor {
               console.error(error);
             }
 
+            // Add review comment for lint_and_test task
+            if (taskPrNumber) {
+              spinner = ora('Adding review request comment...').start();
+              try {
+                const reviewComment = '@codex please review the test and lint fixes that were applied to address the failing CI checks';
+
+                execSync(
+                  `gh pr comment ${taskPrNumber} --body "${reviewComment}"`,
+                  {
+                    cwd: this.workingDir,
+                    stdio: 'pipe'
+                  }
+                );
+                spinner.succeed('Review request comment added');
+              } catch (error) {
+                spinner.fail('Failed to add review comment');
+                console.error(error);
+              }
+            }
+
             await this.jobManager.updateTaskStatus(task.uuid, 'completed');
 
           } catch (error) {
