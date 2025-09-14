@@ -83,7 +83,7 @@ export class JobManager {
       ]);
 
       if (selectionMode === 'select') {
-        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>([
+        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>(
           {
             type: 'checkbox',
             name: 'selectedTasks',
@@ -93,14 +93,14 @@ export class JobManager {
               value: task,
               checked: true
             })),
-            validate: (input: string[]) => {
+            validate: (input) => {
               if (input.length === 0) {
                 return 'Please select at least one task';
               }
               return true;
             }
           }
-        ]);
+        );
 
         finalTasks = selectedTasks;
         console.log(chalk.green(`✅ Selected ${selectedTasks.length} task(s)`));
@@ -174,7 +174,7 @@ export class JobManager {
       }
 
       if (selectionMode === 'select') {
-        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>([
+        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>(
           {
             type: 'checkbox',
             name: 'selectedTasks',
@@ -184,14 +184,14 @@ export class JobManager {
               value: task,
               checked: true
             })),
-            validate: (input: string[]) => {
+            validate: (input) => {
               if (input.length === 0) {
                 return 'Please select at least one task';
               }
               return true;
             }
           }
-        ]);
+        );
 
         if (selectedTasks.length === 0) {
           console.log(chalk.yellow('No tasks selected, using original task'));
