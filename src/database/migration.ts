@@ -18,7 +18,10 @@ export class MigrationManager {
     for (const migration of migrations) {
       if (!(await this.hasMigrationRun(migration.id))) {
         try {
-          await sql.raw(migration.up).execute(this.db);
+          const statements = Array.isArray(migration.up) ? migration.up : [migration.up];
+          for (const statement of statements) {
+            await sql.raw(statement).execute(this.db);
+          }
           await this.recordMigration(migration.id, migration.name);
           console.log(chalk.green(`✅ Migration ${migration.id}: ${migration.name}`));
         } catch (error) {

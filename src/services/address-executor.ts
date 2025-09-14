@@ -79,10 +79,12 @@ export class AddressExecutor {
         if (pr.hasUnaddressedComments) {
           issues.push(`${pr.unaddressedComments.length} unaddressed comment(s)`);
         }
-        if (pr.hasFailingChecks) {
+        if (pr.hasTestOrLintFailures) {
+          issues.push(`${pr.testOrLintFailures.length} test/lint failure(s)`);
+        } else if (pr.hasFailingChecks) {
           issues.push(`${pr.failingChecks.length} failing check(s)`);
         }
-        
+
         return {
           name: `PR #${pr.number}: ${pr.title} - ${chalk.yellow(issues.join(', '))}`,
           value: pr,
@@ -101,13 +103,13 @@ export class AddressExecutor {
       ]);
 
       // Create tasks for selected PRs
-      const tasks: Array<{ description: string; prNumber: number; prBranch: string }> = [];
+      const tasks: Array<{ description: string; prNumber: number; prBranch: string; type: 'address' | 'lint_and_test' }> = [];
 
       for (const pr of selectedPRs) {
         // Create tasks for unaddressed comments
         for (const comment of pr.unaddressedComments) {
           let description = `Address PR #${pr.number} comment from @${comment.author}: "${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}"`;
-          
+
           if (comment.path) {
             description += ` (in ${comment.path}${comment.line ? `:${comment.line}` : ''})`;
           }
@@ -115,17 +117,32 @@ export class AddressExecutor {
           tasks.push({
             description,
             prNumber: pr.number,
-            prBranch: pr.branch
+            prBranch: pr.branch,
+            type: 'address'
           });
         }
 
-        // Create task for failing checks if any
-        if (pr.failingChecks.length > 0) {
+        // Create task for test/lint failures if any
+        if (pr.hasTestOrLintFailures && pr.testOrLintFailures.length > 0) {
           tasks.push({
-            description: `Fix failing checks in PR #${pr.number}: ${pr.failingChecks.join(', ')}`,
+            description: `Fix test and lint failures in PR #${pr.number}: ${pr.testOrLintFailures.join(', ')}`,
             prNumber: pr.number,
-            prBranch: pr.branch
+            prBranch: pr.branch,
+            type: 'lint_and_test'
           });
+        } else if (pr.hasFailingChecks && pr.failingChecks.length > 0) {
+          // Only create generic failing check task if there are no test/lint failures
+          const nonTestLintFailures = pr.failingChecks.filter(
+            (check: string) => !pr.testOrLintFailures.includes(check)
+          );
+          if (nonTestLintFailures.length > 0) {
+            tasks.push({
+              description: `Fix failing checks in PR #${pr.number}: ${nonTestLintFailures.join(', ')}`,
+              prNumber: pr.number,
+              prBranch: pr.branch,
+              type: 'address'
+            });
+          }
         }
       }
 
@@ -153,10 +170,10 @@ export class AddressExecutor {
 
       // Create job and tasks in database
       const jobUuid = await this.jobManager.createJob(`Address PR issues - ${new Date().toLocaleDateString()}`, this.workingDir);
-      
+
       const createdTasks: Task[] = [];
       for (const task of tasks) {
-        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, 'address');
+        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, task.type);
         // Store the branch name for the task
         await this.jobManager.updateTaskBranch(taskUuid, task.prBranch);
         const createdTask = await this.jobManager.getTask(taskUuid);
@@ -198,3 +215,4 @@ export class AddressExecutor {
     }
   }
 }
+

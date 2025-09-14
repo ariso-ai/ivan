@@ -221,7 +221,9 @@ export class JobManager {
       pr_link: null,
       execution_log: null,
       branch: null,
-      type: 'build' as const
+      type: 'build' as const,
+      comment_url: null,
+      commit_sha: null
     }));
 
     const db = this.dbManager.getKysely();
@@ -266,7 +268,25 @@ export class JobManager {
       .execute();
   }
 
-  async createTask(jobUuid: string, description: string, type: 'build' | 'address' = 'build'): Promise<string> {
+  async updateTaskCommentUrl(taskUuid: string, commentUrl: string): Promise<void> {
+    const db = this.dbManager.getKysely();
+    await db
+      .updateTable('tasks')
+      .set({ comment_url: commentUrl })
+      .where('uuid', '=', taskUuid)
+      .execute();
+  }
+
+  async updateTaskCommit(taskUuid: string, commit_sha: string): Promise<void> {
+    const db = this.dbManager.getKysely();
+    await db
+      .updateTable('tasks')
+      .set({ commit_sha })
+      .where('uuid', '=', taskUuid)
+      .execute();
+  }
+
+  async createTask(jobUuid: string, description: string, type: 'build' | 'address' | 'lint_and_test' = 'build'): Promise<string> {
     const task: Task = {
       uuid: randomUUID(),
       job_uuid: jobUuid,
@@ -275,7 +295,9 @@ export class JobManager {
       pr_link: null,
       execution_log: null,
       branch: null,
-      type
+      type,
+      comment_url: null,
+      commit_sha: null
     };
 
     const db = this.dbManager.getKysely();
@@ -318,11 +340,11 @@ export class JobManager {
       .orderBy('created_at', 'desc')
       .limit(1)
       .executeTakeFirst();
-    
+
     if (!job) {
       throw new Error('No jobs found for this directory');
     }
-    
+
     return job.uuid;
   }
 

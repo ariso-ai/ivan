@@ -89,7 +89,7 @@ export class AddressTaskExecutor {
 
         console.log('');
         console.log(chalk.cyan.bold(`🔄 Checking out branch: ${branch}`));
-        
+
         let spinner = ora('Checking out branch...').start();
         try {
           // Checkout the branch
@@ -104,20 +104,100 @@ export class AddressTaskExecutor {
           continue;
         }
 
+        // Handle lint_and_test tasks separately
+        const lintAndTestTasks = branchTasks.filter(t => t.type === 'lint_and_test');
+        const addressTasks = branchTasks.filter(t => t.type === 'address');
+
+        // Process lint_and_test tasks first
+        for (const task of lintAndTestTasks) {
+          console.log('');
+          console.log(chalk.blue('🔧 Fixing test and lint failures'));
+
+          await this.jobManager.updateTaskStatus(task.uuid, 'active');
+
+          spinner = ora('Running Claude Code to fix test and lint failures...').start();
+
+          // Prepare the prompt for Claude
+          let prompt = 'Fix the failing tests and linting issues in this PR.\n\n';
+          prompt += 'The following GitHub Actions checks are failing:\n';
+          prompt += task.description.replace(/^Fix test and lint failures in PR #\d+: /, '') + '\n\n';
+          prompt += 'Please run the tests and linting locally, identify what is failing, and fix all issues.';
+          prompt += ' Make sure to run the tests again after fixing to verify they pass.';
+
+          if (this.repoInstructions) {
+            prompt += `\n\nRepository-specific instructions:\n${this.repoInstructions}`;
+          }
+
+          try {
+            const executionLog = await this.getClaudeExecutor().executeTask(prompt, this.workingDir);
+            spinner.succeed('Claude Code execution completed');
+
+            await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
+
+            const changedFiles = this.gitManager!.getChangedFiles();
+            if (changedFiles.length === 0) {
+              console.log(chalk.yellow('⚠️  No changes made'));
+              await this.jobManager.updateTaskStatus(task.uuid, 'completed');
+              continue;
+            }
+
+            // Create commit with co-author
+            spinner = ora('Creating commit...').start();
+            const commitMessage = 'Fix test and lint failures\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>';
+
+            await this.gitManager!.commitChanges(commitMessage);
+            spinner.succeed('Changes committed');
+
+            // Get the commit hash
+            const commitHash = execSync('git rev-parse HEAD', {
+              cwd: this.workingDir,
+              encoding: 'utf-8'
+            }).trim();
+
+            // Save commit hash to task
+            await this.jobManager.updateTaskCommit(task.uuid, commitHash);
+
+            // Push the commit immediately
+            spinner = ora('Pushing commit...').start();
+            try {
+              await this.gitManager!.pushBranch(branch);
+              spinner.succeed('Commit pushed successfully');
+            } catch (error) {
+              spinner.fail('Failed to push commit');
+              console.error(error);
+            }
+
+            await this.jobManager.updateTaskStatus(task.uuid, 'completed');
+
+          } catch (error) {
+            spinner.fail('Failed to fix test and lint failures');
+            console.error(error);
+
+            const errorLog = error instanceof Error ? error.message : String(error);
+            await this.jobManager.updateTaskExecutionLog(task.uuid, `ERROR: ${errorLog}`);
+            await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
+          }
+        }
+
         // Get PR number from branch name or task description
         const prMatch = branchTasks[0].description.match(/PR #(\d+)/);
-        if (!prMatch) {
+        if (!prMatch && addressTasks.length > 0) {
           console.log(chalk.yellow('⚠️  Could not extract PR number from task'));
           continue;
         }
-        const prNumber = prMatch[1];
+        const prNumber = prMatch ? prMatch[1] : null;
+
+        // Skip comment processing if there are no address tasks
+        if (addressTasks.length === 0) {
+          continue;
+        }
 
         // Get all unaddressed comments for this PR
         spinner = ora('Fetching PR comments...').start();
-        const comments = await this.getUnaddressedComments(parseInt(prNumber));
+        const comments = await this.getUnaddressedComments(parseInt(prNumber!));
         spinner.succeed(`Found ${comments.length} unaddressed comments`);
 
-        if (comments.length === 0) {
+        if (comments.length === 0 && addressTasks.some(t => t.description.includes('comment'))) {
           console.log(chalk.yellow('⚠️  No unaddressed comments found'));
           continue;
         }
@@ -129,8 +209,8 @@ export class AddressTaskExecutor {
           console.log(chalk.gray(`   "${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}"`));
 
           // Find the corresponding task
-          const task = branchTasks.find(t => 
-            t.description.includes(comment.author) && 
+          const task = addressTasks.find(t =>
+            t.description.includes(comment.author) &&
             t.description.includes(comment.body.substring(0, 50))
           );
 
@@ -141,12 +221,26 @@ export class AddressTaskExecutor {
 
           await this.jobManager.updateTaskStatus(task.uuid, 'active');
 
+          // Save comment URL
+          if (comment.id) {
+            const repoInfo = execSync(
+              'gh repo view --json owner,name',
+              {
+                cwd: this.workingDir,
+                encoding: 'utf-8'
+              }
+            );
+            const { owner, name: repoName } = JSON.parse(repoInfo);
+            const commentUrl = `https://github.com/${owner.login}/${repoName}/pull/${prNumber!}#discussion_r${comment.id}`;
+            await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
+          }
+
           spinner = ora('Running Claude Code to address comment...').start();
-          
+
           // Prepare the prompt for Claude
-          let prompt = `Address the following PR review comment:\n\n`;
+          let prompt = 'Address the following PR review comment:\n\n';
           prompt += `Comment from @${comment.author}:\n"${comment.body}"\n\n`;
-          
+
           if (comment.path) {
             prompt += `File: ${comment.path}`;
             if (comment.line) {
@@ -156,7 +250,7 @@ export class AddressTaskExecutor {
           }
 
           prompt += 'Please make the necessary changes to address this comment.';
-          
+
           if (this.repoInstructions) {
             prompt += `\n\nRepository-specific instructions:\n${this.repoInstructions}`;
           }
@@ -180,7 +274,7 @@ export class AddressTaskExecutor {
 
 ${comment.body.substring(0, 200)}${comment.body.length > 200 ? '...' : ''}
 
-Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
+Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
 
             await this.gitManager!.commitChanges(commitMessage);
             spinner.succeed('Changes committed');
@@ -190,6 +284,9 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
               cwd: this.workingDir,
               encoding: 'utf-8'
             }).trim();
+
+            // Save commit hash to task
+            await this.jobManager.updateTaskCommit(task.uuid, commitHash);
 
             // Push the commit immediately
             spinner = ora('Pushing commit...').start();
@@ -205,10 +302,10 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
             spinner = ora('Replying to comment...').start();
             try {
               const replyBody = `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
-              
+
               // All comments are review comments (inline code comments) now
               execSync(
-                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody}"`,
+                `gh api repos/{owner}/{repo}/pulls/${prNumber!}/comments/${comment.id}/replies --field body="${replyBody}"`,
                 {
                   cwd: this.workingDir,
                   stdio: 'pipe'
@@ -225,56 +322,58 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
           } catch (error) {
             spinner.fail('Failed to address comment');
             console.error(error);
-            
+
             const errorLog = error instanceof Error ? error.message : String(error);
             await this.jobManager.updateTaskExecutionLog(task.uuid, `ERROR: ${errorLog}`);
             await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
           }
         }
 
-        // Generate and add specific review comment
-        spinner = ora('Generating review request...').start();
-        try {
-          // Get the latest commit changes
-          const latestCommit = execSync('git rev-parse HEAD', {
-            cwd: this.workingDir,
-            encoding: 'utf-8'
-          }).trim();
-          
-          const commitDiff = execSync(`git show ${latestCommit} --format="" --unified=3`, {
-            cwd: this.workingDir,
-            encoding: 'utf-8'
-          });
-          
-          const changedFiles = execSync(`git show --name-only --format="" ${latestCommit}`, {
-            cwd: this.workingDir,
-            encoding: 'utf-8'
-          }).trim().split('\n').filter(Boolean);
-          
-          // Generate specific review instructions using OpenAI
-          const reviewInstructions = await this.generateReviewInstructions(
-            commitDiff,
-            changedFiles,
-            parseInt(prNumber)
-          );
-          
-          spinner.succeed('Review request generated');
-          
-          // Add the review comment
-          spinner = ora('Adding review request comment...').start();
-          const reviewComment = `@codex ${reviewInstructions}`;
-          
-          execSync(
-            `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
-            {
+        // Generate and add specific review comment (only if we have a PR number and made changes)
+        if (prNumber && (addressTasks.length > 0 || lintAndTestTasks.length > 0)) {
+          spinner = ora('Generating review request...').start();
+          try {
+            // Get the latest commit changes
+            const latestCommit = execSync('git rev-parse HEAD', {
               cwd: this.workingDir,
-              stdio: 'pipe'
-            }
-          );
-          spinner.succeed('Review request comment added');
-        } catch (error) {
-          spinner.fail('Failed to add review comment');
-          console.error(error);
+              encoding: 'utf-8'
+            }).trim();
+
+            const commitDiff = execSync(`git show ${latestCommit} --format="" --unified=3`, {
+              cwd: this.workingDir,
+              encoding: 'utf-8'
+            });
+
+            const changedFiles = execSync(`git show --name-only --format="" ${latestCommit}`, {
+              cwd: this.workingDir,
+              encoding: 'utf-8'
+            }).trim().split('\n').filter(Boolean);
+
+            // Generate specific review instructions using OpenAI
+            const reviewInstructions = await this.generateReviewInstructions(
+              commitDiff,
+              changedFiles,
+              parseInt(prNumber)
+            );
+
+            spinner.succeed('Review request generated');
+
+            // Add the review comment
+            spinner = ora('Adding review request comment...').start();
+            const reviewComment = `@codex ${reviewInstructions}`;
+
+            execSync(
+              `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
+              {
+                cwd: this.workingDir,
+                stdio: 'pipe'
+              }
+            );
+            spinner.succeed('Review request comment added');
+          } catch (error) {
+            spinner.fail('Failed to add review comment');
+            console.error(error);
+          }
         }
       }
 
@@ -353,10 +452,10 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
 
         // Get the first comment (the main review comment)
         const firstComment = comments[0];
-        
+
         // Check if there are replies (more than one comment in thread)
         const hasReplies = comments.length > 1;
-        
+
         if (!hasReplies && firstComment.path) {
           // Only include if it's an inline code comment (has a path) and has no replies
           unaddressedComments.push({
@@ -380,12 +479,12 @@ Co-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
   private async generateReviewInstructions(
     diff: string,
     changedFiles: string[],
-    prNumber: number
+    _prNumber: number
   ): Promise<string> {
     try {
       const openaiService = this.getOpenAIService();
       const client = await openaiService.getClient();
-      
+
       const prompt = `You are reviewing code changes that were made to address PR review comments. 
 Based on the following diff and changed files, generate a concise, specific review request that tells the reviewer what to focus on.
 
@@ -421,7 +520,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       });
 
       const reviewRequest = completion.choices[0]?.message?.content?.trim();
-      
+
       if (!reviewRequest) {
         return 'please review the latest changes and verify all review comments have been properly addressed';
       }
@@ -434,3 +533,4 @@ Return ONLY the review request text, without any prefix like "Please review" sin
     }
   }
 }
+

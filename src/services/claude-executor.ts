@@ -11,17 +11,17 @@ export class ClaudeExecutor {
 
   private async getApiKey(): Promise<string> {
     let config = this.configManager.getConfig();
-    
+
     if (!config?.anthropicApiKey || config.anthropicApiKey === '') {
       // Prompt for the API key
       const apiKey = await this.configManager.promptForMissingConfig('anthropicApiKey');
       config = this.configManager.getConfig();
     }
-    
+
     if (!config?.anthropicApiKey) {
       throw new Error('Failed to obtain Anthropic API key');
     }
-    
+
     return config.anthropicApiKey;
   }
 
@@ -33,7 +33,11 @@ export class ClaudeExecutor {
       // Set the API key in environment for the SDK
       process.env.ANTHROPIC_API_KEY = await this.getApiKey();
 
+      // Get repository-specific allowed tools
+      const allowedTools = await this.configManager.getRepoAllowedTools(workingDir) || ['*'];
+
       console.log(chalk.gray(`Working directory: ${workingDir}`));
+      console.log(chalk.gray(`Allowed tools: ${allowedTools.join(', ')}`));
       console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
 
       let result = '';
@@ -57,7 +61,7 @@ export class ClaudeExecutor {
           prompt: taskDescription,
           options: {
             abortController,
-            allowedTools: ['*'], // Allow all tools
+            allowedTools, // Use repository-specific allowed tools
             cwd: workingDir
           }
         })) {
@@ -74,8 +78,8 @@ export class ClaudeExecutor {
                   // Add tool call to the log
                   const toolCall = `[Tool Call: ${content.name}]`;
                   if (content.input) {
-                    const inputStr = typeof content.input === 'object' 
-                      ? JSON.stringify(content.input, null, 2) 
+                    const inputStr = typeof content.input === 'object'
+                      ? JSON.stringify(content.input, null, 2)
                       : String(content.input);
                     currentResponse += `${toolCall}\n${inputStr}\n\n`;
                   } else {
@@ -87,8 +91,8 @@ export class ClaudeExecutor {
           } else if (message.type === 'stream_event') {
             // Stream events may contain tool results
             if ('event' in message && message.event?.type === 'tool_result') {
-              const toolResult = `[Tool Result]\n${typeof message.event.result === 'object' 
-                ? JSON.stringify(message.event.result, null, 2) 
+              const toolResult = `[Tool Result]\n${typeof message.event.result === 'object'
+                ? JSON.stringify(message.event.result, null, 2)
                 : String(message.event.result)}\n`;
               currentResponse += toolResult;
               // Add separation after tool result for next Claude response

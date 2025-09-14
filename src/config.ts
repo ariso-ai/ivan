@@ -11,6 +11,7 @@ interface Config {
   anthropicApiKey: string;
   version: string;
   repoInstructions?: { [repoPath: string]: string };
+  repoAllowedTools?: { [repoPath: string]: string[] };
 }
 
 export class ConfigManager {
@@ -219,6 +220,28 @@ export class ConfigManager {
     return apiKey;
   }
 
+  async getRepoAllowedTools(repoPath: string): Promise<string[] | undefined> {
+    const config = this.getConfig();
+    if (!config || !config.repoAllowedTools) {
+      return undefined;
+    }
+    return config.repoAllowedTools[repoPath];
+  }
+
+  async setRepoAllowedTools(repoPath: string, allowedTools: string[]): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    if (!config.repoAllowedTools) {
+      config.repoAllowedTools = {};
+    }
+
+    config.repoAllowedTools[repoPath] = allowedTools;
+    await this.saveConfig(config);
+  }
+
   async promptForRepoInstructions(repoPath: string): Promise<string> {
     console.log(chalk.blue.bold('📝 Repository-Specific Instructions'));
     console.log(chalk.gray(`Repository: ${repoPath}`));
@@ -255,5 +278,47 @@ export class ConfigManager {
     }
 
     return cleanedInstructions;
+  }
+
+  async promptForRepoAllowedTools(repoPath: string): Promise<string[]> {
+    console.log(chalk.blue.bold('🔧 Repository-Specific Tool Configuration'));
+    console.log(chalk.gray(`Repository: ${repoPath}`));
+    console.log('');
+    console.log(chalk.yellow('Configure which tools Claude Code can use in this repository.'));
+    console.log(chalk.gray('Default: All tools allowed (["*"])'));
+    console.log(chalk.gray('Examples: ["Bash", "Read", "Write", "Edit"] or ["*"] for all tools'));
+    console.log('');
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'allowedTools',
+        message: 'Enter allowed tools (comma-separated, or * for all):',
+        default: '*',
+        validate: (input: string) => {
+          const trimmed = input.trim();
+          if (trimmed.length === 0) {
+            return 'Please provide at least one tool or * for all';
+          }
+          return true;
+        },
+        filter: (input: string) => {
+          const trimmed = input.trim();
+          if (trimmed === '*') {
+            return ['*'];
+          }
+          return trimmed.split(',').map(tool => tool.trim()).filter(tool => tool.length > 0);
+        }
+      }
+    ]);
+
+    const allowedTools = answers.allowedTools;
+    
+    if (allowedTools.length > 0) {
+      await this.setRepoAllowedTools(repoPath, allowedTools);
+      console.log(chalk.green('✅ Repository tool configuration saved'));
+    }
+
+    return allowedTools;
   }
 }

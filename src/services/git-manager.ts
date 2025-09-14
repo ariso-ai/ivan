@@ -86,8 +86,14 @@ export class GitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      const escapedMessage = message.replace(/"/g, '\\"');
-      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
+      // Escape all shell special characters including backticks, quotes, and dollar signs
+      const escapedMessage = message
+        .replace(/\\/g, '\\\\')  // Escape backslashes first
+        .replace(/"/g, '\\"')    // Escape double quotes
+        .replace(/`/g, '\\`')    // Escape backticks
+        .replace(/\$/g, '\\$')   // Escape dollar signs
+        .replace(/!/g, '\\!');   // Escape exclamation marks
+      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
       execSync(`git commit -m "${commitMessage}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
@@ -102,8 +108,14 @@ export class GitManager {
     this.ensureGitRepo();
 
     try {
-      const escapedMessage = message.replace(/"/g, '\\"');
-      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ari-agent <ari-agent@users.noreply.github.com>`;
+      // Escape all shell special characters including backticks, quotes, and dollar signs
+      const escapedMessage = message
+        .replace(/\\/g, '\\\\')  // Escape backslashes first
+        .replace(/"/g, '\\"')    // Escape double quotes
+        .replace(/`/g, '\\`')    // Escape backticks
+        .replace(/\$/g, '\\$')   // Escape dollar signs
+        .replace(/!/g, '\\!');   // Escape exclamation marks
+      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
       execSync(`git commit --allow-empty -m "${commitMessage}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
@@ -134,12 +146,12 @@ export class GitManager {
 
     try {
       const escapedTitle = title.replace(/"/g, '\\"');
-      // Add attribution to @ari-agent in the PR body
-      const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ari-agent*`;
+      // Add attribution to @ivan-agent in the PR body
+      const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ivan-agent*`;
       const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
 
-      // Create PR and optionally assign to ari-agent (will fail silently if user doesn't have permissions)
-      const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}" --assignee ari-agent`, {
+      // Create PR and optionally assign to ivan-agent (will fail silently if user doesn't have permissions)
+      const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}" --assignee ivan-agent`, {
         cwd: this.workingDir,
         encoding: 'utf8',
         stdio: 'pipe'
@@ -156,7 +168,7 @@ export class GitManager {
       // If assignee fails, try without it
       try {
         const escapedTitle = title.replace(/"/g, '\\"');
-        const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ari-agent*`;
+        const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ivan-agent*`;
         const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
         const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}"`, {
           cwd: this.workingDir,
@@ -326,26 +338,26 @@ export class GitManager {
       // Get the diff between main branch and current branch for the PR
       const currentBranch = this.getCurrentBranch();
       const mainBranch = this.getMainBranch();
-      
+
       // Get diff between main and current branch
       const diff = execSync(`git diff ${mainBranch}...${currentBranch}`, {
         cwd: this.workingDir,
         encoding: 'utf8',
         maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large diffs
       });
-      
+
       // Get list of changed files between main and current branch
       const changedFiles = execSync(`git diff --name-only ${mainBranch}...${currentBranch}`, {
         cwd: this.workingDir,
         encoding: 'utf8'
       }).trim().split('\n').filter(f => f.trim());
-      
+
       // Generate specific review instructions using OpenAI
       const reviewInstructions = await this.generateReviewInstructions(diff, changedFiles);
-      
+
       // Add the review comment
       const reviewComment = `@codex ${reviewInstructions}`;
-      
+
       execSync(`gh pr comment ${prUrl} --body "${reviewComment.replace(/"/g, '\\"')}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
@@ -372,10 +384,10 @@ export class GitManager {
         console.log(chalk.yellow('⚠️ No diff found between branches for review instructions'));
         return 'please review the changes in this PR and verify the implementation meets requirements';
       }
-      
+
       const openaiService = this.getOpenAIService();
       const client = await openaiService.getClient();
-      
+
       const prompt = `You are reviewing a new pull request. Based on the following diff and changed files, generate a concise, specific review request that tells the reviewer what to focus on.
 
 Changed files:
@@ -410,7 +422,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       });
 
       const reviewRequest = completion.choices[0]?.message?.content?.trim();
-      
+
       if (!reviewRequest) {
         return 'please review the changes and verify the implementation meets requirements';
       }

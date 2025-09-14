@@ -13,14 +13,16 @@ export interface Task {
   pr_link: string | null;
   execution_log: string | null;
   branch: string | null;
-  type: 'build' | 'address';
+  type: 'build' | 'address' | 'lint_and_test';
+  comment_url: string | null;
+  commit_sha: string | null;
 }
 
 export interface Migration {
   id: number;
   name: string;
-  up: string;
-  down: string;
+  up: string | string[];
+  down: string | string[];
 }
 
 export interface Database {

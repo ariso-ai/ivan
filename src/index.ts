@@ -24,6 +24,50 @@ program
   });
 
 program
+  .command('config-tools')
+  .description('Configure allowed tools for the current repository')
+  .action(async () => {
+    const repoPath = process.cwd();
+    await configManager.promptForRepoAllowedTools(repoPath);
+  });
+
+program
+  .command('show-config')
+  .description('Show configuration for the current repository')
+  .action(async () => {
+    const repoPath = process.cwd();
+    const config = configManager.getConfig();
+    
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found'));
+      console.log(chalk.yellow('Run "ivan reconfigure" to set up Ivan'));
+      return;
+    }
+    
+    console.log(chalk.blue.bold('📋 Repository Configuration'));
+    console.log(chalk.gray(`Repository: ${repoPath}`));
+    console.log('');
+    
+    const allowedTools = await configManager.getRepoAllowedTools(repoPath);
+    const instructions = await configManager.getRepoInstructions(repoPath);
+    
+    console.log(chalk.cyan('Allowed Tools:'));
+    if (allowedTools) {
+      console.log('  ' + allowedTools.join(', '));
+    } else {
+      console.log(chalk.gray('  [*] (all tools allowed - default)'));
+    }
+    
+    console.log('');
+    console.log(chalk.cyan('Repository Instructions:'));
+    if (instructions) {
+      console.log('  ' + instructions.split('\n').join('\n  '));
+    } else {
+      console.log(chalk.gray('  (none configured)'));
+    }
+  });
+
+program
   .command('web')
   .description('Start web server to view jobs and tasks in browser')
   .option('-p, --port <port>', 'Port number for web server', '3000')
@@ -177,7 +221,7 @@ async function main() {
   try {
     const args = process.argv.slice(2);
     
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'show-config', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');

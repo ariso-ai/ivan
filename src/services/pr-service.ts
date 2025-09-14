@@ -10,6 +10,8 @@ export interface PullRequest {
   hasFailingChecks: boolean;
   unaddressedComments: PRComment[];
   failingChecks: string[];
+  hasTestOrLintFailures: boolean;
+  testOrLintFailures: string[];
 }
 
 export interface PRComment {
@@ -48,7 +50,9 @@ export class PRService {
           hasUnaddressedComments: false,
           hasFailingChecks: false,
           unaddressedComments: [],
-          failingChecks: []
+          failingChecks: [],
+          hasTestOrLintFailures: false,
+          testOrLintFailures: []
         };
 
         // Check for unaddressed comments
@@ -59,10 +63,14 @@ export class PRService {
         }
 
         // Check for failing checks
-        const failingChecks = await this.getFailingChecks(pr.number);
-        if (failingChecks.length > 0) {
+        const { allFailures, testOrLintFailures } = await this.getFailingChecks(pr.number);
+        if (allFailures.length > 0) {
           pullRequest.hasFailingChecks = true;
-          pullRequest.failingChecks = failingChecks;
+          pullRequest.failingChecks = allFailures;
+        }
+        if (testOrLintFailures.length > 0) {
+          pullRequest.hasTestOrLintFailures = true;
+          pullRequest.testOrLintFailures = testOrLintFailures;
         }
 
         // Only include PRs that have issues
@@ -72,9 +80,9 @@ export class PRService {
       }
 
       return pullRequests;
-    } catch (error) {
-      console.error(chalk.red('Error fetching PRs:'), error);
-      throw error;
+    } catch (_error) {
+      console.error(chalk.red('Error fetching PRs:'), _error);
+      throw _error;
     }
   }
 
@@ -144,10 +152,10 @@ export class PRService {
 
         // Get the first comment (the main review comment)
         const firstComment = comments[0];
-        
+
         // Check if there are replies (more than one comment in thread)
         const hasReplies = comments.length > 1;
-        
+
         if (!hasReplies && firstComment.path) {
           // Only include if it's an inline code comment (has a path) and has no replies
           unaddressedComments.push({
@@ -162,13 +170,13 @@ export class PRService {
       }
 
       return unaddressedComments;
-    } catch (error) {
+    } catch (_error) {
       // If there's an error fetching comments, return empty array
       return [];
     }
   }
 
-  private async getFailingChecks(prNumber: number): Promise<string[]> {
+  private async getFailingChecks(prNumber: number): Promise<{ allFailures: string[], testOrLintFailures: string[] }> {
     try {
       const checksJson = execSync(
         `gh pr checks ${prNumber} --json name,state`,
@@ -180,17 +188,41 @@ export class PRService {
 
       const checks = JSON.parse(checksJson);
       const failingChecks: string[] = [];
+      const testOrLintFailures: string[] = [];
 
       for (const check of checks) {
         if (check.state === 'FAILURE' || check.state === 'ERROR') {
           failingChecks.push(check.name);
+
+          // Check if this is a test or lint failure
+          const checkNameLower = check.name.toLowerCase();
+          if (
+            checkNameLower.includes('test') ||
+            checkNameLower.includes('lint') ||
+            checkNameLower.includes('eslint') ||
+            checkNameLower.includes('prettier') ||
+            checkNameLower.includes('jest') ||
+            checkNameLower.includes('mocha') ||
+            checkNameLower.includes('pytest') ||
+            checkNameLower.includes('ruff') ||
+            checkNameLower.includes('black') ||
+            checkNameLower.includes('flake8') ||
+            checkNameLower.includes('mypy') ||
+            checkNameLower.includes('typecheck') ||
+            checkNameLower.includes('type-check') ||
+            checkNameLower.includes('tsc') ||
+            checkNameLower.includes('clippy') ||
+            checkNameLower.includes('rustfmt')
+          ) {
+            testOrLintFailures.push(check.name);
+          }
         }
       }
 
-      return failingChecks;
-    } catch (error) {
-      // If there's an error fetching checks, return empty array
-      return [];
+      return { allFailures: failingChecks, testOrLintFailures };
+    } catch (_error) {
+      // If there's an error fetching checks, return empty arrays
+      return { allFailures: [], testOrLintFailures: [] };
     }
   }
 
@@ -201,3 +233,4 @@ export class PRService {
     });
   }
 }
+
