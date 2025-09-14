@@ -99,7 +99,7 @@ export class JobManager {
               }
               return true;
             }
-          } as any
+          }
         ]);
 
         finalTasks = selectedTasks;
@@ -190,7 +190,7 @@ export class JobManager {
               }
               return true;
             }
-          } as any
+          }
         ]);
 
         if (selectedTasks.length === 0) {

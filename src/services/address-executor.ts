@@ -24,7 +24,7 @@ export class AddressExecutor {
     this.repositoryManager = new RepositoryManager();
     this.configManager = new ConfigManager();
     this.workingDir = '';
-    this.prService = null as any;
+    this.prService = {} as PRService;
   }
 
   private getClaudeExecutor(): ClaudeExecutor {
