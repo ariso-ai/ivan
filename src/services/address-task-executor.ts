@@ -7,6 +7,7 @@ import { ClaudeExecutor } from './claude-executor.js';
 import { OpenAIService } from './openai-service.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
+import { PRService } from './pr-service.js';
 
 export class AddressTaskExecutor {
   private jobManager: JobManager;
@@ -14,6 +15,7 @@ export class AddressTaskExecutor {
   private claudeExecutor: ClaudeExecutor | null = null;
   private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;
+  private prService: PRService | null = null;
   private workingDir: string;
   private repoInstructions: string | undefined;
 
@@ -60,6 +62,7 @@ export class AddressTaskExecutor {
 
       this.workingDir = job.directory;
       this.gitManager = new GitManager(this.workingDir);
+      this.prService = new PRService(this.workingDir);
 
       this.gitManager.validateGitHubCliInstallation();
       console.log(chalk.green('✅ GitHub CLI is installed'));
@@ -115,13 +118,42 @@ export class AddressTaskExecutor {
 
           await this.jobManager.updateTaskStatus(task.uuid, 'active');
 
+          // Extract PR number from task description
+          const prNumberMatch = task.description.match(/PR #(\d+)/);
+          const taskPrNumber = prNumberMatch ? parseInt(prNumberMatch[1]) : null;
+
+          spinner = ora('Fetching GitHub Actions logs...').start();
+
+          let actionLogs = '';
+          if (taskPrNumber && this.prService) {
+            try {
+              actionLogs = await this.prService.getFailingActionLogs(taskPrNumber);
+              if (actionLogs) {
+                spinner.succeed('GitHub Actions logs fetched');
+              } else {
+                spinner.info('No failing action logs found');
+              }
+            } catch (error) {
+              spinner.warn('Could not fetch GitHub Actions logs');
+              console.error(error);
+            }
+          }
+
           spinner = ora('Running Claude Code to fix test and lint failures...').start();
 
           // Prepare the prompt for Claude
           let prompt = 'Fix the failing tests and linting issues in this PR.\n\n';
           prompt += 'The following GitHub Actions checks are failing:\n';
           prompt += task.description.replace(/^Fix test and lint failures in PR #\d+: /, '') + '\n\n';
-          prompt += 'Please run the tests and linting locally, identify what is failing, and fix all issues.';
+
+          // Include the actual failing logs if available
+          if (actionLogs) {
+            prompt += '=== GitHub Actions Failure Logs ===\n';
+            prompt += actionLogs;
+            prompt += '\n=== End of Logs ===\n\n';
+          }
+
+          prompt += 'Please run the tests and linting locally, identify what is failing based on the logs above, and fix all issues.';
           prompt += ' Make sure to run the tests again after fixing to verify they pass.';
 
           if (this.repoInstructions) {

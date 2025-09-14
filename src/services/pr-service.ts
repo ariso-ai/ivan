@@ -232,5 +232,62 @@ export class PRService {
       stdio: 'inherit'
     });
   }
+
+  async getFailingActionLogs(prNumber: number): Promise<string> {
+    try {
+      // Get the checks with their workflow information
+      const checksJson = execSync(
+        `gh pr checks ${prNumber} --json name,state,link,workflow`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf-8'
+        }
+      );
+
+      const checks = JSON.parse(checksJson);
+      let failingLogs = '';
+
+      for (const check of checks) {
+        if (check.state === 'FAILURE' || check.state === 'ERROR') {
+          // Extract run ID from the link (format: https://github.com/owner/repo/actions/runs/123456789/job/987654321)
+          const runIdMatch = check.link?.match(/\/runs\/(\d+)/);
+          if (runIdMatch) {
+            const runId = runIdMatch[1];
+
+            try {
+              // Get the failed logs for this run
+              const logs = execSync(
+                `gh run view ${runId} --log-failed`,
+                {
+                  cwd: this.workingDir,
+                  encoding: 'utf-8',
+                  maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large logs
+                }
+              );
+
+              if (logs) {
+                failingLogs += `\n\n=== Failed logs for ${check.name} ===\n`;
+                // Truncate logs if too large (keep last 5000 chars per check)
+                if (logs.length > 5000) {
+                  failingLogs += '... (truncated) ...\n';
+                  failingLogs += logs.substring(logs.length - 5000);
+                } else {
+                  failingLogs += logs;
+                }
+              }
+            } catch (error) {
+              // If we can't get logs for this specific run, continue with others
+              console.error(`Failed to get logs for run ${runId}:`, error);
+            }
+          }
+        }
+      }
+
+      return failingLogs;
+    } catch (error) {
+      console.error('Error fetching action logs:', error);
+      return '';
+    }
+  }
 }
 
