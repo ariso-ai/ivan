@@ -14,7 +14,7 @@ export class ClaudeExecutor {
 
     if (!config?.anthropicApiKey || config.anthropicApiKey === '') {
       // Prompt for the API key
-      const apiKey = await this.configManager.promptForMissingConfig('anthropicApiKey');
+      await this.configManager.promptForMissingConfig('anthropicApiKey');
       config = this.configManager.getConfig();
     }
 

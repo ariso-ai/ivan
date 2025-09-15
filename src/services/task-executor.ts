@@ -54,10 +54,16 @@ export class TaskExecutor {
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
       this.gitManager = new GitManager(this.workingDir);
 
-      this.gitManager!.validateGitHubCliInstallation();
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      this.gitManager.validateGitHubCliInstallation();
       console.log(chalk.green('✅ GitHub CLI is installed'));
 
-      this.gitManager!.validateGitHubCliAuthentication();
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      this.gitManager.validateGitHubCliAuthentication();
       console.log(chalk.green('✅ GitHub CLI is authenticated'));
 
       const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
@@ -246,7 +252,10 @@ export class TaskExecutor {
 
       if (comments.length > 0) {
         // Get the branch name for this PR
-        const prInfo = await this.gitManager!.getPRInfo(prNumber);
+        if (!this.gitManager) {
+          throw new Error('GitManager not initialized');
+        }
+        const prInfo = await this.gitManager.getPRInfo(prNumber);
         const branch = prInfo.headRefName;
 
         // Create address tasks for each comment
@@ -285,13 +294,22 @@ export class TaskExecutor {
       spinner.succeed('Task marked as active');
 
       spinner = ora('Cleaning up and syncing with main branch...').start();
-      await this.gitManager!.cleanupAndSyncMain();
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      await this.gitManager.cleanupAndSyncMain();
       spinner.succeed('Repository cleaned and synced with main');
 
-      const branchName = this.gitManager!.generateBranchName(task.description);
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      const branchName = this.gitManager.generateBranchName(task.description);
 
       spinner = ora(`Creating branch: ${branchName}`).start();
-      await this.gitManager!.createBranch(branchName);
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      await this.gitManager.createBranch(branchName);
       spinner.succeed(`Branch created: ${branchName}`);
 
       await this.jobManager.updateTaskBranch(task.uuid, branchName);
@@ -311,25 +329,37 @@ export class TaskExecutor {
       await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
       spinner.succeed('Execution log stored');
 
-      const changedFiles = this.gitManager!.getChangedFiles();
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      const changedFiles = this.gitManager.getChangedFiles();
       if (changedFiles.length === 0) {
         console.log(chalk.yellow('⚠️  No changes detected, skipping commit and PR creation'));
         await this.jobManager.updateTaskStatus(task.uuid, 'completed');
         return;
       }
 
-      const diff = this.gitManager!.getDiff();
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      const diff = this.gitManager.getDiff();
 
       spinner = ora('Generating commit message...').start();
       const commitMessage = await this.getOpenAIService().generateCommitMessage(diff, changedFiles);
       spinner.succeed(`Commit message generated: ${commitMessage}`);
 
       spinner = ora('Committing changes...').start();
-      await this.gitManager!.commitChanges(commitMessage);
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      await this.gitManager.commitChanges(commitMessage);
       spinner.succeed('Changes committed');
 
       spinner = ora('Pushing branch...').start();
-      await this.gitManager!.pushBranch(branchName);
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      await this.gitManager.pushBranch(branchName);
       spinner.succeed('Branch pushed to origin');
 
       spinner = ora('Generating PR description...').start();
@@ -341,7 +371,10 @@ export class TaskExecutor {
       spinner.succeed('PR description generated');
 
       spinner = ora('Creating pull request...').start();
-      const prUrl = await this.gitManager!.createPullRequest(title, body);
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      const prUrl = await this.gitManager.createPullRequest(title, body);
       spinner.succeed(`Pull request created: ${prUrl}`);
 
       await this.jobManager.updateTaskPrLink(task.uuid, prUrl);

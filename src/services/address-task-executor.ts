@@ -80,7 +80,10 @@ export class AddressTaskExecutor {
         if (!tasksByBranch.has(branch)) {
           tasksByBranch.set(branch, []);
         }
-        tasksByBranch.get(branch)!.push(task);
+        const tasks = tasksByBranch.get(branch);
+        if (tasks) {
+          tasks.push(task);
+        }
       }
 
       // Execute tasks grouped by branch
@@ -166,7 +169,10 @@ export class AddressTaskExecutor {
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
 
-            const changedFiles = this.gitManager!.getChangedFiles();
+            if (!this.gitManager) {
+              throw new Error('GitManager not initialized');
+            }
+            const changedFiles = this.gitManager.getChangedFiles();
             if (changedFiles.length === 0) {
               console.log(chalk.yellow('⚠️  No changes made'));
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
@@ -177,7 +183,10 @@ export class AddressTaskExecutor {
             spinner = ora('Creating commit...').start();
             const commitMessage = 'Fix test and lint failures\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>';
 
-            await this.gitManager!.commitChanges(commitMessage);
+            if (!this.gitManager) {
+              throw new Error('GitManager not initialized');
+            }
+            await this.gitManager.commitChanges(commitMessage);
             spinner.succeed('Changes committed');
 
             // Get the commit hash
@@ -192,7 +201,10 @@ export class AddressTaskExecutor {
             // Push the commit immediately
             spinner = ora('Pushing commit...').start();
             try {
-              await this.gitManager!.pushBranch(branch);
+              if (!this.gitManager) {
+                throw new Error('GitManager not initialized');
+              }
+              await this.gitManager.pushBranch(branch);
               spinner.succeed('Commit pushed successfully');
             } catch (error) {
               spinner.fail('Failed to push commit');
@@ -246,7 +258,10 @@ export class AddressTaskExecutor {
 
         // Get all unaddressed comments for this PR
         spinner = ora('Fetching PR comments...').start();
-        const comments = await this.getUnaddressedComments(parseInt(prNumber!));
+        if (!prNumber) {
+          throw new Error('PR number not found');
+        }
+        const comments = await this.getUnaddressedComments(parseInt(prNumber));
         spinner.succeed(`Found ${comments.length} unaddressed comments`);
 
         if (comments.length === 0 && addressTasks.some(t => t.description.includes('comment'))) {
@@ -283,7 +298,10 @@ export class AddressTaskExecutor {
               }
             );
             const { owner, name: repoName } = JSON.parse(repoInfo);
-            const commentUrl = `https://github.com/${owner.login}/${repoName}/pull/${prNumber!}#discussion_r${comment.id}`;
+            if (!prNumber) {
+              throw new Error('PR number not found');
+            }
+            const commentUrl = `https://github.com/${owner.login}/${repoName}/pull/${prNumber}#discussion_r${comment.id}`;
             await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
           }
 
@@ -313,7 +331,10 @@ export class AddressTaskExecutor {
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
 
-            const changedFiles = this.gitManager!.getChangedFiles();
+            if (!this.gitManager) {
+              throw new Error('GitManager not initialized');
+            }
+            const changedFiles = this.gitManager.getChangedFiles();
             if (changedFiles.length === 0) {
               console.log(chalk.yellow('⚠️  No changes made'));
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
@@ -328,7 +349,10 @@ ${comment.body.substring(0, 200)}${comment.body.length > 200 ? '...' : ''}
 
 Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
 
-            await this.gitManager!.commitChanges(commitMessage);
+            if (!this.gitManager) {
+              throw new Error('GitManager not initialized');
+            }
+            await this.gitManager.commitChanges(commitMessage);
             spinner.succeed('Changes committed');
 
             // Get the commit hash
@@ -343,7 +367,10 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
             // Push the commit immediately
             spinner = ora('Pushing commit...').start();
             try {
-              await this.gitManager!.pushBranch(branch);
+              if (!this.gitManager) {
+                throw new Error('GitManager not initialized');
+              }
+              await this.gitManager.pushBranch(branch);
               spinner.succeed('Commit pushed successfully');
             } catch (error) {
               spinner.fail('Failed to push commit');
@@ -357,7 +384,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
 
               // All comments are review comments (inline code comments) now
               execSync(
-                `gh api repos/{owner}/{repo}/pulls/${prNumber!}/comments/${comment.id}/replies --field body="${replyBody}"`,
+                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody}"`,
                 {
                   cwd: this.workingDir,
                   stdio: 'pipe'
@@ -438,7 +465,14 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
     }
   }
 
-  private async getUnaddressedComments(prNumber: number): Promise<any[]> {
+  private async getUnaddressedComments(prNumber: number): Promise<Array<{
+    id: string;
+    author: string;
+    body: string;
+    createdAt: string;
+    path?: string;
+    line?: number;
+  }>> {
     try {
       // Get PR owner and repo name
       const repoInfo = execSync(
@@ -488,7 +522,14 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
 
       const result = JSON.parse(graphqlResult);
       const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
-      const unaddressedComments: any[] = [];
+      const unaddressedComments: Array<{
+        id: string;
+        author: string;
+        body: string;
+        createdAt: string;
+        path?: string;
+        line?: number;
+      }> = [];
 
       // Process each thread
       for (const thread of threads) {
