@@ -73,21 +73,29 @@ export class TaskExecutor {
       // Check for repository-specific instructions
       this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
       if (!this.repoInstructions) {
-        console.log(chalk.yellow('⚠️  No repository-specific instructions found for this repository.'));
-        const inquirer = (await import('inquirer')).default;
-        const { shouldSetInstructions } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'shouldSetInstructions',
-            message: 'Would you like to set repository-specific instructions now?',
-            default: false
-          }
-        ]);
+        // Only prompt if the user hasn't previously declined for this repo
+        const hasDeclined = await this.configManager.hasDeclinedRepoInstructions(this.workingDir);
+        if (!hasDeclined) {
+          console.log(chalk.yellow('⚠️  No repository-specific instructions found for this repository.'));
+          const inquirer = (await import('inquirer')).default;
+          const { shouldSetInstructions } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'shouldSetInstructions',
+              message: 'Would you like to set repository-specific instructions now?',
+              default: false
+            }
+          ]);
 
-        if (shouldSetInstructions) {
-          this.repoInstructions = await this.configManager.promptForRepoInstructions(this.workingDir);
+          if (shouldSetInstructions) {
+            this.repoInstructions = await this.configManager.promptForRepoInstructions(this.workingDir);
+          } else {
+            // Mark that the user declined so we don't ask again
+            await this.configManager.markRepoInstructionsDeclined(this.workingDir);
+            console.log(chalk.gray('You can configure instructions later with: ivan edit-repo-instructions'));
+          }
+          console.log('');
         }
-        console.log('');
       } else {
         console.log(chalk.green('✅ Repository-specific instructions loaded'));
       }

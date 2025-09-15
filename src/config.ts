@@ -12,6 +12,7 @@ interface Config {
   version: string;
   repoInstructions?: { [repoPath: string]: string };
   repoAllowedTools?: { [repoPath: string]: string[] };
+  repoInstructionsDeclined?: { [repoPath: string]: boolean };
 }
 
 export class ConfigManager {
@@ -148,6 +149,28 @@ export class ConfigManager {
       return undefined;
     }
     return config.repoInstructions[repoPath];
+  }
+
+  async hasDeclinedRepoInstructions(repoPath: string): Promise<boolean> {
+    const config = this.getConfig();
+    if (!config || !config.repoInstructionsDeclined) {
+      return false;
+    }
+    return config.repoInstructionsDeclined[repoPath] === true;
+  }
+
+  async markRepoInstructionsDeclined(repoPath: string): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    if (!config.repoInstructionsDeclined) {
+      config.repoInstructionsDeclined = {};
+    }
+
+    config.repoInstructionsDeclined[repoPath] = true;
+    await this.saveConfig(config);
   }
 
   async setRepoInstructions(repoPath: string, instructions: string): Promise<void> {
