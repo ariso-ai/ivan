@@ -151,7 +151,7 @@ export class GitManager {
       const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
 
       // Create PR and optionally assign to ivan-agent (will fail silently if user doesn't have permissions)
-      const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}" --assignee ivan-agent`, {
+      const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body "${escapedBody}" --assignee ivan-agent`, {
         cwd: this.workingDir,
         encoding: 'utf8',
         stdio: 'pipe'
@@ -170,7 +170,7 @@ export class GitManager {
         const escapedTitle = title.replace(/"/g, '\\"');
         const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ivan-agent*`;
         const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
-        const result = execSync(`gh pr create --title "${escapedTitle}" --body "${escapedBody}"`, {
+        const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body "${escapedBody}"`, {
           cwd: this.workingDir,
           encoding: 'utf8',
           stdio: 'pipe'
