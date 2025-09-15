@@ -94,18 +94,21 @@ export class AddressTaskExecutor {
         }
 
         console.log('');
-        console.log(chalk.cyan.bold(`🔄 Checking out branch: ${branch}`));
+        console.log(chalk.cyan.bold(`🔄 Creating worktree for branch: ${branch}`));
 
-        let spinner = ora('Checking out branch...').start();
+        let spinner = ora('Creating worktree...').start();
+        let worktreePath: string | null = null;
+
         try {
-          // Checkout the branch
-          execSync(`git checkout ${branch}`, {
-            cwd: this.workingDir,
-            stdio: 'pipe'
-          });
-          spinner.succeed(`Switched to branch: ${branch}`);
+          // Create worktree for the branch
+          if (!this.gitManager) {
+            throw new Error('GitManager not initialized');
+          }
+          worktreePath = await this.gitManager.createWorktree(branch);
+          this.gitManager.switchToWorktree(worktreePath);
+          spinner.succeed(`Worktree created: ${worktreePath}`);
         } catch (error) {
-          spinner.fail(`Failed to checkout branch: ${branch}`);
+          spinner.fail(`Failed to create worktree for branch: ${branch}`);
           console.error(error);
           continue;
         }
@@ -164,7 +167,7 @@ export class AddressTaskExecutor {
           }
 
           try {
-            const executionLog = await this.getClaudeExecutor().executeTask(prompt, this.workingDir);
+            const executionLog = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
             spinner.succeed('Claude Code execution completed');
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
@@ -191,7 +194,7 @@ export class AddressTaskExecutor {
 
             // Get the commit hash
             const commitHash = execSync('git rev-parse HEAD', {
-              cwd: this.workingDir,
+              cwd: worktreePath || this.workingDir,
               encoding: 'utf-8'
             }).trim();
 
@@ -220,7 +223,7 @@ export class AddressTaskExecutor {
                 execSync(
                   `gh pr comment ${taskPrNumber} --body "${reviewComment}"`,
                   {
-                    cwd: this.workingDir,
+                    cwd: worktreePath || this.workingDir,
                     stdio: 'pipe'
                   }
                 );
@@ -293,7 +296,7 @@ export class AddressTaskExecutor {
             const repoInfo = execSync(
               'gh repo view --json owner,name',
               {
-                cwd: this.workingDir,
+                cwd: worktreePath || this.workingDir,
                 encoding: 'utf-8'
               }
             );
@@ -326,7 +329,7 @@ export class AddressTaskExecutor {
           }
 
           try {
-            const executionLog = await this.getClaudeExecutor().executeTask(prompt, this.workingDir);
+            const executionLog = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
             spinner.succeed('Claude Code execution completed');
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
@@ -357,7 +360,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
 
             // Get the commit hash
             const commitHash = execSync('git rev-parse HEAD', {
-              cwd: this.workingDir,
+              cwd: worktreePath || this.workingDir,
               encoding: 'utf-8'
             }).trim();
 
@@ -386,7 +389,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
               execSync(
                 `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody}"`,
                 {
-                  cwd: this.workingDir,
+                  cwd: worktreePath || this.workingDir,
                   stdio: 'pipe'
                 }
               );
@@ -414,17 +417,17 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
           try {
             // Get the latest commit changes
             const latestCommit = execSync('git rev-parse HEAD', {
-              cwd: this.workingDir,
+              cwd: worktreePath || this.workingDir,
               encoding: 'utf-8'
             }).trim();
 
             const commitDiff = execSync(`git show ${latestCommit} --format="" --unified=3`, {
-              cwd: this.workingDir,
+              cwd: worktreePath || this.workingDir,
               encoding: 'utf-8'
             });
 
             const changedFiles = execSync(`git show --name-only --format="" ${latestCommit}`, {
-              cwd: this.workingDir,
+              cwd: worktreePath || this.workingDir,
               encoding: 'utf-8'
             }).trim().split('\n').filter(Boolean);
 
@@ -444,7 +447,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
             execSync(
               `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
               {
-                cwd: this.workingDir,
+                cwd: worktreePath || this.workingDir,
                 stdio: 'pipe'
               }
             );
@@ -452,6 +455,16 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
           } catch (error) {
             spinner.fail('Failed to add review comment');
             console.error(error);
+          }
+        }
+
+        // Clean up worktree after processing branch
+        if (this.gitManager && worktreePath) {
+          try {
+            this.gitManager.switchToOriginalDir();
+            await this.gitManager.removeWorktree(branch);
+          } catch (error) {
+            console.log(chalk.yellow(`⚠️ Could not clean up worktree: ${error}`));
           }
         }
       }
@@ -478,7 +491,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
       const repoInfo = execSync(
         'gh repo view --json owner,name',
         {
-          cwd: this.workingDir,
+          cwd: this.gitManager?.['originalWorkingDir'] || this.workingDir,
           encoding: 'utf-8'
         }
       );
@@ -515,7 +528,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
       const graphqlResult = execSync(
         `gh api graphql -f query='${graphqlQuery}'`,
         {
-          cwd: this.workingDir,
+          cwd: this.gitManager?.['originalWorkingDir'] || this.workingDir,
           encoding: 'utf-8'
         }
       );

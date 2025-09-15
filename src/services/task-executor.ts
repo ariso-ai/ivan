@@ -296,6 +296,8 @@ export class TaskExecutor {
     console.log(chalk.cyan.bold(`📝 Task: ${task.description}`));
 
     let spinner = ora('Updating task status...').start();
+    let worktreePath: string | null = null;
+    let branchName: string | null = null;
 
     try {
       await this.jobManager.updateTaskStatus(task.uuid, 'active');
@@ -311,14 +313,12 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      const branchName = this.gitManager.generateBranchName(task.description);
+      branchName = this.gitManager.generateBranchName(task.description);
 
-      spinner = ora(`Creating branch: ${branchName}`).start();
-      if (!this.gitManager) {
-        throw new Error('GitManager not initialized');
-      }
-      await this.gitManager.createBranch(branchName);
-      spinner.succeed(`Branch created: ${branchName}`);
+      spinner = ora(`Creating worktree for branch: ${branchName}`).start();
+      worktreePath = await this.gitManager.createWorktree(branchName);
+      this.gitManager.switchToWorktree(worktreePath);
+      spinner.succeed(`Worktree created: ${worktreePath}`);
 
       await this.jobManager.updateTaskBranch(task.uuid, branchName);
 
@@ -330,7 +330,9 @@ export class TaskExecutor {
         taskWithInstructions = `${task.description}\n\nRepository-specific instructions:\n${this.repoInstructions}`;
       }
 
-      const executionLog = await this.getClaudeExecutor().executeTask(taskWithInstructions, this.workingDir);
+      // Use worktree path for Claude execution, falling back to workingDir if needed
+      const executionPath = worktreePath || this.workingDir;
+      const executionLog = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath);
       spinner.succeed('Claude Code execution completed');
 
       spinner = ora('Storing execution log...').start();
@@ -407,6 +409,12 @@ export class TaskExecutor {
 
       console.error(chalk.red(`❌ Failed to execute task: ${task.description}`), error);
       throw error;
+    } finally {
+      // Switch back to original directory and clean up worktree
+      if (this.gitManager && worktreePath && branchName) {
+        this.gitManager.switchToOriginalDir();
+        await this.gitManager.removeWorktree(branchName);
+      }
     }
   }
 }

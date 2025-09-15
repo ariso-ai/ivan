@@ -1,13 +1,17 @@
 import { execSync } from 'child_process';
 import chalk from 'chalk';
 import { OpenAIService } from './openai-service.js';
+import path from 'path';
+import { promises as fs } from 'fs';
 
 export class GitManager {
   private workingDir: string;
   private openaiService: OpenAIService | null = null;
+  private originalWorkingDir: string;
 
   constructor(workingDir: string) {
     this.workingDir = workingDir;
+    this.originalWorkingDir = workingDir;
   }
 
   private getOpenAIService(): OpenAIService {
@@ -438,5 +442,80 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       // Fallback to a generic message if OpenAI fails
       return 'please review the changes and verify the implementation meets requirements';
     }
+  }
+
+  async createWorktree(branchName: string): Promise<string> {
+    this.ensureGitRepo();
+
+    try {
+      // Create a temporary directory for the worktree
+      const worktreePath = path.join(path.dirname(this.originalWorkingDir), '.ivan-worktrees', branchName);
+
+      // Ensure the parent directory exists
+      await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+
+      // Create the worktree
+      const escapedBranchName = branchName.replace(/"/g, '\\"');
+      const escapedPath = worktreePath.replace(/"/g, '\\"');
+
+      // Check if branch already exists
+      try {
+        execSync(`git rev-parse --verify "${escapedBranchName}"`, {
+          cwd: this.originalWorkingDir,
+          stdio: 'ignore'
+        });
+        // Branch exists, create worktree from it
+        execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
+          cwd: this.originalWorkingDir,
+          stdio: 'pipe'
+        });
+      } catch {
+        // Branch doesn't exist, create new branch in worktree
+        execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
+          cwd: this.originalWorkingDir,
+          stdio: 'pipe'
+        });
+      }
+
+      console.log(chalk.green(`✅ Created worktree at: ${worktreePath}`));
+      return worktreePath;
+    } catch (error) {
+      throw new Error(`Failed to create worktree for branch ${branchName}: ${error}`);
+    }
+  }
+
+  async removeWorktree(branchName: string): Promise<void> {
+    try {
+      const worktreePath = path.join(path.dirname(this.originalWorkingDir), '.ivan-worktrees', branchName);
+      const escapedPath = worktreePath.replace(/"/g, '\\"');
+
+      // Remove the worktree
+      execSync(`git worktree remove --force "${escapedPath}"`, {
+        cwd: this.originalWorkingDir,
+        stdio: 'pipe'
+      });
+
+      // Prune worktree list
+      execSync('git worktree prune', {
+        cwd: this.originalWorkingDir,
+        stdio: 'pipe'
+      });
+
+      console.log(chalk.green(`✅ Removed worktree for branch: ${branchName}`));
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Could not remove worktree: ${error}`));
+    }
+  }
+
+  switchToWorktree(worktreePath: string): void {
+    this.workingDir = worktreePath;
+  }
+
+  switchToOriginalDir(): void {
+    this.workingDir = this.originalWorkingDir;
+  }
+
+  getWorktreePath(branchName: string): string {
+    return path.join(path.dirname(this.originalWorkingDir), '.ivan-worktrees', branchName);
   }
 }
