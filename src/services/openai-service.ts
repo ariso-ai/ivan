@@ -16,7 +16,7 @@ export class OpenAIService {
 
     if (!config?.openaiApiKey || config.openaiApiKey === '') {
       // Prompt for the API key
-      const apiKey = await this.configManager.promptForMissingConfig('openaiApiKey');
+      await this.configManager.promptForMissingConfig('openaiApiKey');
       config = this.configManager.getConfig();
     }
 
@@ -31,7 +31,10 @@ export class OpenAIService {
 
   async getClient(): Promise<OpenAI> {
     await this.ensureInitialized();
-    return this.openai!;
+    if (!this.openai) {
+      throw new Error('OpenAI client not initialized');
+    }
+    return this.openai;
   }
 
   async generateCommitMessage(diff: string, changedFiles: string[]): Promise<string> {
@@ -57,7 +60,10 @@ Rules:
 Return only the commit message, nothing else.`;
 
     try {
-      const response = await this.openai!.chat.completions.create({
+      if (!this.openai) {
+        throw new Error('OpenAI client not initialized');
+      }
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -105,7 +111,10 @@ Generate:
    - Any notable details`;
 
     try {
-      const response = await this.openai!.chat.completions.create({
+      if (!this.openai) {
+        throw new Error('OpenAI client not initialized');
+      }
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

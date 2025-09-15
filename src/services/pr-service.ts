@@ -80,9 +80,9 @@ export class PRService {
       }
 
       return pullRequests;
-    } catch (_error) {
-      console.error(chalk.red('Error fetching PRs:'), _error);
-      throw _error;
+    } catch (error) {
+      console.error(chalk.red('Error fetching PRs:'), error);
+      throw error;
     }
   }
 
@@ -170,7 +170,7 @@ export class PRService {
       }
 
       return unaddressedComments;
-    } catch (_error) {
+    } catch {
       // If there's an error fetching comments, return empty array
       return [];
     }
@@ -220,7 +220,7 @@ export class PRService {
       }
 
       return { allFailures: failingChecks, testOrLintFailures };
-    } catch (_error) {
+    } catch {
       // If there's an error fetching checks, return empty arrays
       return { allFailures: [], testOrLintFailures: [] };
     }

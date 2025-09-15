@@ -321,7 +321,12 @@ export class GitManager {
     return `ivan/${sanitized}-${timestamp}`;
   }
 
-  async getPRInfo(prNumber: number): Promise<any> {
+  async getPRInfo(prNumber: number): Promise<{
+    headRefName: string;
+    number: number;
+    title: string;
+    url: string;
+  }> {
     try {
       const prJson = execSync(`gh pr view ${prNumber} --json headRefName,number,title,url`, {
         cwd: this.workingDir,
