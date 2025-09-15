@@ -59,6 +59,7 @@ ivan reconfigure
 - **OpenAI API Key**: For generating commit messages and PR descriptions
 - **Anthropic API Key**: For Claude Code execution
 - **Repository Instructions**: Optional coding guidelines specific to each repository
+- **Tool Permissions**: Configure which tools Claude Code can use per repository
 
 Configuration is stored in `~/.ivan/config.json` and the database in `~/.ivan/db.sqlite`
 
@@ -78,6 +79,40 @@ Then describe what you want to accomplish. Ivan will:
 3. Execute each task using Claude Code
 4. Create pull requests with proper commits and AI-generated review instructions
 5. Optionally wait 30 minutes and automatically address any PR comments
+
+### CLI Commands
+
+#### Main Commands
+
+```bash
+# Run Ivan to execute tasks (default command)
+ivan
+
+# Reconfigure API keys and settings
+ivan reconfigure
+
+# Address PR review comments and failing checks
+ivan address
+
+# Start the web interface
+ivan web [--port <port>]
+
+# Stop the web interface
+ivan web-stop [--port <port>]
+```
+
+#### Repository Configuration
+
+```bash
+# Set or update repository-specific instructions
+ivan edit-repo-instructions
+
+# Configure allowed tools for Claude Code in current repository
+ivan config-tools
+
+# Show current repository configuration
+ivan show-config
+```
 
 ### Addressing PR Comments
 
@@ -131,13 +166,31 @@ Then open http://localhost:3000 in your browser to see:
 Set coding guidelines that will be automatically applied to every task:
 
 ```bash
-# Ivan will prompt for instructions when you first use it in a repository
+# Set or update repository instructions
+ivan edit-repo-instructions
+
 # Instructions can include:
 - Coding style preferences
 - Framework-specific patterns
 - Testing requirements
 - Documentation standards
 ```
+
+**Note**: Ivan will prompt for instructions the first time you use it in a repository. If you decline, it won't ask again, but you can always configure them later using `ivan edit-repo-instructions`.
+
+### Tool Configuration
+
+Control which tools Claude Code can use in your repository:
+
+```bash
+# Configure allowed tools
+ivan config-tools
+
+# View current configuration
+ivan show-config
+```
+
+By default, all tools are allowed. You can restrict to specific tools like `["Bash", "Read", "Write", "Edit"]` for enhanced security.
 
 ## How It Works
 

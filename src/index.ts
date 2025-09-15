@@ -32,6 +32,14 @@ program
   });
 
 program
+  .command('edit-repo-instructions')
+  .description('Set or update repository-specific instructions')
+  .action(async () => {
+    const repoPath = process.cwd();
+    await configManager.promptForRepoInstructions(repoPath);
+  });
+
+program
   .command('show-config')
   .description('Show configuration for the current repository')
   .action(async () => {
@@ -221,7 +229,7 @@ async function main() {
   try {
     const args = process.argv.slice(2);
     
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'show-config', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
