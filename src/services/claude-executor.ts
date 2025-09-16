@@ -1,6 +1,8 @@
 import { query } from '@anthropic-ai/claude-code';
 import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
+import path from 'path';
+import { execSync } from 'child_process';
 
 export class ClaudeExecutor {
   private configManager: ConfigManager;
@@ -33,11 +35,32 @@ export class ClaudeExecutor {
       // Set the API key in environment for the SDK
       process.env.ANTHROPIC_API_KEY = await this.getApiKey();
 
-      // Get repository-specific allowed tools
-      const allowedTools = await this.configManager.getRepoAllowedTools(workingDir) || ['*'];
+      // Determine the original repo path (in case we're in a worktree)
+      let originalRepoPath = workingDir;
+
+      // Check if we're in a worktree by looking for .git file (not directory)
+      try {
+        const gitPath = path.join(workingDir, '.git');
+        const gitInfo = execSync(`cat "${gitPath}"`, { encoding: 'utf8' }).trim();
+        if (gitInfo.startsWith('gitdir:')) {
+          // We're in a worktree, extract the main repo path
+          const gitDirPath = gitInfo.replace('gitdir:', '').trim();
+          // Go up from .git/worktrees/<name> to get the main repo
+          if (gitDirPath.includes('/worktrees/')) {
+            originalRepoPath = path.resolve(gitDirPath, '../../..');
+          }
+        }
+      } catch {
+        // Not a worktree or couldn't determine, use workingDir as-is
+      }
+
+      // Get repository-specific allowed tools using the original repo path
+      const allowedTools = await this.configManager.getRepoAllowedTools(originalRepoPath);
 
       console.log(chalk.gray(`Working directory: ${workingDir}`));
-      console.log(chalk.gray(`Allowed tools: ${allowedTools.join(', ')}`));
+      if (allowedTools && allowedTools.length > 0) {
+        console.log(chalk.gray(`Allowed tools: ${allowedTools.join(', ')}`));
+      }
       console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
 
       let result = '';
@@ -60,9 +83,17 @@ export class ClaudeExecutor {
         for await (const message of query({
           prompt: taskDescription,
           options: {
-            abortController,
-            allowedTools, // Use repository-specific allowed tools
-            cwd: workingDir
+            abortController: abortController,
+            // 1) Point Claude at the exact worktree it should edit:
+            cwd: workingDir,
+
+            // 2) (Optional) If you sometimes hop folders, explicitly whitelist them:
+            additionalDirectories: [workingDir],
+
+            // 3) Allow edit tools in headless mode:
+            //    Use 'acceptEdits' for safer default; 'bypassPermissions' is most permissive.
+            permissionMode: 'bypassPermissions',
+            allowedTools: allowedTools
           }
         })) {
           // Handle different message types based on the SDK types
@@ -174,8 +205,8 @@ export class ClaudeExecutor {
           options: {
             abortController,
             customSystemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
-            allowedTools: [], // No tools needed for this
             cwd: workingDir
+            // No allowedTools restriction for task breakdown
           }
         })) {
           // Handle different message types

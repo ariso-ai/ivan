@@ -197,11 +197,23 @@ export class GitManager {
     this.ensureGitRepo();
 
     try {
-      const result = execSync('git diff --name-only HEAD', {
+      // Check both staged and unstaged changes, plus untracked files
+      const status = execSync('git status --porcelain', {
         cwd: this.workingDir,
         encoding: 'utf8'
       });
-      return result.trim().split('\n').filter(Boolean);
+
+      if (!status.trim()) {
+        return [];
+      }
+
+      // Parse git status output to get file names
+      const files = status.trim().split('\n').map(line => {
+        // Remove status codes and get the file path
+        return line.substring(3).trim();
+      }).filter(Boolean);
+
+      return files;
     } catch {
       return [];
     }
@@ -211,10 +223,26 @@ export class GitManager {
     this.ensureGitRepo();
 
     try {
-      return execSync('git diff HEAD', {
+      // First, add all changes to staging area (without committing)
+      // This allows us to see all changes including untracked files
+      execSync('git add -A', {
+        cwd: this.workingDir,
+        stdio: 'pipe'
+      });
+
+      // Get diff of all staged changes
+      const diff = execSync('git diff --cached', {
         cwd: this.workingDir,
         encoding: 'utf8'
       });
+
+      // Reset the staging area to leave files as they were
+      execSync('git reset', {
+        cwd: this.workingDir,
+        stdio: 'pipe'
+      });
+
+      return diff;
     } catch {
       return '';
     }
@@ -273,38 +301,49 @@ export class GitManager {
   }
 
   async cleanupAndSyncMain(): Promise<void> {
-    this.ensureGitRepo();
+    // Always operate on the original directory for main branch operations
+    const workDir = this.originalWorkingDir;
+
+    try {
+      // Ensure git repo in original directory
+      execSync('git rev-parse --git-dir', {
+        cwd: workDir,
+        stdio: 'ignore'
+      });
+    } catch {
+      throw new Error(`Directory is not a git repository: ${workDir}`);
+    }
 
     try {
       // Stash any uncommitted changes
       const status = execSync('git status --porcelain', {
-        cwd: this.workingDir,
+        cwd: workDir,
         encoding: 'utf8'
       });
 
       if (status.trim()) {
         console.log(chalk.yellow('⚠️  Stashing uncommitted changes'));
         execSync('git stash push -u -m "Ivan: stashing before cleanup"', {
-          cwd: this.workingDir,
+          cwd: workDir,
           stdio: 'pipe'
         });
       }
 
       // Remove any untracked files and directories
       execSync('git clean -fd', {
-        cwd: this.workingDir,
+        cwd: workDir,
         stdio: 'pipe'
       });
 
       // Switch to main branch
       execSync('git checkout main', {
-        cwd: this.workingDir,
+        cwd: workDir,
         stdio: 'pipe'
       });
 
       // Pull latest changes
       execSync('git pull origin main', {
-        cwd: this.workingDir,
+        cwd: workDir,
         stdio: 'pipe'
       });
 
@@ -448,11 +487,30 @@ Return ONLY the review request text, without any prefix like "Please review" sin
     this.ensureGitRepo();
 
     try {
-      // Create a temporary directory for the worktree
-      const worktreePath = path.join(path.dirname(this.originalWorkingDir), '.ivan-worktrees', branchName);
+      // Create worktree directory inside the repo's parent directory
+      // This ensures it has the same permissions as the main repo
+      const repoName = path.basename(this.originalWorkingDir);
+      const worktreeBasePath = path.join(path.dirname(this.originalWorkingDir), `.${repoName}-ivan-worktrees`);
+      const worktreePath = path.join(worktreeBasePath, branchName);
 
-      // Ensure the parent directory exists
-      await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+      // Ensure the parent directory exists with proper permissions
+      await fs.mkdir(worktreeBasePath, { recursive: true, mode: 0o755 });
+
+      // Remove any existing worktree at this path (in case of previous failure)
+      try {
+        execSync(`git worktree remove --force "${worktreePath}"`, {
+          cwd: this.originalWorkingDir,
+          stdio: 'ignore'
+        });
+      } catch {
+        // Ignore if worktree doesn't exist
+      }
+
+      // Clean up any stale worktree entries
+      execSync('git worktree prune', {
+        cwd: this.originalWorkingDir,
+        stdio: 'pipe'
+      });
 
       // Create the worktree
       const escapedBranchName = branchName.replace(/"/g, '\\"');
@@ -465,19 +523,85 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           stdio: 'ignore'
         });
         // Branch exists, create worktree from it
+        console.log(chalk.gray(`Creating worktree from existing branch: ${branchName}`));
         execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
           cwd: this.originalWorkingDir,
           stdio: 'pipe'
         });
       } catch {
         // Branch doesn't exist, create new branch in worktree
+        console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
         execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
           cwd: this.originalWorkingDir,
           stdio: 'pipe'
         });
       }
 
+      // Verify the worktree was created successfully
+      try {
+        await fs.access(worktreePath);
+      } catch {
+        throw new Error(`Worktree was not created successfully at ${worktreePath}`);
+      }
+
+      // Set proper permissions - make sure the current user owns all files
+      if (process.platform !== 'win32') {
+        try {
+          // Use the same permissions as the original repo
+          const stats = await fs.stat(this.originalWorkingDir);
+          await fs.chmod(worktreePath, stats.mode);
+
+          // Make sure all files are readable and writable by the owner
+          execSync(`find "${escapedPath}" -type f -exec chmod u+rw {} \\;`, {
+            cwd: path.dirname(worktreePath),
+            stdio: 'ignore'
+          });
+          execSync(`find "${escapedPath}" -type d -exec chmod u+rwx {} \\;`, {
+            cwd: path.dirname(worktreePath),
+            stdio: 'ignore'
+          });
+        } catch (permError) {
+          console.log(chalk.yellow(`⚠️ Could not set optimal permissions on worktree: ${permError}`));
+          // Try simpler chmod as fallback
+          try {
+            execSync(`chmod -R 755 "${escapedPath}"`, {
+              stdio: 'ignore'
+            });
+          } catch {
+            // Ignore permission errors on systems where chmod doesn't work
+          }
+        }
+      }
+
+      // Copy git config from main repo to ensure commits work
+      try {
+        const userName = execSync('git config user.name || true', {
+          cwd: this.originalWorkingDir,
+          encoding: 'utf8'
+        }).trim();
+        const userEmail = execSync('git config user.email || true', {
+          cwd: this.originalWorkingDir,
+          encoding: 'utf8'
+        }).trim();
+
+        if (userName) {
+          execSync(`git config user.name "${userName}"`, {
+            cwd: worktreePath,
+            stdio: 'pipe'
+          });
+        }
+        if (userEmail) {
+          execSync(`git config user.email "${userEmail}"`, {
+            cwd: worktreePath,
+            stdio: 'pipe'
+          });
+        }
+      } catch (configError) {
+        console.log(chalk.yellow(`⚠️ Could not copy git config to worktree: ${configError}`));
+      }
+
       console.log(chalk.green(`✅ Created worktree at: ${worktreePath}`));
+      console.log(chalk.gray('You can continue working in your main repository while Ivan works here'));
       return worktreePath;
     } catch (error) {
       throw new Error(`Failed to create worktree for branch ${branchName}: ${error}`);
@@ -486,7 +610,9 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
   async removeWorktree(branchName: string): Promise<void> {
     try {
-      const worktreePath = path.join(path.dirname(this.originalWorkingDir), '.ivan-worktrees', branchName);
+      const repoName = path.basename(this.originalWorkingDir);
+      const worktreeBasePath = path.join(path.dirname(this.originalWorkingDir), `.${repoName}-ivan-worktrees`);
+      const worktreePath = path.join(worktreeBasePath, branchName);
       const escapedPath = worktreePath.replace(/"/g, '\\"');
 
       // Remove the worktree
@@ -500,6 +626,16 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         cwd: this.originalWorkingDir,
         stdio: 'pipe'
       });
+
+      // Try to remove the base directory if it's empty
+      try {
+        const files = await fs.readdir(worktreeBasePath);
+        if (files.length === 0) {
+          await fs.rmdir(worktreeBasePath);
+        }
+      } catch {
+        // Ignore errors when cleaning up directories
+      }
 
       console.log(chalk.green(`✅ Removed worktree for branch: ${branchName}`));
     } catch (error) {
@@ -516,6 +652,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
   }
 
   getWorktreePath(branchName: string): string {
-    return path.join(path.dirname(this.originalWorkingDir), '.ivan-worktrees', branchName);
+    const repoName = path.basename(this.originalWorkingDir);
+    return path.join(path.dirname(this.originalWorkingDir), `.${repoName}-ivan-worktrees`, branchName);
   }
 }
