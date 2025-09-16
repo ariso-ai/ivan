@@ -517,24 +517,72 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       const escapedPath = worktreePath.replace(/"/g, '\\"');
 
       // Check if branch already exists
+      let branchExists = false;
       try {
         execSync(`git rev-parse --verify "${escapedBranchName}"`, {
           cwd: this.originalWorkingDir,
           stdio: 'ignore'
         });
-        // Branch exists, create worktree from it
-        console.log(chalk.gray(`Creating worktree from existing branch: ${branchName}`));
-        execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
-          cwd: this.originalWorkingDir,
-          stdio: 'pipe'
-        });
+        branchExists = true;
       } catch {
-        // Branch doesn't exist, create new branch in worktree
-        console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
-        execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
-          cwd: this.originalWorkingDir,
-          stdio: 'pipe'
-        });
+        branchExists = false;
+      }
+
+      // Try to create the worktree
+      try {
+        if (branchExists) {
+          // Branch exists, create worktree from it
+          console.log(chalk.gray(`Creating worktree from existing branch: ${branchName}`));
+          execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
+            cwd: this.originalWorkingDir,
+            stdio: 'pipe'
+          });
+        } else {
+          // Branch doesn't exist, create new branch in worktree
+          console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
+          execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
+            cwd: this.originalWorkingDir,
+            stdio: 'pipe'
+          });
+        }
+      } catch (worktreeError: any) {
+        // If worktree creation fails because it already exists, remove it and retry
+        if (worktreeError.message?.includes('already exists') || worktreeError.toString?.().includes('already exists')) {
+          console.log(chalk.yellow(`⚠️  Worktree already exists. Removing and recreating...`));
+
+          // Force remove the existing worktree
+          try {
+            execSync(`git worktree remove --force "${escapedPath}"`, {
+              cwd: this.originalWorkingDir,
+              stdio: 'pipe'
+            });
+          } catch {
+            // Ignore removal errors
+          }
+
+          // Clean up any stale worktree entries
+          execSync('git worktree prune', {
+            cwd: this.originalWorkingDir,
+            stdio: 'pipe'
+          });
+
+          // Retry creating the worktree
+          if (branchExists) {
+            console.log(chalk.gray(`Recreating worktree from existing branch: ${branchName}`));
+            execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
+              cwd: this.originalWorkingDir,
+              stdio: 'pipe'
+            });
+          } else {
+            console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
+            execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
+              cwd: this.originalWorkingDir,
+              stdio: 'pipe'
+            });
+          }
+        } else {
+          throw worktreeError;
+        }
       }
 
       // Verify the worktree was created successfully
@@ -598,6 +646,22 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         }
       } catch (configError) {
         console.log(chalk.yellow(`⚠️ Could not copy git config to worktree: ${configError}`));
+      }
+
+      // Check if package.json exists and run npm install if it does
+      try {
+        const packageJsonPath = path.join(worktreePath, 'package.json');
+        await fs.access(packageJsonPath);
+
+        console.log(chalk.cyan('📦 Found package.json, installing dependencies...'));
+        execSync('npm install', {
+          cwd: worktreePath,
+          stdio: 'inherit'
+        });
+        console.log(chalk.green('✅ Dependencies installed successfully'));
+      } catch {
+        // No package.json or npm install failed, continue without error
+        console.log(chalk.gray('ℹ️  No package.json found or npm install not needed'));
       }
 
       console.log(chalk.green(`✅ Created worktree at: ${worktreePath}`));
