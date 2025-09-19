@@ -123,7 +123,8 @@ program
 program
   .command('address')
   .description('Address open PRs with unaddressed comments or failing checks')
-  .action(async () => {
+  .argument('[pr-number]', 'Optional PR number to address')
+  .action(async (prNumber?: string) => {
     const wasConfigured = await checkConfiguration();
     if (wasConfigured) {
       console.log('');
@@ -134,7 +135,7 @@ program
     await runMigrations();
 
     const addressExecutor = new AddressExecutor();
-    await addressExecutor.executeWorkflow();
+    await addressExecutor.executeWorkflow(prNumber ? parseInt(prNumber) : undefined);
   });
 
 program

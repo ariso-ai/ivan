@@ -30,6 +30,70 @@ export class PRService {
     this.workingDir = workingDir;
   }
 
+  async getSpecificPRWithIssues(prNumber: number): Promise<PullRequest[]> {
+    try {
+      // Get specific PR
+      const prJson = execSync(`gh pr view ${prNumber} --json number,title,headRefName,url,state`, {
+        cwd: this.workingDir,
+        encoding: 'utf-8'
+      });
+
+      const pr = JSON.parse(prJson);
+
+      // Check if PR is open
+      if (pr.state !== 'OPEN') {
+        console.log(chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${pr.state})`));
+        return [];
+      }
+
+      const pullRequest: PullRequest = {
+        number: pr.number,
+        title: pr.title,
+        branch: pr.headRefName,
+        url: pr.url,
+        hasUnaddressedComments: false,
+        hasFailingChecks: false,
+        unaddressedComments: [],
+        failingChecks: [],
+        hasTestOrLintFailures: false,
+        testOrLintFailures: []
+      };
+
+      // Check for unaddressed comments
+      const comments = await this.getUnaddressedComments(pr.number);
+      if (comments.length > 0) {
+        pullRequest.hasUnaddressedComments = true;
+        pullRequest.unaddressedComments = comments;
+      }
+
+      // Check for failing checks
+      const { allFailures, testOrLintFailures } = await this.getFailingChecks(pr.number);
+      if (allFailures.length > 0) {
+        pullRequest.hasFailingChecks = true;
+        pullRequest.failingChecks = allFailures;
+      }
+      if (testOrLintFailures.length > 0) {
+        pullRequest.hasTestOrLintFailures = true;
+        pullRequest.testOrLintFailures = testOrLintFailures;
+      }
+
+      // Only include PR if it has issues
+      if (pullRequest.hasUnaddressedComments || pullRequest.hasFailingChecks) {
+        return [pullRequest];
+      }
+
+      return [];
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('no pull requests found')) {
+        console.error(chalk.red(`❌ PR #${prNumber} not found`));
+      } else {
+        console.error(chalk.red(`Error fetching PR #${prNumber}:`), error);
+      }
+      throw error;
+    }
+  }
+
   async getOpenPRsWithIssues(): Promise<PullRequest[]> {
     try {
       // Get all open PRs

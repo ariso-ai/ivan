@@ -2,7 +2,8 @@ import { execSync } from 'child_process';
 import chalk from 'chalk';
 import { OpenAIService } from './openai-service.js';
 import path from 'path';
-import { promises as fs } from 'fs';
+import { promises as fs, writeFileSync, unlinkSync } from 'fs';
+import os from 'os';
 
 export class GitManager {
   private workingDir: string;
@@ -86,7 +87,7 @@ export class GitManager {
         return;
       }
 
-      execSync('git add .', {
+      execSync('git add --all', {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
@@ -148,14 +149,30 @@ export class GitManager {
   async createPullRequest(title: string, body: string): Promise<string> {
     this.ensureGitRepo();
 
+    // Add attribution to @ivan-agent in the PR body
+    const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ivan-agent*`;
+
+    // Ensure the final body doesn't exceed GitHub's limit (65536 characters)
+    const MAX_BODY_LENGTH = 65536;
+    let finalBody = bodyWithAttribution;
+    if (finalBody.length > MAX_BODY_LENGTH) {
+      // Truncate the original body to fit within the limit, accounting for the attribution
+      const attributionText = '\n\n---\n*Co-authored with @ivan-agent*';
+      const truncationText = '\n\n... (description truncated to fit GitHub limits)';
+      const maxOriginalBodyLength = MAX_BODY_LENGTH - attributionText.length - truncationText.length;
+      finalBody = body.substring(0, maxOriginalBodyLength) + truncationText + attributionText;
+    }
+
+    // Write PR body to a temporary file to avoid shell escaping issues
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `pr-body-${Date.now()}.md`);
+    writeFileSync(tmpFile, finalBody, 'utf8');
+
     try {
       const escapedTitle = title.replace(/"/g, '\\"');
-      // Add attribution to @ivan-agent in the PR body
-      const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ivan-agent*`;
-      const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
 
       // Create PR and optionally assign to ivan-agent (will fail silently if user doesn't have permissions)
-      const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body "${escapedBody}" --assignee ivan-agent`, {
+      const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}" --assignee ivan-agent`, {
         cwd: this.workingDir,
         encoding: 'utf8',
         stdio: 'pipe'
@@ -163,6 +180,13 @@ export class GitManager {
 
       const prUrl = result.trim();
       console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
+
+      // Clean up temp file
+      try {
+        unlinkSync(tmpFile);
+      } catch {
+        // Ignore file deletion errors
+      }
 
       // Generate and add specific review comment
       await this.addReviewComment(prUrl);
@@ -172,9 +196,7 @@ export class GitManager {
       // If assignee fails, try without it
       try {
         const escapedTitle = title.replace(/"/g, '\\"');
-        const bodyWithAttribution = `${body}\n\n---\n*Co-authored with @ivan-agent*`;
-        const escapedBody = bodyWithAttribution.replace(/"/g, '\\"');
-        const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body "${escapedBody}"`, {
+        const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}"`, {
           cwd: this.workingDir,
           encoding: 'utf8',
           stdio: 'pipe'
@@ -189,6 +211,13 @@ export class GitManager {
         return prUrl;
       } catch (fallbackError) {
         throw new Error(`Failed to create pull request: ${fallbackError}`);
+      } finally {
+        // Clean up temp file
+        try {
+          unlinkSync(tmpFile);
+        } catch {
+          // Ignore file deletion errors
+        }
       }
     }
   }
@@ -545,10 +574,11 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             stdio: 'pipe'
           });
         }
-      } catch (worktreeError: any) {
+      } catch (worktreeError: unknown) {
         // If worktree creation fails because it already exists, remove it and retry
-        if (worktreeError.message?.includes('already exists') || worktreeError.toString?.().includes('already exists')) {
-          console.log(chalk.yellow(`⚠️  Worktree already exists. Removing and recreating...`));
+        const errorMessage = worktreeError instanceof Error ? worktreeError.message : String(worktreeError);
+        if (errorMessage.includes('already exists')) {
+          console.log(chalk.yellow('⚠️  Worktree already exists. Removing and recreating...'));
 
           // Force remove the existing worktree
           try {

@@ -90,6 +90,20 @@ Return only the commit message, nothing else.`;
   async generatePullRequestDescription(taskDescription: string, diff: string, changedFiles: string[]): Promise<{ title: string; body: string }> {
     await this.ensureInitialized();
 
+    // Truncate diff if it's too large (keep under 30K characters for the prompt)
+    // This leaves room for the response and other parts of the prompt
+    const MAX_DIFF_LENGTH = 30000;
+    let truncatedDiff = diff;
+    let diffWasTruncated = false;
+
+    if (diff.length > MAX_DIFF_LENGTH) {
+      // Take first and last portions of the diff to show context
+      const firstPart = diff.substring(0, MAX_DIFF_LENGTH / 2);
+      const lastPart = diff.substring(diff.length - MAX_DIFF_LENGTH / 2);
+      truncatedDiff = `${firstPart}\n\n... (diff truncated - ${diff.length} total characters) ...\n\n${lastPart}`;
+      diffWasTruncated = true;
+    }
+
     const prompt = `
 Generate a pull request title and description for the following task and changes.
 
@@ -98,17 +112,19 @@ Task: ${taskDescription}
 Changed files:
 ${changedFiles.map(file => `- ${file}`).join('\n')}
 
-Git diff:
+Git diff${diffWasTruncated ? ' (truncated for brevity)' : ''}:
 \`\`\`
-${diff}
+${truncatedDiff}
 \`\`\`
 
 Generate:
 1. A concise PR title (MUST be under 250 characters to fit GitHub's 256 character limit)
-2. A detailed PR description with:
-   - Summary of changes
-   - What was implemented
-   - Any notable details`;
+2. A concise PR description (MUST be under 10000 characters) with:
+   - Brief summary of changes (2-3 sentences)
+   - List of main changes (bullet points)
+   - Any important notes
+
+Keep the description focused and concise. Do NOT include the full diff in the description.`;
 
     try {
       if (!this.openai) {
@@ -144,7 +160,7 @@ Generate:
             }
           }
         },
-        max_tokens: 500,
+        max_tokens: 1000,
         temperature: 0.3
       });
 
@@ -154,14 +170,25 @@ Generate:
       }
 
       const parsed = JSON.parse(content);
+
       // Ensure title doesn't exceed GitHub's 256 character limit
       let title = `Ivan: ${parsed.title || taskDescription}`;
       if (title.length > 256) {
         title = title.substring(0, 253) + '...';
       }
+
+      // Ensure the PR body doesn't exceed GitHub's limit (65536 characters)
+      // Leave some room for the attribution footer that GitManager will add
+      const MAX_BODY_LENGTH = 65000;
+      let body = parsed.body || `Implemented: ${taskDescription}\n\n🤖 Generated with Ivan`;
+
+      if (body.length > MAX_BODY_LENGTH) {
+        body = body.substring(0, MAX_BODY_LENGTH) + '\n\n... (description truncated)';
+      }
+
       return {
         title,
-        body: parsed.body || `Implemented: ${taskDescription}\n\n🤖 Generated with Ivan`
+        body
       };
     } catch (error) {
       console.error('Failed to generate PR description:', error);
