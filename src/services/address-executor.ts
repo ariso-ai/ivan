@@ -34,9 +34,13 @@ export class AddressExecutor {
     return this.claudeExecutor;
   }
 
-  async executeWorkflow(): Promise<void> {
+  async executeWorkflow(specificPrNumber?: number): Promise<void> {
     try {
-      console.log(chalk.blue.bold('🔍 Scanning for PRs with unaddressed issues...'));
+      if (specificPrNumber) {
+        console.log(chalk.blue.bold(`🔍 Checking PR #${specificPrNumber} for unaddressed issues...`));
+      } else {
+        console.log(chalk.blue.bold('🔍 Scanning for PRs with unaddressed issues...'));
+      }
       console.log('');
 
       // Validate dependencies
@@ -60,12 +64,18 @@ export class AddressExecutor {
 
 
       // Fetch PRs with issues
-      const spinner = ora('Fetching open PRs...').start();
-      const prsWithIssues = await this.prService.getOpenPRsWithIssues();
+      const spinner = ora(specificPrNumber ? `Fetching PR #${specificPrNumber}...` : 'Fetching open PRs...').start();
+      const prsWithIssues = specificPrNumber
+        ? await this.prService.getSpecificPRWithIssues(specificPrNumber)
+        : await this.prService.getOpenPRsWithIssues();
       spinner.succeed(`Found ${prsWithIssues.length} PRs with unaddressed issues`);
 
       if (prsWithIssues.length === 0) {
-        console.log(chalk.green('✨ No PRs with unaddressed comments or failing checks found!'));
+        if (specificPrNumber) {
+          console.log(chalk.green(`✨ PR #${specificPrNumber} has no unaddressed comments or failing checks!`));
+        } else {
+          console.log(chalk.green('✨ No PRs with unaddressed comments or failing checks found!'));
+        }
         return;
       }
 
