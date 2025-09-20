@@ -205,8 +205,8 @@ ivan choose-model
 ```
 
 Available models:
-- **Claude 3.5 Sonnet (Latest)**: Default, balanced performance
-- **Claude 3.5 Haiku (Latest)**: Faster, good for simpler tasks
+- **Claude Sonnet 4**: Default, balanced performance
+- **Claude 3.5 Haiku**: Faster, good for simpler tasks
 - **Claude Opus 4.1**: Most capable, but slower
 
 ## How It Works
