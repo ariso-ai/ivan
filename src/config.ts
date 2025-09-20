@@ -10,6 +10,7 @@ interface Config {
   openaiApiKey: string;
   anthropicApiKey: string;
   version: string;
+  claudeModel?: string;
   repoInstructions?: { [repoPath: string]: string };
   repoAllowedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
@@ -336,12 +337,64 @@ export class ConfigManager {
     ]);
 
     const allowedTools = answers.allowedTools;
-    
+
     if (allowedTools.length > 0) {
       await this.setRepoAllowedTools(repoPath, allowedTools);
       console.log(chalk.green('✅ Repository tool configuration saved'));
     }
 
     return allowedTools;
+  }
+
+  async promptForModel(): Promise<void> {
+    console.log(chalk.blue.bold('🤖 Choose Claude Model'));
+    console.log('');
+    console.log(chalk.yellow('Select which Claude model to use for code tasks'));
+    console.log('');
+
+    const models = [
+      {
+        name: 'Claude 3.5 Sonnet (Latest) - Recommended for most tasks',
+        value: 'claude-3-5-sonnet-latest',
+        short: 'Claude 3.5 Sonnet'
+      },
+      {
+        name: 'Claude 3.5 Haiku (Latest) - Faster, good for simpler tasks',
+        value: 'claude-3-5-haiku-latest',
+        short: 'Claude 3.5 Haiku'
+      },
+      {
+        name: 'Claude Opus 4.1 - Most capable, but slower',
+        value: 'claude-opus-4-1-20250805',
+        short: 'Claude Opus 4.1'
+      }
+    ];
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select Claude model:',
+        choices: models,
+        default: 'claude-3-5-sonnet-latest'
+      }
+    ]);
+
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.claudeModel = answers.model;
+    await this.saveConfig(config);
+
+    const selectedModel = models.find(m => m.value === answers.model);
+    console.log('');
+    console.log(chalk.green(`✅ Model set to: ${selectedModel?.short || answers.model}`));
+  }
+
+  getClaudeModel(): string {
+    const config = this.getConfig();
+    return config?.claudeModel || 'claude-3-5-sonnet-latest';
   }
 }

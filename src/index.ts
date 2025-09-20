@@ -40,32 +40,39 @@ program
   });
 
 program
+  .command('choose-model')
+  .description('Configure which Claude model to use for code tasks')
+  .action(async () => {
+    await configManager.promptForModel();
+  });
+
+program
   .command('show-config')
   .description('Show configuration for the current repository')
   .action(async () => {
     const repoPath = process.cwd();
     const config = configManager.getConfig();
-    
+
     if (!config) {
       console.log(chalk.red('❌ No configuration found'));
       console.log(chalk.yellow('Run "ivan reconfigure" to set up Ivan'));
       return;
     }
-    
+
     console.log(chalk.blue.bold('📋 Repository Configuration'));
     console.log(chalk.gray(`Repository: ${repoPath}`));
     console.log('');
-    
+
     const allowedTools = await configManager.getRepoAllowedTools(repoPath);
     const instructions = await configManager.getRepoInstructions(repoPath);
-    
+
     console.log(chalk.cyan('Allowed Tools:'));
     if (allowedTools) {
       console.log('  ' + allowedTools.join(', '));
     } else {
       console.log(chalk.gray('  [*] (all tools allowed - default)'));
     }
-    
+
     console.log('');
     console.log(chalk.cyan('Repository Instructions:'));
     if (instructions) {
@@ -73,6 +80,11 @@ program
     } else {
       console.log(chalk.gray('  (none configured)'));
     }
+
+    console.log('');
+    console.log(chalk.cyan('Claude Model:'));
+    const model = config.claudeModel || 'claude-3-5-sonnet-latest';
+    console.log('  ' + model);
   });
 
 program
@@ -230,7 +242,7 @@ async function main() {
   try {
     const args = process.argv.slice(2);
     
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
