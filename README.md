@@ -112,6 +112,9 @@ ivan config-tools
 
 # Show current repository configuration
 ivan show-config
+
+# Choose which Claude model to use for tasks
+ivan choose-model
 ```
 
 ### Addressing PR Comments
@@ -191,6 +194,20 @@ ivan show-config
 ```
 
 By default, all tools are allowed. You can restrict to specific tools like `["Bash", "Read", "Write", "Edit"]` for enhanced security.
+
+### Model Selection
+
+Choose which Claude model to use for task execution:
+
+```bash
+# Select a Claude model
+ivan choose-model
+```
+
+Available models:
+- **Claude 3.5 Sonnet (Latest)**: Default, balanced performance
+- **Claude 3.5 Haiku (Latest)**: Faster, good for simpler tasks
+- **Claude Opus 4.1**: Most capable, but slower
 
 ## How It Works
 
