@@ -57,7 +57,11 @@ export class ClaudeExecutor {
       // Get repository-specific allowed tools using the original repo path
       const allowedTools = await this.configManager.getRepoAllowedTools(originalRepoPath);
 
+      // Get the selected model
+      const model = this.configManager.getClaudeModel();
+
       console.log(chalk.gray(`Working directory: ${workingDir}`));
+      console.log(chalk.gray(`Model: ${model}`));
       if (allowedTools && allowedTools.length > 0) {
         console.log(chalk.gray(`Allowed tools: ${allowedTools.join(', ')}`));
       }
@@ -93,7 +97,8 @@ export class ClaudeExecutor {
             // 3) Allow edit tools in headless mode:
             //    Use 'acceptEdits' for safer default; 'bypassPermissions' is most permissive.
             permissionMode: 'bypassPermissions',
-            allowedTools: allowedTools
+            allowedTools: allowedTools,
+            model: model
           }
         })) {
           // Handle different message types based on the SDK types
@@ -199,13 +204,17 @@ export class ClaudeExecutor {
         const originalDir = process.cwd();
         process.chdir(workingDir);
 
+        // Get the selected model for consistency
+        const model = this.configManager.getClaudeModel();
+
         // Generate task breakdown using the SDK
         for await (const message of query({
           prompt,
           options: {
             abortController,
             customSystemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
-            cwd: workingDir
+            cwd: workingDir,
+            model: model
             // No allowedTools restriction for task breakdown
           }
         })) {
