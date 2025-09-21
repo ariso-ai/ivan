@@ -317,6 +317,17 @@ export class JobManager {
     return task || null;
   }
 
+  async getTaskExecutionLog(taskUuid: string): Promise<string> {
+    const db = this.dbManager.getKysely();
+    const task = await db
+      .selectFrom('tasks')
+      .select('execution_log')
+      .where('uuid', '=', taskUuid)
+      .executeTakeFirst();
+
+    return task?.execution_log || '';
+  }
+
   async createJob(description: string, workingDir: string): Promise<string> {
     const job: Job = {
       uuid: randomUUID(),
