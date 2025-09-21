@@ -364,7 +364,7 @@ export class AddressTaskExecutor {
 
                 // All comments are review comments (inline code comments) now
                 execSync(
-                  `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/"/g, '\\"')}"`,
+                  `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`,
                   {
                     cwd: worktreePath || this.workingDir,
                     stdio: 'pipe'
@@ -438,7 +438,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
 
               // All comments are review comments (inline code comments) now
               execSync(
-                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/"/g, '\\"')}"`,
+                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`,
                 {
                   cwd: worktreePath || this.workingDir,
                   stdio: 'pipe'

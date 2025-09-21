@@ -169,7 +169,7 @@ export class GitManager {
     writeFileSync(tmpFile, finalBody, 'utf8');
 
     try {
-      const escapedTitle = title.replace(/"/g, '\\"');
+      const escapedTitle = title.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
       // Create PR and optionally assign to ivan-agent (will fail silently if user doesn't have permissions)
       const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}" --assignee ivan-agent`, {
@@ -195,7 +195,7 @@ export class GitManager {
     } catch {
       // If assignee fails, try without it
       try {
-        const escapedTitle = title.replace(/"/g, '\\"');
+        const escapedTitle = title.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
         const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}"`, {
           cwd: this.workingDir,
           encoding: 'utf8',
@@ -435,7 +435,7 @@ export class GitManager {
       // Add the review comment
       const reviewComment = `@codex ${reviewInstructions}`;
 
-      execSync(`gh pr comment ${prUrl} --body "${reviewComment.replace(/"/g, '\\"')}"`, {
+      execSync(`gh pr comment ${prUrl} --body "${reviewComment.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
