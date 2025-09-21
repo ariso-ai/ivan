@@ -167,10 +167,10 @@ export class AddressTaskExecutor {
           }
 
           try {
-            const executionLog = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
+            const result = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
             spinner.succeed('Claude Code execution completed');
 
-            await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
+            await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
 
             if (!this.gitManager) {
               throw new Error('GitManager not initialized');
@@ -329,17 +329,40 @@ export class AddressTaskExecutor {
           }
 
           try {
-            const executionLog = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
+            const result = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
             spinner.succeed('Claude Code execution completed');
 
-            await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
+            await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
+
+            // Use the last message from Claude's response
+            const lastMessage = result.lastMessage;
 
             if (!this.gitManager) {
               throw new Error('GitManager not initialized');
             }
             const changedFiles = this.gitManager.getChangedFiles();
             if (changedFiles.length === 0) {
-              console.log(chalk.yellow('⚠️  No changes made'));
+              console.log(chalk.yellow('⚠️  No changes made - Claude determined no changes were needed'));
+
+              // Reply to the comment explaining why no changes were made
+              spinner = ora('Replying to comment...').start();
+              try {
+                const replyBody = `Ivan: ${lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
+
+                // All comments are review comments (inline code comments) now
+                execSync(
+                  `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/"/g, '\\"')}"`,
+                  {
+                    cwd: worktreePath || this.workingDir,
+                    stdio: 'pipe'
+                  }
+                );
+                spinner.succeed('Reply added to comment');
+              } catch (error) {
+                spinner.fail('Failed to reply to comment');
+                console.error(error);
+              }
+
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
               continue;
             }
@@ -383,11 +406,13 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
             // Reply to the comment with the fix
             spinner = ora('Replying to comment...').start();
             try {
-              const replyBody = `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
+              const replyBody = lastMessage
+                ? `Ivan: ${lastMessage}\n\nThis has been addressed in commit ${commitHash.substring(0, 7)}`
+                : `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
 
               // All comments are review comments (inline code comments) now
               execSync(
-                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody}"`,
+                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/"/g, '\\"')}"`,
                 {
                   cwd: worktreePath || this.workingDir,
                   stdio: 'pipe'
@@ -638,5 +663,6 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       return 'please review the latest changes and verify all review comments have been properly addressed';
     }
   }
+
 }
 

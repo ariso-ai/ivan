@@ -27,7 +27,7 @@ export class ClaudeExecutor {
     return config.anthropicApiKey;
   }
 
-  async executeTask(taskDescription: string, workingDir: string): Promise<string> {
+  async executeTask(taskDescription: string, workingDir: string): Promise<{ log: string; lastMessage: string }> {
     console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
     console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
 
@@ -69,6 +69,7 @@ export class ClaudeExecutor {
 
       let result = '';
       let currentResponse = '';
+      let lastMessage = '';
       const abortController = new globalThis.AbortController();
 
       // Handle Ctrl+C
@@ -109,6 +110,7 @@ export class ClaudeExecutor {
                 if (content.type === 'text') {
                   console.log(content.text);
                   currentResponse += content.text + '\n';
+                  lastMessage = content.text; // Also capture text responses as last message
                 } else if (content.type === 'tool_use') {
                   console.log(chalk.gray(`Using tool: ${content.name}`));
                   // Add tool call to the log
@@ -142,6 +144,7 @@ export class ClaudeExecutor {
             if ('result' in message) {
               console.log(chalk.green(`Result: ${message.result}`));
               currentResponse += message.result + '\n';
+              lastMessage = message.result; // Capture the last message
             }
           } else if (message.type === 'system') {
             // System messages for initialization
@@ -164,7 +167,7 @@ export class ClaudeExecutor {
       }
 
       console.log(chalk.green('✅ Claude Code execution completed'));
-      return result;
+      return { log: result, lastMessage };
 
     } catch (error: unknown) {
       const err = error as Error & { message?: string };

@@ -332,11 +332,11 @@ export class TaskExecutor {
 
       // Use worktree path for Claude execution, falling back to workingDir if needed
       const executionPath = worktreePath || this.workingDir;
-      const executionLog = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath);
+      const result = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath);
       spinner.succeed('Claude Code execution completed');
 
       spinner = ora('Storing execution log...').start();
-      await this.jobManager.updateTaskExecutionLog(task.uuid, executionLog);
+      await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
       spinner.succeed('Execution log stored');
 
       if (!this.gitManager) {
