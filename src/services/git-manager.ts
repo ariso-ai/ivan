@@ -222,56 +222,88 @@ export class GitManager {
     }
   }
 
-  getChangedFiles(): string[] {
+  getChangedFiles(from?: string, to?: string): string[] {
     this.ensureGitRepo();
 
     try {
-      // Check both staged and unstaged changes, plus untracked files
-      const status = execSync('git status --porcelain', {
-        cwd: this.workingDir,
-        encoding: 'utf8'
-      });
+      if (from && to) {
+        // Get files changed between two refs
+        const files = execSync(`git diff --name-only ${from} ${to}`, {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        });
+        return files.split('\n').filter(line => line.trim());
+      } else if (from) {
+        // Get files changed from a specific ref to current
+        const files = execSync(`git diff --name-only ${from}`, {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        });
+        return files.split('\n').filter(line => line.trim());
+      } else {
+        // Default: Check both staged and unstaged changes, plus untracked files
+        const status = execSync('git status --porcelain', {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        });
 
-      if (!status.trim()) {
-        return [];
+        if (!status.trim()) {
+          return [];
+        }
+
+        // Parse git status output to get file names
+        const files = status.trim().split('\n').map(line => {
+          // Remove status codes and get the file path
+          return line.substring(3).trim();
+        }).filter(Boolean);
+
+        return files;
       }
-
-      // Parse git status output to get file names
-      const files = status.trim().split('\n').map(line => {
-        // Remove status codes and get the file path
-        return line.substring(3).trim();
-      }).filter(Boolean);
-
-      return files;
     } catch {
       return [];
     }
   }
 
-  getDiff(): string {
+  getDiff(from?: string, to?: string): string {
     this.ensureGitRepo();
 
     try {
-      // First, add all changes to staging area (without committing)
-      // This allows us to see all changes including untracked files
-      execSync('git add -A', {
-        cwd: this.workingDir,
-        stdio: 'pipe'
-      });
+      if (from && to) {
+        // Get diff between two refs
+        const diff = execSync(`git diff ${from} ${to}`, {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        });
+        return diff;
+      } else if (from) {
+        // Get diff from a specific ref to current
+        const diff = execSync(`git diff ${from}`, {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        });
+        return diff;
+      } else {
+        // Default: First, add all changes to staging area (without committing)
+        // This allows us to see all changes including untracked files
+        execSync('git add -A', {
+          cwd: this.workingDir,
+          stdio: 'pipe'
+        });
 
-      // Get diff of all staged changes
-      const diff = execSync('git diff --cached', {
-        cwd: this.workingDir,
-        encoding: 'utf8'
-      });
+        // Get diff of all staged changes
+        const diff = execSync('git diff --cached', {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        });
 
-      // Reset the staging area to leave files as they were
-      execSync('git reset', {
-        cwd: this.workingDir,
-        stdio: 'pipe'
-      });
+        // Reset the staging area to leave files as they were
+        execSync('git reset', {
+          cwd: this.workingDir,
+          stdio: 'pipe'
+        });
 
-      return diff;
+        return diff;
+      }
     } catch {
       return '';
     }

@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import ora from 'ora';
+import type { Ora } from 'ora';
 import { execSync } from 'child_process';
 import { JobManager } from './job-manager.js';
 import { GitManager } from './git-manager.js';
@@ -694,7 +695,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
     commitMessage: string,
     task: Task,
     workingDir: string,
-    spinner: any
+    spinner: Ora
   ): Promise<{ succeeded: boolean }> {
     let commitAttempts = 0;
     const maxCommitAttempts = 3;
@@ -707,16 +708,18 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         }
         await this.gitManager.commitChanges(commitMessage);
         commitSucceeded = true;
-      } catch (commitError: any) {
+      } catch (commitError) {
         commitAttempts++;
 
+        const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+
         // Check if this is a pre-commit hook failure
-        if (commitError.message?.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
+        if (errorMessage.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
           spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
           console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
 
           // Extract the error details from the commit error
-          const errorDetails = commitError.message || String(commitError);
+          const errorDetails = errorMessage;
 
           // Prepare prompt for Claude to fix the errors
           const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;

@@ -100,7 +100,7 @@ export class TaskExecutor {
         console.log(chalk.green('✅ Repository-specific instructions loaded'));
       }
 
-      const { tasks } = await this.jobManager.promptForTasks(this.workingDir);
+      const { tasks, prStrategy } = await this.jobManager.promptForTasks(this.workingDir);
 
       console.log('');
 
@@ -146,31 +146,37 @@ export class TaskExecutor {
 
         console.log(chalk.blue.bold('📋 Executing tasks...'));
 
-        for (let i = 0; i < buildTasks.length; i++) {
-          const task = buildTasks[i];
+        // Handle single PR strategy
+        if (prStrategy === 'single' && buildTasks.length > 1) {
+          await this.executeTasksWithSinglePR(buildTasks, confirmBeforeEach);
+        } else {
+          // Multiple PRs (default behavior)
+          for (let i = 0; i < buildTasks.length; i++) {
+            const task = buildTasks[i];
 
-          if (confirmBeforeEach) {
-            console.log('');
-            console.log(chalk.yellow(`Task ${i + 1} of ${buildTasks.length}: ${task.description}`));
+            if (confirmBeforeEach) {
+              console.log('');
+              console.log(chalk.yellow(`Task ${i + 1} of ${buildTasks.length}: ${task.description}`));
 
-            const inquirer = (await import('inquirer')).default;
-            const { shouldExecute } = await inquirer.prompt([
-              {
-                type: 'confirm',
-                name: 'shouldExecute',
-                message: 'Execute this task?',
-                default: true
+              const inquirer = (await import('inquirer')).default;
+              const { shouldExecute } = await inquirer.prompt([
+                {
+                  type: 'confirm',
+                  name: 'shouldExecute',
+                  message: 'Execute this task?',
+                  default: true
+                }
+              ]);
+
+              if (!shouldExecute) {
+                console.log(chalk.gray('⏭️  Skipping task'));
+                await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
+                continue;
               }
-            ]);
-
-            if (!shouldExecute) {
-              console.log(chalk.gray('⏭️  Skipping task'));
-              await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
-              continue;
             }
-          }
 
-          await this.executeTask(task);
+            await this.executeTask(task);
+          }
         }
 
         console.log('');
@@ -373,16 +379,18 @@ export class TaskExecutor {
           await this.gitManager.commitChanges(commitMessage);
           spinner.succeed('Changes committed');
           commitSucceeded = true;
-        } catch (commitError: any) {
+        } catch (commitError) {
           commitAttempts++;
 
+          const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+
           // Check if this is a pre-commit hook failure
-          if (commitError.message?.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
+          if (errorMessage.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
             spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
             console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
 
             // Extract the error details from the commit error
-            const errorDetails = commitError.message || String(commitError);
+            const errorDetails = errorMessage;
 
             // Prepare prompt for Claude to fix the errors
             const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
@@ -462,6 +470,225 @@ export class TaskExecutor {
       }
 
       console.error(chalk.red(`❌ Failed to execute task: ${task.description}`), error);
+      throw error;
+    } finally {
+      // Switch back to original directory and clean up worktree
+      if (this.gitManager && worktreePath && branchName) {
+        this.gitManager.switchToOriginalDir();
+        await this.gitManager.removeWorktree(branchName);
+      }
+    }
+  }
+
+  private async executeTasksWithSinglePR(tasks: Task[], confirmBeforeEach: boolean): Promise<void> {
+    console.log('');
+    console.log(chalk.blue('📦 Creating single branch for all tasks...'));
+
+    let spinner = ora('Cleaning up and syncing with main branch...').start();
+    let worktreePath: string | null = null;
+    let branchName: string | null = null;
+    let sessionId: string | undefined;
+
+    try {
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      await this.gitManager.cleanupAndSyncMain();
+      spinner.succeed('Repository cleaned and synced with main');
+
+      // Generate branch name based on all tasks
+      const combinedDescription = tasks.length === 1
+        ? tasks[0].description
+        : `Multiple tasks: ${tasks.slice(0, 2).map(t => t.description).join(', ')}${tasks.length > 2 ? '...' : ''}`;
+
+      branchName = this.gitManager.generateBranchName(combinedDescription);
+
+      spinner = ora(`Creating worktree for branch: ${branchName}`).start();
+      worktreePath = await this.gitManager.createWorktree(branchName);
+      this.gitManager.switchToWorktree(worktreePath);
+      spinner.succeed(`Worktree created: ${worktreePath}`);
+
+      // Update all tasks with the same branch
+      for (const task of tasks) {
+        await this.jobManager.updateTaskBranch(task.uuid, branchName);
+      }
+
+      // Execute each task on the same branch
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+
+        if (confirmBeforeEach) {
+          console.log('');
+          console.log(chalk.yellow(`Task ${i + 1} of ${tasks.length}: ${task.description}`));
+
+          const inquirer = (await import('inquirer')).default;
+          const { shouldExecute } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'shouldExecute',
+              message: 'Execute this task?',
+              default: true
+            }
+          ]);
+
+          if (!shouldExecute) {
+            console.log(chalk.gray('⏭️  Skipping task'));
+            await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
+            continue;
+          }
+        }
+
+        console.log('');
+        console.log(chalk.cyan.bold(`📝 Task ${i + 1}/${tasks.length}: ${task.description}`));
+
+        spinner = ora('Updating task status...').start();
+        await this.jobManager.updateTaskStatus(task.uuid, 'active');
+        spinner.succeed('Task marked as active');
+
+        spinner = ora('Executing task with Claude Code...').start();
+
+        // Append repository-specific instructions to the task if they exist
+        let taskWithInstructions = task.description;
+        if (this.repoInstructions) {
+          taskWithInstructions = `${task.description}\n\nRepository-specific instructions:\n${this.repoInstructions}`;
+        }
+
+        // Use worktree path for Claude execution
+        const executionPath = worktreePath || this.workingDir;
+        // Pass session ID to maintain context between tasks
+        const result = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath, sessionId);
+        // Store the session ID for the next task
+        sessionId = result.sessionId;
+        spinner.succeed('Claude Code execution completed');
+
+        spinner = ora('Storing execution log...').start();
+        await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
+        spinner.succeed('Execution log stored');
+
+        // Commit changes after each task (but don't create PR yet)
+        if (!this.gitManager) {
+          throw new Error('GitManager not initialized');
+        }
+        const changedFiles = this.gitManager.getChangedFiles();
+        if (changedFiles.length > 0) {
+          const diff = this.gitManager.getDiff();
+
+          spinner = ora('Generating commit message...').start();
+          const commitMessage = await this.getOpenAIService().generateCommitMessage(diff, changedFiles);
+          spinner.succeed(`Commit message generated: ${commitMessage}`);
+
+          spinner = ora('Committing changes...').start();
+
+          // Try to commit, handling pre-commit hook failures
+          let commitAttempts = 0;
+          const maxCommitAttempts = 3;
+          let commitSucceeded = false;
+
+          while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
+            try {
+              await this.gitManager.commitChanges(commitMessage);
+              spinner.succeed('Changes committed');
+              commitSucceeded = true;
+            } catch (commitError) {
+              commitAttempts++;
+
+              const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+
+              // Check if this is a pre-commit hook failure
+              if (errorMessage.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
+                spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
+                console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
+
+                // Extract the error details from the commit error
+                const errorDetails = errorMessage;
+
+                // Prepare prompt for Claude to fix the errors
+                const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
+
+                spinner = ora('Running Claude to fix pre-commit errors...').start();
+
+                try {
+                  // Run Claude to fix the errors (pass session ID to maintain context)
+                  const fixResult = await this.getClaudeExecutor().executeTask(fixPrompt, executionPath, sessionId);
+                  // Update session ID
+                  sessionId = fixResult.sessionId;
+                  spinner.succeed('Claude attempted to fix the errors');
+
+                  // Update the execution log with the fix attempt
+                  const previousLog = await this.jobManager.getTaskExecutionLog(task.uuid);
+                  await this.jobManager.updateTaskExecutionLog(
+                    task.uuid,
+                    `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
+                  );
+
+                  // Try to commit again on the next iteration
+                  spinner = ora('Retrying commit...').start();
+                } catch (fixError) {
+                  spinner.fail('Failed to run Claude to fix errors');
+                  console.error(chalk.red('Claude fix attempt failed:'), fixError);
+                  throw commitError; // Re-throw the original error
+                }
+              } else {
+                // Not a pre-commit error or max attempts reached
+                throw commitError;
+              }
+            }
+          }
+
+          if (!commitSucceeded) {
+            throw new Error(`Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`);
+          }
+        } else {
+          console.log(chalk.yellow('⚠️  No changes detected for this task'));
+        }
+
+        await this.jobManager.updateTaskStatus(task.uuid, 'completed');
+        console.log(chalk.green(`✅ Task ${i + 1}/${tasks.length} completed`));
+      }
+
+      // After all tasks are complete, create a single PR
+      spinner = ora('Pushing branch...').start();
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      await this.gitManager.pushBranch(branchName);
+      spinner.succeed('Branch pushed to origin');
+
+      // Generate PR description based on all tasks
+      spinner = ora('Generating pull request description...').start();
+      const allTaskDescriptions = tasks.map(t => `- ${t.description}`).join('\n');
+      const prTaskDescription = `Completed ${tasks.length} tasks:\n\n${allTaskDescriptions}`;
+
+      // Get combined diff for PR description
+      const finalDiff = this.gitManager.getDiff('origin/main', 'HEAD');
+      const allChangedFiles = this.gitManager.getChangedFiles('origin/main');
+
+      const { title, body } = await this.getOpenAIService().generatePullRequestDescription(
+        prTaskDescription,
+        finalDiff,
+        allChangedFiles
+      );
+      spinner.succeed('PR description generated');
+
+      spinner = ora('Creating pull request...').start();
+      const prUrl = await this.gitManager.createPullRequest(title, body);
+      spinner.succeed(`Pull request created: ${prUrl}`);
+
+      // Update all tasks with the same PR link
+      for (const task of tasks) {
+        await this.jobManager.updateTaskPrLink(task.uuid, prUrl);
+      }
+
+      console.log('');
+      console.log(chalk.green.bold(`✅ All ${tasks.length} tasks completed in a single PR!`));
+      console.log(chalk.cyan(`🔗 PR: ${prUrl}`));
+
+    } catch (error) {
+      if (spinner && spinner.isSpinning) {
+        spinner.fail('Batch task execution failed');
+      }
+
+      console.error(chalk.red('❌ Failed to execute tasks with single PR:'), error);
       throw error;
     } finally {
       // Switch back to original directory and clean up worktree
