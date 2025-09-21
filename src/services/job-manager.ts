@@ -8,13 +8,14 @@ export class JobManager {
   private dbManager: DatabaseManager;
   private claudeExecutor: ClaudeExecutor;
   private currentJobUuid: string | null = null;
+  private prStrategy: 'multiple' | 'single' = 'multiple';
 
   constructor() {
     this.dbManager = new DatabaseManager();
     this.claudeExecutor = new ClaudeExecutor();
   }
 
-  async promptForTasks(workingDir: string): Promise<{ job: Job; tasks: Task[] }> {
+  async promptForTasks(workingDir: string): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {
     console.log(chalk.blue.bold('🎯 What would you like to work on today?'));
     console.log('');
 
@@ -46,6 +47,7 @@ export class JobManager {
       .filter((task: string) => task.length > 0 && !task.startsWith('#'));
 
     let finalTasks = inputTasks;
+    let prStrategy: 'multiple' | 'single' = 'multiple';
 
     if (inputTasks.length === 1) {
       const { shouldBreakDown } = await inquirer.prompt([
@@ -59,6 +61,24 @@ export class JobManager {
 
       if (shouldBreakDown) {
         finalTasks = await this.generateTaskBreakdownWithClaude(inputTasks[0], workingDir);
+
+        // If multiple tasks were generated, ask about PR strategy
+        if (finalTasks.length > 1) {
+          const { userPrStrategy } = await inquirer.prompt([
+            {
+              type: 'list',
+              name: 'userPrStrategy',
+              message: 'How would you like to handle pull requests for these tasks?',
+              choices: [
+                { name: 'Create one pull request per task (default)', value: 'multiple' },
+                { name: 'Create a single pull request for all tasks', value: 'single' }
+              ],
+              default: 'multiple'
+            }
+          ]);
+          prStrategy = userPrStrategy;
+          this.prStrategy = prStrategy;
+        }
       }
     } else if (inputTasks.length > 1) {
       // For manually entered multiple tasks, also offer selection
@@ -131,7 +151,7 @@ export class JobManager {
       console.log(chalk.gray(`  ${index + 1}. ${task.description}`));
     });
 
-    return { job, tasks };
+    return { job, tasks, prStrategy };
   }
 
   private async generateTaskBreakdownWithClaude(originalTask: string, workingDir: string): Promise<string[]> {
@@ -361,6 +381,10 @@ export class JobManager {
 
   getCurrentJobUuid(): string | null {
     return this.currentJobUuid;
+  }
+
+  getPrStrategy(): 'multiple' | 'single' {
+    return this.prStrategy;
   }
 
   close(): void {

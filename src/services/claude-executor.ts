@@ -27,7 +27,7 @@ export class ClaudeExecutor {
     return config.anthropicApiKey;
   }
 
-  async executeTask(taskDescription: string, workingDir: string): Promise<{ log: string; lastMessage: string }> {
+  async executeTask(taskDescription: string, workingDir: string, sessionId?: string): Promise<{ log: string; lastMessage: string; sessionId: string }> {
     console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
     console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
 
@@ -70,6 +70,7 @@ export class ClaudeExecutor {
       let result = '';
       let currentResponse = '';
       let lastMessage = '';
+      let currentSessionId = sessionId; // Move this outside the try block
       const abortController = new globalThis.AbortController();
 
       // Handle Ctrl+C
@@ -99,7 +100,9 @@ export class ClaudeExecutor {
             //    Use 'acceptEdits' for safer default; 'bypassPermissions' is most permissive.
             permissionMode: 'bypassPermissions',
             allowedTools: allowedTools,
-            model: model
+            model: model,
+            // Resume from previous session if provided
+            resume: sessionId
           }
         })) {
           // Handle different message types based on the SDK types
@@ -151,7 +154,14 @@ export class ClaudeExecutor {
             if (message.subtype === 'init') {
               console.log(chalk.gray(`Initialized with model: ${message.model}`));
               result += `[System: Initialized with model: ${message.model}]\n\n`;
+              // Extract session ID from the system message if available
+              if ('session_id' in message && typeof message.session_id === 'string') {
+                currentSessionId = message.session_id;
+              }
             }
+          } else if ('session_id' in message && typeof message.session_id === 'string') {
+            // Capture session ID from any message that has it
+            currentSessionId = message.session_id;
           }
         }
 
@@ -167,7 +177,7 @@ export class ClaudeExecutor {
       }
 
       console.log(chalk.green('✅ Claude Code execution completed'));
-      return { log: result, lastMessage };
+      return { log: result, lastMessage, sessionId: currentSessionId || '' };
 
     } catch (error: unknown) {
       const err = error as Error & { message?: string };
