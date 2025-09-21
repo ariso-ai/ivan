@@ -708,6 +708,10 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         }
         await this.gitManager.commitChanges(commitMessage);
         commitSucceeded = true;
+        // Stop the spinner if we're retrying
+        if (commitAttempts > 0 && spinner.isSpinning) {
+          spinner.succeed('Commit successful after retry');
+        }
       } catch (commitError) {
         commitAttempts++;
 

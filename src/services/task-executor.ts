@@ -377,7 +377,12 @@ export class TaskExecutor {
       while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
         try {
           await this.gitManager.commitChanges(commitMessage);
-          spinner.succeed('Changes committed');
+          // Only show success message if spinner is running (first attempt)
+          if (commitAttempts === 0) {
+            spinner.succeed('Changes committed');
+          } else if (spinner.isSpinning) {
+            spinner.succeed('Commit successful after retry');
+          }
           commitSucceeded = true;
         } catch (commitError) {
           commitAttempts++;
@@ -587,7 +592,12 @@ export class TaskExecutor {
           while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
             try {
               await this.gitManager.commitChanges(commitMessage);
-              spinner.succeed('Changes committed');
+              // Only show success message if spinner is running (first attempt)
+              if (commitAttempts === 0) {
+                spinner.succeed('Changes committed');
+              } else if (spinner.isSpinning) {
+                spinner.succeed('Commit successful after retry');
+              }
               commitSucceeded = true;
             } catch (commitError) {
               commitAttempts++;
