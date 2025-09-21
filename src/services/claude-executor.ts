@@ -220,14 +220,16 @@ export class ClaudeExecutor {
         // Get the selected model for consistency
         const model = this.configManager.getClaudeModel();
 
-        // Generate task breakdown using the SDK
+        // Generate task breakdown using the SDK in plan mode
         for await (const message of query({
           prompt,
           options: {
             abortController,
             customSystemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
             cwd: workingDir,
-            model: model
+            model: model,
+            // Use plan mode for task breakdown
+            permissionMode: 'plan'
             // No allowedTools restriction for task breakdown
           }
         })) {
@@ -237,9 +239,19 @@ export class ClaudeExecutor {
             if (message.message.content) {
               for (const content of message.message.content) {
                 if (content.type === 'text') {
+                  // Output Claude's message as it comes through
+                  console.log(content.text);
                   taskList += content.text;
+                } else if (content.type === 'tool_use') {
+                  // Output tool usage information
+                  console.log(chalk.gray(`Using tool: ${content.name}`));
                 }
               }
+            }
+          } else if (message.type === 'system') {
+            // System messages for initialization
+            if (message.subtype === 'init') {
+              console.log(chalk.gray(`Initialized with model: ${message.model} in plan mode`));
             }
           } else if (message.type === 'result') {
             // Final result message
