@@ -189,8 +189,21 @@ export class AddressTaskExecutor {
             if (!this.gitManager) {
               throw new Error('GitManager not initialized');
             }
-            await this.gitManager.commitChanges(commitMessage);
-            spinner.succeed('Changes committed');
+
+            // Try to commit, handling pre-commit hook failures
+            const commitResult = await this.tryCommitWithFixes(
+              commitMessage,
+              task,
+              worktreePath || this.workingDir,
+              spinner
+            );
+
+            if (commitResult.succeeded) {
+              spinner.succeed('Changes committed');
+            } else {
+              spinner.fail('Failed to commit after multiple attempts');
+              throw new Error('Pre-commit hook failures could not be fixed');
+            }
 
             // Get the commit hash
             const commitHash = execSync('git rev-parse HEAD', {
@@ -373,13 +386,26 @@ export class AddressTaskExecutor {
 
 ${comment.body.substring(0, 200)}${comment.body.length > 200 ? '...' : ''}
 
-Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
 
             if (!this.gitManager) {
               throw new Error('GitManager not initialized');
             }
-            await this.gitManager.commitChanges(commitMessage);
-            spinner.succeed('Changes committed');
+
+            // Try to commit, handling pre-commit hook failures
+            const commitResult = await this.tryCommitWithFixes(
+              commitMessage,
+              task,
+              worktreePath || this.workingDir,
+              spinner
+            );
+
+            if (commitResult.succeeded) {
+              spinner.succeed('Changes committed');
+            } else {
+              spinner.fail('Failed to commit after multiple attempts');
+              throw new Error('Pre-commit hook failures could not be fixed');
+            }
 
             // Get the commit hash
             const commitHash = execSync('git rev-parse HEAD', {
@@ -662,6 +688,68 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       // Fallback to a generic message if OpenAI fails
       return 'please review the latest changes and verify all review comments have been properly addressed';
     }
+  }
+
+  private async tryCommitWithFixes(
+    commitMessage: string,
+    task: Task,
+    workingDir: string,
+    spinner: any
+  ): Promise<{ succeeded: boolean }> {
+    let commitAttempts = 0;
+    const maxCommitAttempts = 3;
+    let commitSucceeded = false;
+
+    while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
+      try {
+        if (!this.gitManager) {
+          throw new Error('GitManager not initialized');
+        }
+        await this.gitManager.commitChanges(commitMessage);
+        commitSucceeded = true;
+      } catch (commitError: any) {
+        commitAttempts++;
+
+        // Check if this is a pre-commit hook failure
+        if (commitError.message?.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
+          spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
+          console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
+
+          // Extract the error details from the commit error
+          const errorDetails = commitError.message || String(commitError);
+
+          // Prepare prompt for Claude to fix the errors
+          const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
+
+          spinner = ora('Running Claude to fix pre-commit errors...').start();
+
+          try {
+            // Run Claude to fix the errors
+            const fixResult = await this.getClaudeExecutor().executeTask(fixPrompt, workingDir);
+            spinner.succeed('Claude attempted to fix the errors');
+
+            // Update the execution log with the fix attempt
+            const previousLog = await this.jobManager.getTaskExecutionLog(task.uuid);
+            await this.jobManager.updateTaskExecutionLog(
+              task.uuid,
+              `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
+            );
+
+            // Try to commit again on the next iteration
+            spinner = ora('Retrying commit...').start();
+          } catch (fixError) {
+            spinner.fail('Failed to run Claude to fix errors');
+            console.error(chalk.red('Claude fix attempt failed:'), fixError);
+            throw commitError; // Re-throw the original error
+          }
+        } else {
+          // Not a pre-commit error or max attempts reached
+          throw commitError;
+        }
+      }
+    }
+
+    return { succeeded: commitSucceeded };
   }
 
 }
