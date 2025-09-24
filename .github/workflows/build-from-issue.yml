@@ -96,7 +96,7 @@ jobs:
 
             // Sanitize title for shell usage by escaping special characters
             const sanitizedTitle = issueTitle
-              .replace(/\/g, '\\\\')
+              .replace(/\\/g, '\\\\')
               .replace(/'/g, "'\\''")
               .replace(/"/g, '\\"')
               .replace(/`/g, '\\`')
