@@ -11,9 +11,12 @@ jobs:
       startsWith(github.event.comment.body, '/build')
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       issues: write
       pull-requests: write
+      statuses: write
+      checks: write
 
     steps:
       - name: Check if user is core contributor
