@@ -112,25 +112,40 @@ jobs:
             core.setOutput('body', issueBody);
             core.setOutput('number', issue.number);
 
-      - name: Run Claude Code on issue description
-        uses: anthropics/claude-code-action@main
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            You are working on issue #${{ github.event.issue.number }}: ${{ steps.issue.outputs.title }}
+      - name: Install and run Claude Code CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Install Claude Code CLI
+          npm install -g claude-code
 
-            Issue Description:
-            ${{ steps.issue.outputs.body }}
+          # Create a comprehensive prompt for Claude
+          cat > claude_prompt.txt << 'PROMPT_END'
+          Fix issue #${{ github.event.issue.number }}: ${{ steps.issue.outputs.title }}
 
-            Please implement the changes requested in this issue. Make sure to:
-            1. Understand the requirements from the issue description
-            2. Implement the necessary changes
-            3. Follow the existing code style and conventions
-            4. Add appropriate tests if applicable
-            5. Ensure the code builds and tests pass
+          Issue description:
+          ${{ steps.issue.outputs.body }}
 
-            After implementing the changes, provide a summary of what was changed.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          Instructions:
+          1. Analyze the issue description carefully
+          2. Search through the codebase to understand the current implementation
+          3. Implement the actual code changes needed to fix this issue
+          4. Modify existing files or create new ones as needed
+          5. Follow the existing code patterns and conventions
+          6. Make sure your changes are complete and functional
+
+          This is a real repository - make actual code changes to fix the issue, not just documentation.
+          PROMPT_END
+
+          # Run Claude Code with the prompt
+          claude-code run "$(cat claude_prompt.txt)" --yes --model claude-3-5-sonnet-20241022
+
+          # Remove any temporary files Claude Code might have created
+          rm -f claude_prompt.txt issue_description.txt output.txt 2>/dev/null || true
+
+          # Show what files were changed
+          echo "Files changed:"
+          git status --short
 
       - name: Check for changes
         id: changes
