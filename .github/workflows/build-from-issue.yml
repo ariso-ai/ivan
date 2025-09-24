@@ -1,0 +1,221 @@
+name: Build from Issue Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  check-and-build:
+    if: |
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/build')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Check if user is core contributor
+        id: check-permission
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const comment = context.payload.comment;
+            const commenter = comment.user.login;
+
+            // Check if user has write permission (core contributor)
+            try {
+              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: commenter
+              });
+
+              if (!['admin', 'write'].includes(permission.permission)) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: `@${commenter} Sorry, only core contributors can trigger builds.`
+                });
+                core.setFailed('User does not have write permission');
+              }
+
+              console.log(`User ${commenter} has ${permission.permission} permission`);
+            } catch (error) {
+              console.error('Permission check failed:', error);
+              core.setFailed('Permission check failed');
+            }
+
+      - name: React to comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate branch name
+        id: branch
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH_NAME="claude-build/issue-${ISSUE_NUMBER}-${TIMESTAMP}"
+          echo "name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Create new branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ${{ steps.branch.outputs.name }}
+
+      - name: Get issue details
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue = context.payload.issue;
+            const issueBody = issue.body || '';
+            const issueTitle = issue.title || '';
+
+            // Save issue details for Claude
+            const fs = require('fs');
+            fs.writeFileSync('issue_description.txt', issueBody);
+
+            // Output for later steps
+            core.setOutput('title', issueTitle);
+            core.setOutput('body', issueBody);
+            core.setOutput('number', issue.number);
+
+      - name: Run Claude Code on issue description
+        uses: anthropics/claude-code-action@main
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are working on issue #${{ github.event.issue.number }}: ${{ steps.issue.outputs.title }}
+
+            Issue Description:
+            ${{ steps.issue.outputs.body }}
+
+            Please implement the changes requested in this issue. Make sure to:
+            1. Understand the requirements from the issue description
+            2. Implement the necessary changes
+            3. Follow the existing code style and conventions
+            4. Add appropriate tests if applicable
+            5. Ensure the code builds and tests pass
+
+            After implementing the changes, provide a summary of what was changed.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git add -A
+          git commit -m "Implement changes for issue #${{ github.event.issue.number }}: ${{ steps.issue.outputs.title }}"
+          git push origin ${{ steps.branch.outputs.name }}
+
+      - name: Generate PR description with Claude
+        if: steps.changes.outputs.has_changes == 'true'
+        id: pr-description
+        uses: anthropics/claude-code-action@main
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Based on the git diff of the changes just made, generate:
+            1. A concise PR title (max 72 characters)
+            2. A detailed PR description explaining what was changed and why
+            3. A summary comment for the original issue
+
+            Original issue: #${{ github.event.issue.number }} - ${{ steps.issue.outputs.title }}
+
+            Git diff:
+            $(git diff HEAD~1)
+
+            Format your response as JSON with these keys:
+            - pr_title: The PR title
+            - pr_description: The PR description (can use markdown)
+            - issue_comment: A summary for the issue comment
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          output_format: json
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: create-pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let prData;
+            try {
+              // Try to parse the Claude response as JSON
+              const claudeResponse = `${{ steps.pr-description.outputs.response }}`;
+              prData = JSON.parse(claudeResponse);
+            } catch {
+              // Fallback if JSON parsing fails
+              prData = {
+                pr_title: `Fix: Issue #${{ github.event.issue.number }} - ${{ steps.issue.outputs.title }}`,
+                pr_description: `Automated implementation of issue #${{ github.event.issue.number }}`,
+                issue_comment: 'Pull request created with automated changes.'
+              };
+            }
+
+            // Create the PR
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: prData.pr_title || `Fix: Issue #${{ github.event.issue.number }}`,
+              body: `${prData.pr_description || 'Automated implementation'}\n\n---\n\nCloses #${{ github.event.issue.number }}\n\n@codex Please review this PR`,
+              head: '${{ steps.branch.outputs.name }}',
+              base: 'main'
+            });
+
+            core.setOutput('pr_number', pr.data.number);
+            core.setOutput('pr_url', pr.data.html_url);
+            core.setOutput('issue_comment', prData.issue_comment || 'Pull request created.');
+
+      - name: Comment on issue with PR link
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ github.event.issue.number }},
+              body: `🤖 Build triggered successfully!\n\n${{ steps.create-pr.outputs.issue_comment }}\n\nPull Request: #${{ steps.create-pr.outputs.pr_number }}\n\n@codex has been tagged for review.`
+            });
+
+      - name: Handle no changes
+        if: steps.changes.outputs.has_changes == 'false'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ github.event.issue.number }},
+              body: `No changes were needed based on the issue description. The codebase may already satisfy the requirements or additional clarification may be needed.`
+            });
