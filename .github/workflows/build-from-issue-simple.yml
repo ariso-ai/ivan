@@ -1,0 +1,237 @@
+name: Build from Issue Comment (Simple)
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  check-and-build:
+    if: |
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/build')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      issues: write
+      pull-requests: write
+      statuses: write
+      checks: write
+
+    steps:
+      - name: Check permissions and setup
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Check if API key is set
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "Error: ANTHROPIC_API_KEY is not set"
+            exit 1
+          fi
+
+          # Get commenter username
+          COMMENTER="${{ github.event.comment.user.login }}"
+          REPO="${{ github.repository }}"
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          # Check user permission using GitHub API
+          PERMISSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/collaborators/$COMMENTER/permission" \
+            | jq -r '.permission')
+
+          if [[ "$PERMISSION" != "admin" && "$PERMISSION" != "write" ]]; then
+            # Comment on issue about permission
+            curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+              -d "{\"body\":\"@$COMMENTER Sorry, only core contributors can trigger builds.\"}"
+            echo "User does not have write permission"
+            exit 1
+          fi
+
+          echo "User $COMMENTER has $PERMISSION permission"
+
+          # React to comment with rocket emoji
+          COMMENT_ID="${{ github.event.comment.id }}"
+          curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/issues/comments/$COMMENT_ID/reactions" \
+            -d '{"content":"rocket"}'
+
+      - name: Checkout repository
+        run: |
+          git clone https://github.com/${{ github.repository }}.git .
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create branch and run Claude
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Generate branch name
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH_NAME="claude-build/issue-${ISSUE_NUMBER}-${TIMESTAMP}"
+
+          # Create and checkout new branch
+          git checkout -b $BRANCH_NAME
+
+          # Get issue details
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY=$(cat << 'ISSUE_BODY_END'
+          ${{ github.event.issue.body }}
+          ISSUE_BODY_END
+          )
+
+          # Install Claude Code CLI
+          echo "Installing Claude Code CLI..."
+          npm install -g claude-code
+
+          # Create prompt file
+          cat > claude_prompt.txt << PROMPT_END
+          Fix issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
+
+          Issue description:
+          ${ISSUE_BODY}
+
+          Instructions:
+          1. Analyze the issue description carefully
+          2. Search through the codebase to understand the current implementation
+          3. Implement the actual code changes needed to fix this issue
+          4. Modify existing files or create new ones as needed
+          5. Follow the existing code patterns and conventions
+          6. Make sure your changes are complete and functional
+          7. Do NOT just create documentation - make actual code changes
+
+          This is a real repository - make actual code changes to fix the issue.
+          PROMPT_END
+
+          # Run Claude Code
+          echo "Running Claude Code to fix the issue..."
+          claude-code run "$(cat claude_prompt.txt)" --yes --model claude-3-5-sonnet-20241022 || true
+
+          # Clean up temporary files
+          rm -f claude_prompt.txt issue_description.txt output.txt 2>/dev/null || true
+
+          # Check for changes
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes were made"
+            # Comment on issue
+            curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+              -d '{"body":"No changes were needed based on the issue description. The codebase may already satisfy the requirements or additional clarification may be needed."}'
+            exit 0
+          fi
+
+          # Commit changes
+          git add -A
+          SAFE_TITLE=$(echo "$ISSUE_TITLE" | sed "s/'/'\\\\''/g; s/\`/\\\\\`/g")
+          git commit -m "Implement changes for issue #${ISSUE_NUMBER}: ${SAFE_TITLE}"
+
+          # Push branch
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git $BRANCH_NAME
+
+          # Store branch name for next step
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_ENV
+
+      - name: Create pull request
+        if: env.BRANCH_NAME != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          BRANCH_NAME="${{ env.BRANCH_NAME }}"
+          ISSUE_NUMBER="${{ env.ISSUE_NUMBER }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          REPO="${{ github.repository }}"
+
+          # Get the diff for Claude to summarize
+          DIFF=$(git diff origin/main..HEAD)
+
+          # Create a Python script to call Claude for PR description
+          cat > generate_pr_desc.py << 'PYTHON_END'
+          import os
+          import json
+          import sys
+          from anthropic import Anthropic
+
+          client = Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          diff = sys.stdin.read()
+          issue_number = os.environ['ISSUE_NUMBER']
+          issue_title = os.environ.get('ISSUE_TITLE', '')
+
+          prompt = f"""Based on these code changes for issue #{issue_number} - {issue_title}, generate:
+          1. A concise PR title (max 72 characters)
+          2. A detailed PR description explaining what was changed and why
+          3. A summary comment for the original issue
+
+          Git diff:
+          {diff[:8000]}  # Truncate if too long
+
+          Return JSON with keys: pr_title, pr_description, issue_comment"""
+
+          try:
+              message = client.messages.create(
+                  model="claude-3-5-sonnet-20241022",
+                  max_tokens=1024,
+                  messages=[{"role": "user", "content": prompt}]
+              )
+
+              # Try to parse as JSON, or create default response
+              response_text = message.content[0].text
+              try:
+                  data = json.loads(response_text)
+              except:
+                  data = {
+                      "pr_title": f"Fix: Issue #{issue_number}",
+                      "pr_description": "Automated implementation of the issue",
+                      "issue_comment": "Pull request created with automated changes."
+                  }
+
+              print(json.dumps(data))
+          except Exception as e:
+              # Fallback response
+              data = {
+                  "pr_title": f"Fix: Issue #{issue_number}",
+                  "pr_description": f"Automated implementation of issue #{issue_number}",
+                  "issue_comment": "Pull request created with automated changes."
+              }
+              print(json.dumps(data))
+          PYTHON_END
+
+          # Install anthropic Python client
+          pip install anthropic
+
+          # Generate PR description
+          PR_DATA=$(echo "$DIFF" | ISSUE_NUMBER=$ISSUE_NUMBER ISSUE_TITLE="$ISSUE_TITLE" python generate_pr_desc.py)
+
+          # Parse JSON response
+          PR_TITLE=$(echo "$PR_DATA" | jq -r '.pr_title')
+          PR_DESC=$(echo "$PR_DATA" | jq -r '.pr_description')
+          ISSUE_COMMENT=$(echo "$PR_DATA" | jq -r '.issue_comment')
+
+          # Create PR using GitHub API
+          PR_RESPONSE=$(curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/pulls" \
+            -d "{
+              \"title\": \"$PR_TITLE\",
+              \"body\": \"$PR_DESC\\n\\n---\\n\\nCloses #$ISSUE_NUMBER\\n\\n@codex Please review this PR\",
+              \"head\": \"$BRANCH_NAME\",
+              \"base\": \"main\"
+            }")
+
+          PR_NUMBER=$(echo "$PR_RESPONSE" | jq -r '.number')
+
+          # Comment on original issue
+          curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            -d "{\"body\":\"🤖 Build triggered successfully!\\n\\n$ISSUE_COMMENT\\n\\nPull Request: #$PR_NUMBER\\n\\n@codex has been tagged for review.\"}"
+
+          echo "Successfully created PR #$PR_NUMBER"
