@@ -94,8 +94,18 @@ jobs:
             const fs = require('fs');
             fs.writeFileSync('issue_description.txt', issueBody);
 
+            // Sanitize title for shell usage by escaping special characters
+            const sanitizedTitle = issueTitle
+              .replace(/\/g, '\\\\')
+              .replace(/'/g, "'\\''")
+              .replace(/"/g, '\\"')
+              .replace(/`/g, '\\`')
+              .replace(/\$/g, '\\$')
+              .replace(/!/g, '\\!');
+
             // Output for later steps
             core.setOutput('title', issueTitle);
+            core.setOutput('sanitized_title', sanitizedTitle);
             core.setOutput('body', issueBody);
             core.setOutput('number', issue.number);
 
@@ -132,7 +142,7 @@ jobs:
         if: steps.changes.outputs.has_changes == 'true'
         run: |
           git add -A
-          git commit -m "Implement changes for issue #${{ github.event.issue.number }}: ${{ steps.issue.outputs.title }}"
+          git commit -m "Implement changes for issue #${{ github.event.issue.number }}: ${{ steps.issue.outputs.sanitized_title }}"
           git push origin ${{ steps.branch.outputs.name }}
 
       - name: Generate PR description with Claude
@@ -174,7 +184,7 @@ jobs:
             } catch {
               // Fallback if JSON parsing fails
               prData = {
-                pr_title: `Fix: Issue #${{ github.event.issue.number }} - ${{ steps.issue.outputs.title }}`,
+                pr_title: `Fix: Issue #${{ github.event.issue.number }} - ${{ steps.issue.outputs.sanitized_title }}`,
                 pr_description: `Automated implementation of issue #${{ github.event.issue.number }}`,
                 issue_comment: 'Pull request created with automated changes.'
               };
