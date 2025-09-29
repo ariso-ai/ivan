@@ -34,10 +34,12 @@ export class AddressExecutor {
     return this.claudeExecutor;
   }
 
-  async executeWorkflow(specificPrNumber?: number): Promise<void> {
+  async executeWorkflow(specificPrNumber?: number, fromUser?: string): Promise<void> {
     try {
       if (specificPrNumber) {
         console.log(chalk.blue.bold(`🔍 Checking PR #${specificPrNumber} for unaddressed issues...`));
+      } else if (fromUser) {
+        console.log(chalk.blue.bold(`🔍 Scanning for PRs from @${fromUser} with unaddressed issues...`));
       } else {
         console.log(chalk.blue.bold('🔍 Scanning for PRs with unaddressed issues...'));
       }
@@ -67,7 +69,7 @@ export class AddressExecutor {
       const spinner = ora(specificPrNumber ? `Fetching PR #${specificPrNumber}...` : 'Fetching open PRs...').start();
       const prsWithIssues = specificPrNumber
         ? await this.prService.getSpecificPRWithIssues(specificPrNumber)
-        : await this.prService.getOpenPRsWithIssues();
+        : await this.prService.getOpenPRsWithIssues(fromUser);
       spinner.succeed(`Found ${prsWithIssues.length} PRs with unaddressed issues`);
 
       if (prsWithIssues.length === 0) {

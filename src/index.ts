@@ -136,7 +136,8 @@ program
   .command('address')
   .description('Address open PRs with unaddressed comments or failing checks')
   .argument('[pr-number]', 'Optional PR number to address')
-  .action(async (prNumber?: string) => {
+  .option('--from-user <username>', 'Filter PRs by author GitHub username')
+  .action(async (prNumber?: string, options?: { fromUser?: string }) => {
     const wasConfigured = await checkConfiguration();
     if (wasConfigured) {
       console.log('');
@@ -147,7 +148,10 @@ program
     await runMigrations();
 
     const addressExecutor = new AddressExecutor();
-    await addressExecutor.executeWorkflow(prNumber ? parseInt(prNumber) : undefined);
+    await addressExecutor.executeWorkflow(
+      prNumber ? parseInt(prNumber) : undefined,
+      options?.fromUser
+    );
   });
 
 program

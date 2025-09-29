@@ -94,10 +94,15 @@ export class PRService {
     }
   }
 
-  async getOpenPRsWithIssues(): Promise<PullRequest[]> {
+  async getOpenPRsWithIssues(fromUser?: string): Promise<PullRequest[]> {
     try {
-      // Get all open PRs
-      const prsJson = execSync('gh pr list --state open --json number,title,headRefName,url', {
+      // Get all open PRs, optionally filtered by author
+      let command = 'gh pr list --state open --json number,title,headRefName,url,author';
+      if (fromUser) {
+        command += ` --author ${fromUser}`;
+      }
+
+      const prsJson = execSync(command, {
         cwd: this.workingDir,
         encoding: 'utf-8'
       });

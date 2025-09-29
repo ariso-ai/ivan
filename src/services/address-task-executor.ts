@@ -361,17 +361,34 @@ export class AddressTaskExecutor {
               // Reply to the comment explaining why no changes were made
               spinner = ora('Replying to comment...').start();
               try {
-                const replyBody = `Ivan: ${lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
+                // Truncate the message if it's too long (GitHub has a 65536 character limit)
+                const maxLength = 60000;
+                let replyBody = `Ivan: ${lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
 
-                // All comments are review comments (inline code comments) now
-                execSync(
-                  `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`,
-                  {
-                    cwd: worktreePath || this.workingDir,
-                    stdio: 'pipe'
-                  }
-                );
-                spinner.succeed('Reply added to comment');
+                if (replyBody.length > maxLength) {
+                  replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)';
+                }
+
+                // Use stdin to pass the body to avoid shell escaping issues
+                const { writeFileSync, unlinkSync } = await import('fs');
+                const { join } = await import('path');
+                const { tmpdir } = await import('os');
+                const tempFile = join(tmpdir(), `ivan-comment-${Date.now()}.json`);
+
+                writeFileSync(tempFile, JSON.stringify({ body: replyBody }));
+
+                try {
+                  execSync(
+                    `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --input "${tempFile}"`,
+                    {
+                      cwd: worktreePath || this.workingDir,
+                      stdio: 'pipe'
+                    }
+                  );
+                  spinner.succeed('Reply added to comment');
+                } finally {
+                  unlinkSync(tempFile);
+                }
               } catch (error) {
                 spinner.fail('Failed to reply to comment');
                 console.error(error);
@@ -433,19 +450,37 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
             // Reply to the comment with the fix
             spinner = ora('Replying to comment...').start();
             try {
-              const replyBody = lastMessage
+              // Truncate the message if it's too long (GitHub has a 65536 character limit)
+              const maxLength = 60000;
+              let replyBody = lastMessage
                 ? `Ivan: ${lastMessage}\n\nThis has been addressed in commit ${commitHash.substring(0, 7)}`
                 : `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
 
-              // All comments are review comments (inline code comments) now
-              execSync(
-                `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --field body="${replyBody.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`,
-                {
-                  cwd: worktreePath || this.workingDir,
-                  stdio: 'pipe'
-                }
-              );
-              spinner.succeed('Reply added to comment');
+              if (replyBody.length > maxLength) {
+                replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)\n\n' +
+                  `This has been addressed in commit ${commitHash.substring(0, 7)}`;
+              }
+
+              // Use stdin to pass the body to avoid shell escaping issues
+              const { writeFileSync, unlinkSync } = await import('fs');
+              const { join } = await import('path');
+              const { tmpdir } = await import('os');
+              const tempFile = join(tmpdir(), `ivan-comment-${Date.now()}.json`);
+
+              writeFileSync(tempFile, JSON.stringify({ body: replyBody }));
+
+              try {
+                execSync(
+                  `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments/${comment.id}/replies --input "${tempFile}"`,
+                  {
+                    cwd: worktreePath || this.workingDir,
+                    stdio: 'pipe'
+                  }
+                );
+                spinner.succeed('Reply added to comment');
+              } finally {
+                unlinkSync(tempFile);
+              }
             } catch (error) {
               spinner.fail('Failed to reply to comment');
               console.error(error);
