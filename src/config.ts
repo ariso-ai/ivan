@@ -354,9 +354,9 @@ export class ConfigManager {
 
     const models = [
       {
-        name: 'Claude Sonnet 4 - Recommended for most tasks',
-        value: 'claude-sonnet-4-20250514',
-        short: 'Claude Sonnet 4'
+        name: 'Claude Sonnet 4.5 - Recommended for most tasks',
+        value: 'claude-sonnet-4-5-20250929',
+        short: 'Claude Sonnet 4.5'
       },
       {
         name: 'Claude 3.5 Haiku - Faster, good for simpler tasks',
@@ -376,7 +376,7 @@ export class ConfigManager {
         name: 'model',
         message: 'Select Claude model:',
         choices: models,
-        default: 'claude-3-5-sonnet-latest'
+        default: 'claude-sonnet-4-5-20250929'
       }
     ]);
 
