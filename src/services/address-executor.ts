@@ -5,7 +5,7 @@ import { JobManager } from './job-manager.js';
 import { PRService } from './pr-service.js';
 import { RepositoryManager } from './repository-manager.js';
 import { GitManager } from './git-manager.js';
-import { ClaudeExecutor } from './claude-executor.js';
+import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
@@ -15,7 +15,7 @@ export class AddressExecutor {
   private prService: PRService;
   private repositoryManager: RepositoryManager;
   private gitManager: GitManager | null = null;
-  private claudeExecutor: ClaudeExecutor | null = null;
+  private claudeExecutor: IClaudeExecutor | null = null;
   private configManager: ConfigManager;
   private workingDir: string;
 
@@ -27,9 +27,9 @@ export class AddressExecutor {
     this.prService = {} as PRService;
   }
 
-  private getClaudeExecutor(): ClaudeExecutor {
+  private getClaudeExecutor(): IClaudeExecutor {
     if (!this.claudeExecutor) {
-      this.claudeExecutor = new ClaudeExecutor();
+      this.claudeExecutor = ExecutorFactory.getExecutor();
     }
     return this.claudeExecutor;
   }

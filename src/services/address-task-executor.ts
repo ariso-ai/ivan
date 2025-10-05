@@ -4,7 +4,7 @@ import type { Ora } from 'ora';
 import { execSync } from 'child_process';
 import { JobManager } from './job-manager.js';
 import { GitManager } from './git-manager.js';
-import { ClaudeExecutor } from './claude-executor.js';
+import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { OpenAIService } from './openai-service.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
@@ -13,7 +13,7 @@ import { PRService } from './pr-service.js';
 export class AddressTaskExecutor {
   private jobManager: JobManager;
   private gitManager: GitManager | null = null;
-  private claudeExecutor: ClaudeExecutor | null = null;
+  private claudeExecutor: IClaudeExecutor | null = null;
   private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;
   private prService: PRService | null = null;
@@ -26,9 +26,9 @@ export class AddressTaskExecutor {
     this.workingDir = '';
   }
 
-  private getClaudeExecutor(): ClaudeExecutor {
+  private getClaudeExecutor(): IClaudeExecutor {
     if (!this.claudeExecutor) {
-      this.claudeExecutor = new ClaudeExecutor();
+      this.claudeExecutor = ExecutorFactory.getExecutor();
     }
     return this.claudeExecutor;
   }

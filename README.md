@@ -7,7 +7,7 @@ Ivan is an intelligent CLI tool that automates complex development workflows by 
 ## Key Features
 
 - **🧠 Intelligent Task Breakdown**: Analyzes your request and automatically breaks it down into manageable, PR-ready tasks
-- **🤖 Claude Code Integration**: Leverages Anthropic's Claude Code SDK for advanced code generation and modification
+- **🤖 Flexible Claude Execution**: Choose between SDK (API-based) or CLI (Claude Max) execution modes
 - **🔄 Automated Git Workflow**: Creates branches, commits changes, and opens pull requests automatically
 - **📝 Smart Commit Messages**: Generates conventional commit messages using OpenAI's GPT-4
 - **💬 PR Comment Handling**: Automatically addresses PR review comments with `ivan address` command
@@ -20,11 +20,13 @@ Ivan is an intelligent CLI tool that automates complex development workflows by 
 
 ## Prerequisites
 
-- Node.js 20+ 
+- Node.js 20+
 - Git repository
 - GitHub CLI (`gh`) installed and authenticated
 - OpenAI API key (for commit messages and PR descriptions)
-- Anthropic API key (for Claude Code execution)
+- **One of the following**:
+  - **SDK Mode**: Anthropic API key (for direct API access)
+  - **CLI Mode**: Claude Code CLI installed (for Claude Max users)
 
 ## Installation
 
@@ -56,12 +58,38 @@ ivan reconfigure
 ```
 
 ### Configuration includes:
+- **Executor Type**: Choose between SDK (API-based) or CLI (Claude Max) mode
 - **OpenAI API Key**: For generating commit messages and PR descriptions
-- **Anthropic API Key**: For Claude Code execution
+- **Anthropic API Key**: For Claude Code execution (SDK mode only)
 - **Repository Instructions**: Optional coding guidelines specific to each repository
 - **Tool Permissions**: Configure which tools Claude Code can use per repository
+- **Model Selection**: Choose which Claude model to use for tasks
 
 Configuration is stored in `~/.ivan/config.json` and the database in `~/.ivan/db.sqlite`
+
+### Executor Modes
+
+Ivan supports two ways to run Claude Code:
+
+#### SDK Mode (Default)
+- Uses the Anthropic API directly via TypeScript SDK
+- Requires an Anthropic API key
+- Best for users with API access
+
+#### CLI Mode
+- Uses the Claude Code CLI installed on your machine
+- Perfect for Claude Max subscribers (no API key needed)
+- Provides real-time streaming output
+- Requires Claude Code CLI to be installed
+
+**Switch between modes at any time:**
+```bash
+# Configure executor type
+ivan configure-executor
+
+# View current executor setting
+ivan show-config
+```
 
 ## Usage
 
@@ -115,6 +143,9 @@ ivan show-config
 
 # Choose which Claude model to use for tasks
 ivan choose-model
+
+# Configure executor type (SDK vs CLI)
+ivan configure-executor
 ```
 
 ### Addressing PR Comments
@@ -237,6 +268,8 @@ ivan/
 │   ├── database/       # SQLite schema and migrations
 │   ├── services/       # Core services
 │   │   ├── claude-executor.ts       # Claude Code SDK integration
+│   │   ├── claude-cli-executor.ts   # Claude Code CLI integration
+│   │   ├── executor-factory.ts      # Executor selection logic
 │   │   ├── openai-service.ts        # OpenAI API for commits/PRs
 │   │   ├── job-manager.ts           # Job and task management
 │   │   ├── git-manager.ts           # Git operations and GitHub CLI
@@ -249,7 +282,7 @@ ivan/
 │   └── index.ts        # CLI entry point
 ├── dist/               # Compiled JavaScript
 └── ~/.ivan/            # User configuration and database
-    ├── config.json     # API keys and settings
+    ├── config.json     # API keys and settings (includes executorType)
     └── db.sqlite       # Jobs and tasks database
 ```
 
@@ -341,6 +374,29 @@ gh auth login
 **API keys not working:**
 ```bash
 ivan reconfigure
+```
+
+**Claude CLI not found (CLI mode):**
+```bash
+# Install Claude Code CLI first
+# See: https://docs.claude.com/en/docs/claude-code/installation
+
+# Then configure Ivan to use CLI mode
+ivan configure-executor
+```
+
+**Executor hanging or not showing output (CLI mode):**
+- Ensure you're using the latest version of Claude Code CLI
+- Try switching to SDK mode with `ivan configure-executor`
+- Check that `claude --print` works independently
+
+**Want to switch between SDK and CLI mode:**
+```bash
+# Switch executor type
+ivan configure-executor
+
+# View current configuration
+ivan show-config
 ```
 
 **Permission denied errors:**
