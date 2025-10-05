@@ -31,21 +31,7 @@ Ivan is an intelligent CLI tool that automates complex development workflows by 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/ivan.git
-cd ivan
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Link globally for system-wide access
-npm link
-
-# Or run directly from the project directory
-node dist/index.js
+npm i -g @ariso-ai/ivan
 ```
 
 ## Configuration
@@ -298,6 +284,26 @@ Ivan maintains a local SQLite database to track:
   - Pull request links
   - Execution logs with tool calls
   - Timestamps
+
+## Running Locally
+
+```bash
+# Clone the repository
+git clone https://github.com/ariso-ai/ivan.git
+cd ivan
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Link globally for system-wide access
+npm link
+
+# Or run directly from the project directory
+node dist/index.js
+```
 
 ## Development
 
