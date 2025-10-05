@@ -2,17 +2,17 @@ import { randomUUID } from 'crypto';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { DatabaseManager, Job, Task } from '../database.js';
-import { ClaudeExecutor } from './claude-executor.js';
+import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 
 export class JobManager {
   private dbManager: DatabaseManager;
-  private claudeExecutor: ClaudeExecutor;
+  private claudeExecutor: IClaudeExecutor;
   private currentJobUuid: string | null = null;
   private prStrategy: 'multiple' | 'single' = 'multiple';
 
   constructor() {
     this.dbManager = new DatabaseManager();
-    this.claudeExecutor = new ClaudeExecutor();
+    this.claudeExecutor = ExecutorFactory.getExecutor();
   }
 
   async promptForTasks(workingDir: string): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {

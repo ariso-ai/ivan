@@ -11,6 +11,7 @@ interface Config {
   anthropicApiKey: string;
   version: string;
   claudeModel?: string;
+  executorType?: 'sdk' | 'cli';
   repoInstructions?: { [repoPath: string]: string };
   repoAllowedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
@@ -86,7 +87,30 @@ export class ConfigManager {
     console.log(chalk.blue.bold('🤖 Ivan Configuration Setup'));
     console.log('');
 
-    const answers = await inquirer.prompt([
+    // First ask about executor type
+    const executorAnswers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'executorType',
+        message: 'How do you want to run Claude Code?',
+        choices: [
+          {
+            name: 'SDK - Use Anthropic API directly (requires API key)',
+            value: 'sdk' as const
+          },
+          {
+            name: 'CLI - Use Claude Code CLI installed on your machine (for Claude Max users)',
+            value: 'cli' as const
+          }
+        ],
+        default: 'sdk'
+      }
+    ]);
+
+    const executorType = executorAnswers.executorType;
+
+    // Build questions based on executor type
+    const questions: any[] = [
       {
         type: 'password',
         name: 'openaiApiKey',
@@ -101,8 +125,12 @@ export class ConfigManager {
           return true;
         },
         mask: '*'
-      },
-      {
+      }
+    ];
+
+    // Only ask for Anthropic API key if using SDK executor
+    if (executorType === 'sdk') {
+      questions.push({
         type: 'password',
         name: 'anthropicApiKey',
         message: 'Enter your Anthropic API key:',
@@ -116,13 +144,16 @@ export class ConfigManager {
           return true;
         },
         mask: '*'
-      }
-    ]);
+      });
+    }
+
+    const answers = await inquirer.prompt(questions);
 
     const config: Config = {
       openaiApiKey: answers.openaiApiKey.trim(),
-      anthropicApiKey: answers.anthropicApiKey.trim(),
-      version: '1.0.0'
+      anthropicApiKey: executorType === 'sdk' ? answers.anthropicApiKey.trim() : '',
+      version: '1.0.0',
+      executorType: executorType
     };
 
     await this.saveConfig(config);
@@ -396,5 +427,62 @@ export class ConfigManager {
   getClaudeModel(): string {
     const config = this.getConfig();
     return config?.claudeModel || 'claude-3-5-sonnet-latest';
+  }
+
+  async promptForExecutorType(): Promise<void> {
+    console.log(chalk.blue.bold('🔧 Choose Claude Executor'));
+    console.log('');
+    console.log(chalk.yellow('Select how you want to run Claude Code'));
+    console.log('');
+
+    const executors = [
+      {
+        name: 'SDK - Use Anthropic API directly (requires API key)',
+        value: 'sdk' as const,
+        short: 'SDK'
+      },
+      {
+        name: 'CLI - Use Claude Code CLI installed on your machine (for Claude Max users)',
+        value: 'cli' as const,
+        short: 'CLI'
+      }
+    ];
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'executorType',
+        message: 'Select executor type:',
+        choices: executors,
+        default: 'sdk'
+      }
+    ]);
+
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.executorType = answers.executorType;
+    await this.saveConfig(config);
+
+    const selectedExecutor = executors.find(e => e.value === answers.executorType);
+    console.log('');
+    console.log(chalk.green(`✅ Executor set to: ${selectedExecutor?.short || answers.executorType}`));
+  }
+
+  getExecutorType(): 'sdk' | 'cli' {
+    const config = this.getConfig();
+    return config?.executorType || 'sdk';
+  }
+
+  async setExecutorType(executorType: 'sdk' | 'cli'): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.executorType = executorType;
+    await this.saveConfig(config);
   }
 }

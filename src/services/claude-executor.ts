@@ -3,8 +3,9 @@ import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
 import { execSync } from 'child_process';
+import { IClaudeExecutor } from './executor-factory.js';
 
-export class ClaudeExecutor {
+export class ClaudeExecutor implements IClaudeExecutor {
   private configManager: ConfigManager;
 
   constructor() {
