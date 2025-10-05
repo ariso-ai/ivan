@@ -1,4 +1,4 @@
-import { query } from '@anthropic-ai/claude-code';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
@@ -225,7 +225,7 @@ export class ClaudeExecutor {
           prompt,
           options: {
             abortController,
-            customSystemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
+            systemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
             cwd: workingDir,
             model: model,
             // Use plan mode for task breakdown
