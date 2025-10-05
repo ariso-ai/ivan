@@ -1,0 +1,8 @@
+{
+  "tasks": [
+    "Add a simple hello world function to the codebase"
+  ],
+  "generateSubtasks": false,
+  "prStrategy": "multiple",
+  "waitForComments": false
+}

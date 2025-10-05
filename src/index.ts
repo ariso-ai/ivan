@@ -7,6 +7,8 @@ import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
+import { NonInteractiveConfig } from './types/non-interactive-config.js';
+import { readFileSync } from 'fs';
 
 const program = new Command();
 const configManager = new ConfigManager();
@@ -174,28 +176,28 @@ program
     const fs = await import('fs');
     const path = await import('path');
     const os = await import('os');
-    
+
     const port = parseInt(options.port);
     const pidFile = path.join(os.tmpdir(), `ivan-web-server-${port}.pid`);
-    
+
     try {
       if (!fs.existsSync(pidFile)) {
         console.log(chalk.yellow(`⚠️  No web server found running on port ${port}`));
         return;
       }
-      
+
       const pidStr = fs.readFileSync(pidFile, 'utf8').trim();
       const pid = parseInt(pidStr);
-      
+
       console.log(chalk.blue(`🛑 Stopping web server on port ${port} (PID: ${pid})...`));
-      
+
       // Try to kill the process
       try {
         process.kill(pid, 'SIGTERM');
-        
+
         // Wait a moment for graceful shutdown
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
         // Check if process still exists
         try {
           process.kill(pid, 0); // Signal 0 just checks if process exists
@@ -204,12 +206,12 @@ program
         } catch (e) {
           // Process already terminated
         }
-        
+
         // Clean up PID file
         fs.unlinkSync(pidFile);
-        
+
         console.log(chalk.green('✅ Web server stopped successfully!'));
-        
+
       } catch (error: any) {
         if (error.code === 'ESRCH') {
           console.log(chalk.yellow('⚠️  Process no longer exists, cleaning up...'));
@@ -218,12 +220,13 @@ program
           throw error;
         }
       }
-      
+
     } catch (error) {
       console.error(chalk.red('❌ Failed to stop web server:'), error);
       process.exit(1);
     }
   });
+
 
 async function checkConfiguration(): Promise<boolean> {
   if (!configManager.isConfigured()) {
@@ -254,10 +257,58 @@ async function runMigrations(): Promise<void> {
   }
 }
 
+async function runNonInteractive(configPath: string): Promise<void> {
+  try {
+    // Read and parse config file
+    const configContent = readFileSync(configPath, 'utf-8');
+    const config: NonInteractiveConfig = JSON.parse(configContent);
+
+    // Validate config
+    if (!config.tasks || !Array.isArray(config.tasks) || config.tasks.length === 0) {
+      throw new Error('Config must have a "tasks" array with at least one task');
+    }
+
+    console.log(chalk.blue.bold('🤖 Running in non-interactive mode'));
+    console.log(chalk.gray(`Config: ${configPath}`));
+    console.log('');
+
+    // Check configuration
+    const wasConfigured = await checkConfiguration();
+    if (wasConfigured) {
+      throw new Error('Ivan needs to be configured. Please run "ivan reconfigure" first.');
+    }
+
+    await runMigrations();
+
+    // Change working directory if specified
+    if (config.workingDir) {
+      process.chdir(config.workingDir);
+      console.log(chalk.blue(`📂 Changed to directory: ${config.workingDir}`));
+    }
+
+    const taskExecutor = new TaskExecutor();
+    await taskExecutor.executeNonInteractiveWorkflow(config);
+
+    console.log('');
+    console.log(chalk.green.bold('✅ Non-interactive execution completed successfully!'));
+  } catch (error) {
+    console.error(chalk.red.bold('❌ Non-interactive execution failed:'), error);
+    throw error;
+  }
+}
+
 async function main() {
   try {
     const args = process.argv.slice(2);
-    
+
+    // Check for -c/--config flag
+    const configFlagIndex = args.findIndex(arg => arg === '-c' || arg === '--config');
+    if (configFlagIndex !== -1 && args[configFlagIndex + 1]) {
+      const configPath = args[configFlagIndex + 1];
+      await runNonInteractive(configPath);
+      return;
+    }
+
     if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {

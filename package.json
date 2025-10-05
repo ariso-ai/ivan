@@ -14,10 +14,24 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "npm run build"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Ariso AI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ariso-ai/ivan.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ariso-ai/ivan/issues"
+  },
+  "homepage": "https://github.com/ariso-ai/ivan#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "cli",
     "ai",
