@@ -423,7 +423,7 @@ export class AddressTaskExecutor {
                   let threadId = null;
                   for (const thread of threads) {
                     const comments = thread.comments?.nodes || [];
-                    if (comments.some((c: any) => c.databaseId?.toString() === comment.id)) {
+                    if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
                       threadId = thread.id;
                       break;
                     }
@@ -575,7 +575,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
               let threadId = null;
               for (const thread of threads) {
                 const comments = thread.comments?.nodes || [];
-                if (comments.some((c: any) => c.databaseId?.toString() === comment.id)) {
+                if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
                   threadId = thread.id;
                   break;
                 }
