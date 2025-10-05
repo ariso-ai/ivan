@@ -9,6 +9,7 @@ import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
 import { PRService } from './pr-service.js';
+import { NonInteractiveConfig } from '../types/non-interactive-config.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -706,6 +707,146 @@ export class TaskExecutor {
         this.gitManager.switchToOriginalDir();
         await this.gitManager.removeWorktree(branchName);
       }
+    }
+  }
+
+  async executeNonInteractiveWorkflow(config: NonInteractiveConfig): Promise<void> {
+    try {
+      console.log(chalk.blue.bold('🚀 Starting non-interactive workflow'));
+      console.log('');
+
+      console.log(chalk.blue('🔍 Validating dependencies...'));
+      await this.getClaudeExecutor().validateClaudeCodeInstallation();
+      console.log(chalk.green('✅ Claude Code SDK configured'));
+
+      this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
+      this.gitManager = new GitManager(this.workingDir);
+
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      this.gitManager.validateGitHubCliInstallation();
+      console.log(chalk.green('✅ GitHub CLI is installed'));
+
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+      this.gitManager.validateGitHubCliAuthentication();
+      console.log(chalk.green('✅ GitHub CLI is authenticated'));
+
+      const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
+      console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
+      console.log('');
+
+      // Load repository-specific instructions
+      this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
+      if (this.repoInstructions) {
+        console.log(chalk.green('✅ Repository-specific instructions loaded'));
+      }
+
+      // Process tasks based on config
+      let finalTasks = config.tasks;
+      const prStrategy = config.prStrategy || 'multiple';
+
+      // If single task and generateSubtasks is true, break it down
+      if (config.tasks.length === 1 && config.generateSubtasks) {
+        console.log(chalk.blue('🔍 Generating subtasks...'));
+        finalTasks = await this.jobManager.generateTaskBreakdownWithClaude(config.tasks[0], this.workingDir);
+        console.log(chalk.green(`✅ Generated ${finalTasks.length} subtasks`));
+      }
+
+      // Create job and tasks
+      const jobDescription = config.tasks.length === 1 ? config.tasks[0] : `Multiple tasks: ${config.tasks.slice(0, 2).join(', ')}${config.tasks.length > 2 ? '...' : ''}`;
+      const jobUuid = await this.jobManager.createJob(jobDescription, this.workingDir);
+      const tasks: Task[] = [];
+
+      for (const taskDescription of finalTasks) {
+        const taskUuid = await this.jobManager.createTask(jobUuid, taskDescription, 'build');
+        const task = await this.jobManager.getTask(taskUuid);
+        if (task) {
+          tasks.push(task);
+        }
+      }
+
+      console.log('');
+      console.log(chalk.blue.bold(`📋 Executing ${tasks.length} task(s)...`));
+
+      const shouldWaitForComments = config.waitForComments || false;
+
+      // Execute tasks based on PR strategy
+      if (prStrategy === 'single' && tasks.length > 1) {
+        await this.executeTasksWithSinglePR(tasks, false);
+      } else {
+        for (const task of tasks) {
+          await this.executeTask(task);
+        }
+      }
+
+      console.log('');
+      console.log(chalk.green.bold('🎉 All initial tasks completed successfully!'));
+
+      // Collect PR URLs
+      const createdPRUrls: string[] = [];
+      for (const task of tasks) {
+        const updatedTask = await this.jobManager.getTask(task.uuid);
+        if (updatedTask && updatedTask.pr_link) {
+          createdPRUrls.push(updatedTask.pr_link);
+        }
+      }
+
+      if (createdPRUrls.length > 0) {
+        console.log('');
+        console.log(chalk.blue('📋 PRs created:'));
+        createdPRUrls.forEach(url => console.log(chalk.cyan(`  - ${url}`)));
+
+        if (shouldWaitForComments) {
+          // Wait 30 minutes for reviewers to comment
+          console.log('');
+          console.log(chalk.blue('⏰ Waiting 30 minutes for PR reviews...'));
+          console.log(chalk.gray('PRs being monitored:'));
+          createdPRUrls.forEach(url => console.log(chalk.gray(`  - ${url}`)));
+          console.log('');
+
+          const waitTime = 30 * 60 * 1000; // 30 minutes in milliseconds
+          const startTime = Date.now();
+          const interval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const remaining = waitTime - elapsed;
+            const minutes = Math.floor(remaining / 60000);
+            const seconds = Math.floor((remaining % 60000) / 1000);
+            process.stdout.write(`\r${chalk.blue('⏰')} Time remaining: ${minutes}:${seconds.toString().padStart(2, '0')}  `);
+          }, 1000);
+
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          clearInterval(interval);
+          console.log('\n');
+
+          // Check for unaddressed comments on created PRs
+          console.log(chalk.blue('🔍 Checking for PR review comments...'));
+          const prService = new PRService(this.workingDir);
+          const addressTasks = await this.checkAndCreateAddressTasks(createdPRUrls, prService);
+
+          if (addressTasks.length > 0) {
+            console.log('');
+            console.log(chalk.blue.bold(`📋 Found ${addressTasks.length} comments to address`));
+
+            // Execute address tasks automatically
+            const addressExecutor = new AddressTaskExecutor();
+            await addressExecutor.executeAddressTasks(addressTasks);
+
+            console.log('');
+            console.log(chalk.green.bold('🎉 All PR comments addressed successfully!'));
+          } else {
+            console.log(chalk.green('✨ No unaddressed comments found on PRs!'));
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error(chalk.red.bold('❌ Non-interactive workflow failed:'), error);
+      throw error;
+    } finally {
+      this.jobManager.close();
     }
   }
 }

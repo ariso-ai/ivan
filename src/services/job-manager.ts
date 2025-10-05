@@ -154,7 +154,7 @@ export class JobManager {
     return { job, tasks, prStrategy };
   }
 
-  private async generateTaskBreakdownWithClaude(originalTask: string, workingDir: string): Promise<string[]> {
+  async generateTaskBreakdownWithClaude(originalTask: string, workingDir: string): Promise<string[]> {
     console.log('');
     console.log(chalk.yellow('🤖 Using Claude Code to break down the task...'));
     console.log('');

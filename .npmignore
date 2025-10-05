@@ -1,0 +1,15 @@
+src/
+*.ts
+!*.d.ts
+tsconfig.json
+.git
+.gitignore
+.eslintrc
+node_modules/
+test/
+tests/
+*.test.js
+*.spec.js
+example-config.json
+.env
+.env.local
