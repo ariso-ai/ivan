@@ -81,6 +81,8 @@ ivan show-config
 
 ### Running Tasks
 
+#### Interactive Mode
+
 Simply run `ivan` in any git repository:
 
 ```bash
@@ -93,6 +95,27 @@ Then describe what you want to accomplish. Ivan will:
 3. Execute each task using Claude Code
 4. Create pull requests with proper commits and AI-generated review instructions
 5. Optionally wait 30 minutes and automatically address any PR comments
+
+#### Non-Interactive Mode (Headless)
+
+Run Ivan with a task description directly from the command line:
+
+```bash
+# Provide task description as an argument
+ivan "Add user authentication with JWT tokens"
+
+# Skip the review waiting prompt (don't wait for PR reviews)
+ivan "Refactor the database module" --no-wait
+
+# Wait for PR reviews after completion
+ivan "Add comprehensive test coverage" --wait-for-reviews
+```
+
+Non-interactive mode is perfect for:
+- CI/CD pipelines
+- Automated workflows
+- Scripting and automation
+- Running Ivan from other tools
 
 ### CLI Commands
 
@@ -141,6 +164,12 @@ Automatically handle PR review comments:
 ```bash
 # Scan all open PRs for unaddressed comments and failing checks
 ivan address
+
+# Only process comments from a specific GitHub user
+ivan address --from-user username
+
+# Filter to comments from multiple users
+ivan address --from-user user1 --from-user user2
 ```
 
 This will:
@@ -151,6 +180,11 @@ This will:
 5. Commit changes with co-author attribution
 6. Reply to each comment with the commit that fixed it
 7. Add a review request with specific instructions
+
+**Filtering by user**: The `--from-user` flag allows you to focus on comments from specific reviewers, which is useful when:
+- Working with specific team members
+- Prioritizing feedback from senior reviewers
+- Processing comments in batches by reviewer
 
 ### Example Requests
 
