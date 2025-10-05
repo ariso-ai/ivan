@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { JobManager } from './job-manager.js';
 import { GitManager } from './git-manager.js';
-import { ClaudeExecutor } from './claude-executor.js';
+import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { OpenAIService } from './openai-service.js';
 import { RepositoryManager } from './repository-manager.js';
 import { ConfigManager } from '../config.js';
@@ -13,7 +13,7 @@ import { PRService } from './pr-service.js';
 export class TaskExecutor {
   private jobManager: JobManager;
   private gitManager: GitManager | null = null;
-  private claudeExecutor: ClaudeExecutor | null = null;
+  private claudeExecutor: IClaudeExecutor | null = null;
   private openaiService: OpenAIService | null = null;
   private repositoryManager: RepositoryManager;
   private configManager: ConfigManager;
@@ -28,9 +28,9 @@ export class TaskExecutor {
     this.repoInstructions = undefined;
   }
 
-  private getClaudeExecutor(): ClaudeExecutor {
+  private getClaudeExecutor(): IClaudeExecutor {
     if (!this.claudeExecutor) {
-      this.claudeExecutor = new ClaudeExecutor();
+      this.claudeExecutor = ExecutorFactory.getExecutor();
     }
     return this.claudeExecutor;
   }
