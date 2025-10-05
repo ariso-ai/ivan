@@ -47,6 +47,13 @@ program
   });
 
 program
+  .command('configure-executor')
+  .description('Configure how to run Claude Code (SDK or CLI)')
+  .action(async () => {
+    await configManager.promptForExecutorType();
+  });
+
+program
   .command('show-config')
   .description('Show configuration for the current repository')
   .action(async () => {
@@ -85,6 +92,11 @@ program
     console.log(chalk.cyan('Claude Model:'));
     const model = config.claudeModel || 'claude-3-5-sonnet-latest';
     console.log('  ' + model);
+
+    console.log('');
+    console.log(chalk.cyan('Executor Type:'));
+    const executorType = config.executorType || 'sdk';
+    console.log('  ' + executorType.toUpperCase());
   });
 
 program
@@ -246,7 +258,7 @@ async function main() {
   try {
     const args = process.argv.slice(2);
     
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
