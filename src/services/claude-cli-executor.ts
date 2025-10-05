@@ -63,7 +63,6 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       }
       console.log(chalk.yellow('⏳ Starting Claude Code CLI execution...'));
 
-      let result = '';
       let lastMessage = '';
       const currentSessionId = sessionId || '';
 
