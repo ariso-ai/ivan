@@ -83,9 +83,94 @@ export class ConfigManager {
     return true;
   }
 
+  private isGhInstalled(): boolean {
+    try {
+      execSync('gh --version', { stdio: 'ignore' });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private isGhAuthenticated(): boolean {
+    try {
+      execSync('gh auth status', { stdio: 'ignore' });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private async checkGhAuth(): Promise<void> {
+    // Check if gh CLI is installed
+    if (!this.isGhInstalled()) {
+      console.log(chalk.yellow('⚠️  GitHub CLI (gh) is not installed.'));
+      console.log(chalk.gray('Ivan uses gh to create pull requests.'));
+      console.log('');
+      console.log(chalk.cyan('To install gh:'));
+      console.log(chalk.gray('  • macOS: brew install gh'));
+      console.log(chalk.gray('  • Other: https://cli.github.com/'));
+      console.log('');
+
+      const { continueWithoutGh } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'continueWithoutGh',
+          message: 'Continue setup without GitHub CLI?',
+          default: false
+        }
+      ]);
+
+      if (!continueWithoutGh) {
+        console.log(chalk.red('Setup cancelled. Please install gh and try again.'));
+        process.exit(0);
+      }
+
+      console.log('');
+      return;
+    }
+
+    // Check if gh is authenticated
+    if (!this.isGhAuthenticated()) {
+      console.log(chalk.yellow('⚠️  GitHub CLI is not authenticated.'));
+      console.log(chalk.gray('Ivan uses gh to create pull requests.'));
+      console.log('');
+      console.log(chalk.cyan('Please authenticate with GitHub:'));
+      console.log(chalk.gray('  Run: gh auth login'));
+      console.log('');
+
+      const { readyToContinue } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'readyToContinue',
+          message: 'Have you completed gh auth login?',
+          default: false
+        }
+      ]);
+
+      if (!readyToContinue) {
+        console.log(chalk.red('Setup cancelled. Please authenticate with gh and try again.'));
+        process.exit(0);
+      }
+
+      // Verify authentication after user claims to have done it
+      if (!this.isGhAuthenticated()) {
+        console.log(chalk.red('❌ GitHub CLI is still not authenticated.'));
+        console.log(chalk.yellow('Please run "gh auth login" and then run "ivan" again.'));
+        process.exit(1);
+      }
+
+      console.log(chalk.green('✅ GitHub CLI is authenticated!'));
+      console.log('');
+    }
+  }
+
   async setup(): Promise<void> {
     console.log(chalk.blue.bold('🤖 Ivan Configuration Setup'));
     console.log('');
+
+    // Check GitHub CLI authentication
+    await this.checkGhAuth();
 
     // First ask about executor type
     const executorAnswers = await inquirer.prompt([
