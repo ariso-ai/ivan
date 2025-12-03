@@ -225,8 +225,8 @@ export class PRService {
         // Check if there are replies (more than one comment in thread)
         const hasReplies = comments.length > 1;
 
-        if (!hasReplies && firstComment.path) {
-          // Only include if it's an inline code comment (has a path) and has no replies
+        if (!hasReplies && firstComment.path && firstComment.author.login !== 'codex') {
+          // Only include if it's an inline code comment (has a path), has no replies, and is not from the codex bot
           unaddressedComments.push({
             id: firstComment.databaseId ? firstComment.databaseId.toString() : firstComment.id,
             author: firstComment.author.login,
