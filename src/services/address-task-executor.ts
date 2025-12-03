@@ -348,6 +348,29 @@ export class AddressTaskExecutor {
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
 
+            // Capture memory for human comments (not from bot)
+            if (comment.author !== 'codex') {
+              try {
+                spinner = ora('Capturing memory...').start();
+                const { MemoryService } = await import('./memory-service.js');
+                const prDescription = await this.getPRDescription(parseInt(prNumber));
+                const memoryService = new MemoryService();
+                await memoryService.captureMemory({
+                  prNumber: parseInt(prNumber),
+                  commentAuthor: comment.author,
+                  commentText: comment.body,
+                  filePath: comment.path || null,
+                  prDescription: prDescription,
+                  repository: this.workingDir
+                });
+                spinner.succeed('Memory captured');
+              } catch (memoryError) {
+                // Don't fail task if memory fails
+                spinner.warn('Memory capture failed (non-critical)');
+                console.error(chalk.gray('Memory error:'), memoryError);
+              }
+            }
+
             // Use the last message from Claude's response
             const lastMessage = result.lastMessage;
 
@@ -918,6 +941,20 @@ Return ONLY the review request text, without any prefix like "Please review" sin
     }
 
     return { succeeded: commitSucceeded };
+  }
+
+  private async getPRDescription(prNumber: number): Promise<string> {
+    try {
+      const prJson = execSync(
+        `gh pr view ${prNumber} --json body`,
+        { cwd: this.workingDir, encoding: 'utf-8' }
+      );
+      const { body } = JSON.parse(prJson);
+      return body || '';
+    } catch (error) {
+      console.error('Failed to get PR description:', error);
+      return '';
+    }
   }
 
 }
