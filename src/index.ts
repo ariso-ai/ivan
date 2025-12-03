@@ -92,7 +92,7 @@ program
 
     console.log('');
     console.log(chalk.cyan('Claude Model:'));
-    const model = config.claudeModel || 'claude-3-5-sonnet-latest';
+    const model = config.claudeModel || 'claude-sonnet-4-5-20250929';
     console.log('  ' + model);
 
     console.log('');

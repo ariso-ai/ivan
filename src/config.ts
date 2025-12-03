@@ -426,7 +426,7 @@ export class ConfigManager {
 
   getClaudeModel(): string {
     const config = this.getConfig();
-    return config?.claudeModel || 'claude-3-5-sonnet-latest';
+    return config?.claudeModel || 'claude-sonnet-4-5-20250929';
   }
 
   async promptForExecutorType(): Promise<void> {
