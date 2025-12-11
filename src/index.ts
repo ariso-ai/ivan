@@ -56,6 +56,13 @@ program
   });
 
 program
+  .command('configure-review-agent')
+  .description('Configure which bot to tag for PR review requests (default: @codex)')
+  .action(async () => {
+    await configManager.promptForReviewAgent();
+  });
+
+program
   .command('show-config')
   .description('Show configuration for the current repository')
   .action(async () => {
@@ -99,6 +106,11 @@ program
     console.log(chalk.cyan('Executor Type:'));
     const executorType = config.executorType || 'sdk';
     console.log('  ' + executorType.toUpperCase());
+
+    console.log('');
+    console.log(chalk.cyan('Review Agent:'));
+    const reviewAgent = configManager.getReviewAgent();
+    console.log('  ' + reviewAgent);
   });
 
 program
@@ -309,7 +321,7 @@ async function main() {
       return;
     }
 
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
