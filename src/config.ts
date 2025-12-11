@@ -12,6 +12,7 @@ interface Config {
   version: string;
   claudeModel?: string;
   executorType?: 'sdk' | 'cli';
+  reviewAgent?: string;
   repoInstructions?: { [repoPath: string]: string };
   repoAllowedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
@@ -484,5 +485,55 @@ export class ConfigManager {
 
     config.executorType = executorType;
     await this.saveConfig(config);
+  }
+
+  getReviewAgent(): string {
+    const config = this.getConfig();
+    return config?.reviewAgent || '@codex';
+  }
+
+  async setReviewAgent(reviewAgent: string): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.reviewAgent = reviewAgent;
+    await this.saveConfig(config);
+  }
+
+  async promptForReviewAgent(): Promise<void> {
+    console.log(chalk.blue.bold('🤖 Configure Review Agent'));
+    console.log('');
+    console.log(chalk.yellow('Set the coding agent to tag in PR review request comments'));
+    console.log(chalk.gray('This is the bot that will be mentioned to review your changes (e.g., @codex, @copilot)'));
+    console.log('');
+
+    const currentAgent = this.getReviewAgent();
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'reviewAgent',
+        message: 'Enter the review agent to tag (include @ symbol):',
+        default: currentAgent,
+        validate: (input: string) => {
+          const trimmed = input.trim();
+          if (trimmed.length === 0) {
+            return 'Please provide a review agent name';
+          }
+          if (!trimmed.startsWith('@')) {
+            return 'Review agent should start with @ (e.g., @codex)';
+          }
+          return true;
+        }
+      }
+    ]);
+
+    const reviewAgent = answers.reviewAgent.trim();
+    await this.setReviewAgent(reviewAgent);
+
+    console.log('');
+    console.log(chalk.green(`✅ Review agent set to: ${reviewAgent}`));
   }
 }

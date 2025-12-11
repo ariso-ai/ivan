@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import chalk from 'chalk';
 import { OpenAIService } from './openai-service.js';
+import { ConfigManager } from '../config.js';
 import path from 'path';
 import { promises as fs, writeFileSync, unlinkSync } from 'fs';
 import os from 'os';
@@ -8,11 +9,13 @@ import os from 'os';
 export class GitManager {
   private workingDir: string;
   private openaiService: OpenAIService | null = null;
+  private configManager: ConfigManager;
   private originalWorkingDir: string;
 
   constructor(workingDir: string) {
     this.workingDir = workingDir;
     this.originalWorkingDir = workingDir;
+    this.configManager = new ConfigManager();
   }
 
   private getOpenAIService(): OpenAIService {
@@ -464,19 +467,23 @@ export class GitManager {
       // Generate specific review instructions using OpenAI
       const reviewInstructions = await this.generateReviewInstructions(diff, changedFiles);
 
+      // Get configured review agent
+      const reviewAgent = this.configManager.getReviewAgent();
+
       // Add the review comment
-      const reviewComment = `@codex ${reviewInstructions}`;
+      const reviewComment = `${reviewAgent} ${reviewInstructions}`;
 
       execSync(`gh pr comment ${prUrl} --body "${reviewComment.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      console.log(chalk.green('✅ Added specific review request for @codex'));
+      console.log(chalk.green(`✅ Added specific review request for ${reviewAgent}`));
     } catch (error) {
       console.log(chalk.yellow(`⚠️ Could not add review comment: ${error}`));
       // Fallback to generic review request
       try {
-        execSync(`gh pr comment ${prUrl} --body "@codex please review the changes and verify the implementation meets requirements"`, {
+        const reviewAgent = this.configManager.getReviewAgent();
+        execSync(`gh pr comment ${prUrl} --body "${reviewAgent} please review the changes and verify the implementation meets requirements"`, {
           cwd: this.workingDir,
           stdio: 'pipe'
         });
@@ -512,7 +519,7 @@ Generate a brief (1-2 sentences) review request that:
 
 Example format: "please review the new task executor implementation and verify that error handling properly captures all edge cases"
 
-Return ONLY the review request text, without any prefix like "Please review" since @codex will already be prepended.`;
+Return ONLY the review request text, without any prefix like "Please review" since the review agent will already be prepended.`;
 
       const completion = await client.chat.completions.create({
         model: 'gpt-4o-mini',

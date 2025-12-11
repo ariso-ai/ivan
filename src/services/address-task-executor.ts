@@ -232,7 +232,8 @@ export class AddressTaskExecutor {
             if (taskPrNumber) {
               spinner = ora('Adding review request comment...').start();
               try {
-                const reviewComment = '@codex please review the test and lint fixes that were applied to address the failing CI checks';
+                const reviewAgent = this.configManager.getReviewAgent();
+                const reviewComment = `${reviewAgent} please review the test and lint fixes that were applied to address the failing CI checks`;
 
                 execSync(
                   `gh pr comment ${taskPrNumber} --body "${reviewComment}"`,
@@ -655,7 +656,8 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
 
             // Add the review comment
             spinner = ora('Adding review request comment...').start();
-            const reviewComment = `@codex ${reviewInstructions}`;
+            const reviewAgent = this.configManager.getReviewAgent();
+            const reviewComment = `${reviewAgent} ${reviewInstructions}`;
 
             execSync(
               `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
@@ -820,7 +822,7 @@ Generate a brief (1-2 sentences) review request that:
 
 Example format: "please review the updates to the reflection service integration and verify that the null checks properly handle missing configuration objects"
 
-Return ONLY the review request text, without any prefix like "Please review" since @codex will already be prepended.`;
+Return ONLY the review request text, without any prefix like "Please review" since the review agent will already be prepended.`;
 
       const completion = await client.chat.completions.create({
         model: 'gpt-4o-mini',
