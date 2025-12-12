@@ -25,6 +25,26 @@ export interface Migration {
   down: string | string[];
 }
 
+export interface MemoryItem {
+  id: string;
+  pr_number: number;
+  comment_author: string;
+  comment_text: string;
+  file_path: string | null;
+  pr_description: string;
+  resolution_summary: string | null;
+  created_at: string;
+  repository: string;
+}
+
+export interface MemoryEmbedding {
+  id: string;
+  memory_item_id: string;
+  chunk_text: string;
+  chunk_index: number;
+  embedding: string;
+}
+
 export interface Database {
   jobs: Job;
   tasks: Task;
@@ -33,4 +53,6 @@ export interface Database {
     name: string;
     executed_at: string;
   };
+  memory_items: MemoryItem;
+  memory_embeddings: MemoryEmbedding;
 }

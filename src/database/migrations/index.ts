@@ -7,6 +7,7 @@ import { migration as addTypeToTasks } from './005_add_type_to_tasks.js';
 import { migration as addCommentUrlToTasks } from './006_add_comment_url_to_tasks.js';
 import { migration as addCommitToTasks } from './007_add_commit_to_tasks.js';
 import { migration008 as addLintAndTestTaskType } from './008_add_lint_and_test_task_type.js';
+import { migration009 as createMemoryTables } from './009_create_memory_tables.js';
 
 export const migrations: Migration[] = [
   createJobsTable,
@@ -16,5 +17,6 @@ export const migrations: Migration[] = [
   addTypeToTasks,
   addCommentUrlToTasks,
   addCommitToTasks,
-  addLintAndTestTaskType
+  addLintAndTestTaskType,
+  createMemoryTables
 ];

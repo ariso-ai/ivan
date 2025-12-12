@@ -337,6 +337,24 @@ export class TaskExecutor {
         taskWithInstructions = `${task.description}\n\nRepository-specific instructions:\n${this.repoInstructions}`;
       }
 
+      // Retrieve relevant memories from past PR comments
+      try {
+        const { MemoryService } = await import('./memory-service.js');
+        const memoryService = new MemoryService();
+        const memories = await memoryService.retrieveSimilarMemories(
+          task.description,
+          this.workingDir,
+          3
+        );
+
+        if (memories.length > 0) {
+          taskWithInstructions += '\n\n' + this.formatMemoriesForPrompt(memories);
+        }
+      } catch (error) {
+        // Don't fail task if memory retrieval fails
+        console.error(chalk.gray('Memory retrieval failed (non-critical):'), error);
+      }
+
       // Use worktree path for Claude execution, falling back to workingDir if needed
       const executionPath = worktreePath || this.workingDir;
       const result = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath);
@@ -848,6 +866,29 @@ export class TaskExecutor {
     } finally {
       this.jobManager.close();
     }
+  }
+
+  private formatMemoriesForPrompt(memories: Array<{
+    commentText: string;
+    filePath: string | null;
+    prDescription: string;
+    commentAuthor: string;
+    relevantChunk: string;
+  }>): string {
+    let prompt = '=== Relevant Past Learnings ===\n';
+    prompt += 'Similar situations I\'ve handled before:\n\n';
+
+    memories.forEach((memory, i) => {
+      prompt += `${i + 1}. Context: ${memory.prDescription}\n`;
+      prompt += `   Comment from @${memory.commentAuthor}: "${memory.commentText}"\n`;
+      if (memory.filePath) {
+        prompt += `   File: ${memory.filePath}\n`;
+      }
+      prompt += `   Learning: ${memory.relevantChunk}\n\n`;
+    });
+
+    prompt += '=== End of Past Learnings ===\n';
+    return prompt;
   }
 }
 
