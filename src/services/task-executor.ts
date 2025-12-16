@@ -71,6 +71,9 @@ export class TaskExecutor {
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
       console.log('');
 
+      // Get or create repository in database
+      const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
+
       // Check for repository-specific instructions
       this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
       if (!this.repoInstructions) {
@@ -101,7 +104,7 @@ export class TaskExecutor {
         console.log(chalk.green('✅ Repository-specific instructions loaded'));
       }
 
-      const { tasks, prStrategy } = await this.jobManager.promptForTasks(this.workingDir);
+      const { tasks, prStrategy } = await this.jobManager.promptForTasks(this.workingDir, repository.id);
 
       console.log('');
 
@@ -283,8 +286,11 @@ export class TaskExecutor {
           // Get the current job ID from one of the build tasks
           const jobUuid = this.jobManager.getCurrentJobUuid() || (await this.jobManager.getLatestJobId(this.workingDir));
 
+          // Get repository for this working directory
+          const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
+
           // Create the address task
-          const taskUuid = await this.jobManager.createTask(jobUuid, description, 'address');
+          const taskUuid = await this.jobManager.createTask(jobUuid, description, repository.id, 'address');
           await this.jobManager.updateTaskBranch(taskUuid, branch);
 
           const task = await this.jobManager.getTask(taskUuid);
@@ -738,6 +744,9 @@ export class TaskExecutor {
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
       console.log('');
 
+      // Get or create repository in database
+      const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
+
       // Load repository-specific instructions
       this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
       if (this.repoInstructions) {
@@ -757,11 +766,11 @@ export class TaskExecutor {
 
       // Create job and tasks
       const jobDescription = config.tasks.length === 1 ? config.tasks[0] : `Multiple tasks: ${config.tasks.slice(0, 2).join(', ')}${config.tasks.length > 2 ? '...' : ''}`;
-      const jobUuid = await this.jobManager.createJob(jobDescription, this.workingDir);
+      const jobUuid = await this.jobManager.createJob(jobDescription, this.workingDir, repository.id);
       const tasks: Task[] = [];
 
       for (const taskDescription of finalTasks) {
-        const taskUuid = await this.jobManager.createTask(jobUuid, taskDescription, 'build');
+        const taskUuid = await this.jobManager.createTask(jobUuid, taskDescription, repository.id, 'build');
         const task = await this.jobManager.getTask(taskUuid);
         if (task) {
           tasks.push(task);

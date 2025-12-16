@@ -64,6 +64,8 @@ export class AddressExecutor {
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name}`));
       console.log('');
 
+      // Get or create repository in database
+      const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
 
       // Fetch PRs with issues
       const spinner = ora(specificPrNumber ? `Fetching PR #${specificPrNumber}...` : 'Fetching open PRs...').start();
@@ -181,11 +183,11 @@ export class AddressExecutor {
       }
 
       // Create job and tasks in database
-      const jobUuid = await this.jobManager.createJob(`Address PR issues - ${new Date().toLocaleDateString()}`, this.workingDir);
+      const jobUuid = await this.jobManager.createJob(`Address PR issues - ${new Date().toLocaleDateString()}`, this.workingDir, repository.id);
 
       const createdTasks: Task[] = [];
       for (const task of tasks) {
-        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, task.type);
+        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, repository.id, task.type);
         // Store the branch name for the task
         await this.jobManager.updateTaskBranch(taskUuid, task.prBranch);
         const createdTask = await this.jobManager.getTask(taskUuid);
@@ -196,21 +198,6 @@ export class AddressExecutor {
 
       console.log(chalk.green(`✅ Created ${createdTasks.length} tasks`));
       console.log('');
-
-      // Ask if user wants to execute tasks now
-      const { executeNow } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'executeNow',
-          message: 'Would you like to execute these tasks now?',
-          default: true
-        }
-      ]);
-
-      if (!executeNow) {
-        console.log(chalk.blue('💾 Tasks saved for later execution'));
-        return;
-      }
 
       // Execute tasks using the AddressTaskExecutor
       const addressTaskExecutor = new AddressTaskExecutor();

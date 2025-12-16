@@ -3,8 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
+import { Selectable } from 'kysely';
+import { DatabaseManager, Repository } from '../database.js';
 
 export class RepositoryManager {
+  private dbManager: DatabaseManager;
+
+  constructor() {
+    this.dbManager = new DatabaseManager();
+  }
   async getValidWorkingDirectory(): Promise<string> {
     const currentDir = process.cwd();
 
@@ -111,5 +118,55 @@ export class RepositoryManager {
     } catch {
       return { name: path.basename(workingDir), branch: 'unknown' };
     }
+  }
+
+  private getRemoteUrl(workingDir: string): string | null {
+    try {
+      const remoteUrl = execSync('git config --get remote.origin.url', {
+        cwd: workingDir,
+        encoding: 'utf8'
+      }).trim();
+      return remoteUrl || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getOrCreateRepository(workingDir: string): Promise<Selectable<Repository>> {
+    const db = this.dbManager.getKysely();
+
+    // Check if repository exists
+    const existingRepo = await db
+      .selectFrom('repositories')
+      .selectAll()
+      .where('directory', '=', workingDir)
+      .executeTakeFirst();
+
+    if (existingRepo) {
+      return existingRepo;
+    }
+
+    // Create new repository
+    const { name } = this.getRepositoryInfo(workingDir);
+    const remoteUrl = this.getRemoteUrl(workingDir);
+
+    await db.insertInto('repositories').values({
+      remote_url: remoteUrl,
+      directory: workingDir,
+      name
+    }).execute();
+
+    // Fetch the created repository with its id
+    const createdRepo = await db
+      .selectFrom('repositories')
+      .selectAll()
+      .where('directory', '=', workingDir)
+      .executeTakeFirstOrThrow();
+
+    return createdRepo;
+  }
+
+  close(): void {
+    this.dbManager.close();
   }
 }
