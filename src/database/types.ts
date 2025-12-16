@@ -1,8 +1,19 @@
+import { Generated } from 'kysely';
+
+export interface Repository {
+  id: Generated<number>;
+  remote_url: string | null;
+  directory: string;
+  name: string;
+  created_at: Generated<string>;
+}
+
 export interface Job {
   uuid: string;
   description: string;
   created_at: string;
   directory: string;
+  repository_id: number;
 }
 
 export interface Task {
@@ -16,6 +27,7 @@ export interface Task {
   type: 'build' | 'address' | 'lint_and_test';
   comment_url: string | null;
   commit_sha: string | null;
+  repository_id: number;
 }
 
 export interface Migration {
@@ -26,6 +38,7 @@ export interface Migration {
 }
 
 export interface Database {
+  repositories: Repository;
   jobs: Job;
   tasks: Task;
   migrations: {

@@ -15,7 +15,7 @@ export class JobManager {
     this.claudeExecutor = ExecutorFactory.getExecutor();
   }
 
-  async promptForTasks(workingDir: string): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {
+  async promptForTasks(workingDir: string, repositoryId: number): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {
     console.log(chalk.blue.bold('🎯 What would you like to work on today?'));
     console.log('');
 
@@ -132,15 +132,16 @@ export class JobManager {
       ? finalTasks[0]
       : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
 
-    const jobUuid = await this.createJob(jobDescription, workingDir);
+    const jobUuid = await this.createJob(jobDescription, workingDir, repositoryId);
     this.currentJobUuid = jobUuid;
-    const tasks = await this.createTasks(jobUuid, finalTasks);
+    const tasks = await this.createTasks(jobUuid, finalTasks, repositoryId);
 
     const job: Job = {
       uuid: jobUuid,
       description: jobDescription,
       created_at: new Date().toISOString(),
-      directory: workingDir
+      directory: workingDir,
+      repository_id: repositoryId
     };
 
     console.log('');
@@ -232,7 +233,7 @@ export class JobManager {
   }
 
 
-  private async createTasks(jobUuid: string, taskDescriptions: string[]): Promise<Task[]> {
+  private async createTasks(jobUuid: string, taskDescriptions: string[], repositoryId: number): Promise<Task[]> {
     const tasks: Task[] = taskDescriptions.map(description => ({
       uuid: randomUUID(),
       job_uuid: jobUuid,
@@ -243,7 +244,8 @@ export class JobManager {
       branch: null,
       type: 'build' as const,
       comment_url: null,
-      commit_sha: null
+      commit_sha: null,
+      repository_id: repositoryId
     }));
 
     const db = this.dbManager.getKysely();
@@ -306,7 +308,7 @@ export class JobManager {
       .execute();
   }
 
-  async createTask(jobUuid: string, description: string, type: 'build' | 'address' | 'lint_and_test' = 'build'): Promise<string> {
+  async createTask(jobUuid: string, description: string, repositoryId: number, type: 'build' | 'address' | 'lint_and_test' = 'build'): Promise<string> {
     const task: Task = {
       uuid: randomUUID(),
       job_uuid: jobUuid,
@@ -317,7 +319,8 @@ export class JobManager {
       branch: null,
       type,
       comment_url: null,
-      commit_sha: null
+      commit_sha: null,
+      repository_id: repositoryId
     };
 
     const db = this.dbManager.getKysely();
@@ -348,12 +351,13 @@ export class JobManager {
     return task?.execution_log || '';
   }
 
-  async createJob(description: string, workingDir: string): Promise<string> {
+  async createJob(description: string, workingDir: string, repositoryId: number): Promise<string> {
     const job: Job = {
       uuid: randomUUID(),
       description,
       created_at: new Date().toISOString(),
-      directory: workingDir
+      directory: workingDir,
+      repository_id: repositoryId
     };
 
     const db = this.dbManager.getKysely();
