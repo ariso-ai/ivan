@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { ConfigManager } from './config.js';
 import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
+import { LearnExecutor } from './services/learn-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 import { NonInteractiveConfig } from './types/non-interactive-config.js';
@@ -181,6 +182,27 @@ program
   });
 
 program
+  .command('learn')
+  .description('Build a knowledge base about the repository by answering onboarding questions')
+  .action(async () => {
+    const wasConfigured = await checkConfiguration();
+    if (wasConfigured) {
+      console.log('');
+      console.log(chalk.cyan('Run "ivan learn" again to start learning.'));
+      return;
+    }
+
+    await runMigrations();
+
+    const learnExecutor = new LearnExecutor();
+    try {
+      await learnExecutor.execute(process.cwd());
+    } finally {
+      await learnExecutor.close();
+    }
+  });
+
+program
   .command('web-stop')
   .description('Stop the running web server')
   .option('-p, --port <port>', 'Port number of web server to stop', '3000')
@@ -321,7 +343,7 @@ async function main() {
       return;
     }
 
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'web', 'web-stop', 'address', 'learn', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');

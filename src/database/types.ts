@@ -30,6 +30,21 @@ export interface Task {
   repository_id: number;
 }
 
+export interface Learning {
+  id: Generated<number>;
+  repository_id: number;
+  text: string;
+  files: string;
+  created_at: Generated<string>;
+}
+
+export interface LearningEmbedding {
+  rowid: Generated<number>;
+  embedding: ArrayBuffer;
+  learning_id: number;
+  text: string;
+}
+
 export interface Migration {
   id: number;
   name: string;
@@ -41,6 +56,8 @@ export interface Database {
   repositories: Repository;
   jobs: Job;
   tasks: Task;
+  learnings: Learning;
+  learning_embeddings: LearningEmbedding;
   migrations: {
     id: number;
     name: string;
