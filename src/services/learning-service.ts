@@ -48,6 +48,9 @@ export class LearningService {
       })
       .executeTakeFirst();
 
+    if (result.insertId === undefined) {
+      throw new Error('Failed to insert learning: no insertId returned');
+    }
     const learningId = Number(result.insertId);
 
     console.log(chalk.green(`✅ Learning saved with ID: ${learningId}`));
