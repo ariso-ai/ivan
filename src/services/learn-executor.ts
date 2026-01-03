@@ -179,7 +179,18 @@ Return ONLY the JSON array, no additional text.`;
     repositoryId: number
   ): Promise<void> {
     // Step 1: Use Claude to answer the question
-    const claudeAnswer = await this.askClaude(question, workingDir);
+    let claudeAnswer: string;
+    try {
+      claudeAnswer = await this.askClaude(question, workingDir);
+    } catch (error) {
+      // If Claude fails to generate an answer, allow user to write their own
+      console.log(
+        chalk.yellow(
+          '\n⚠️  Claude could not generate an answer. You can write your own or skip this question.\n'
+        )
+      );
+      claudeAnswer = ''; // Empty string as fallback for manual entry
+    }
 
     // Step 2: Ask user to confirm or edit
     const finalAnswer = await this.confirmOrEditAnswer(
@@ -235,7 +246,7 @@ Keep the answer concise but informative (aim for 3-5 paragraphs).`;
     } catch (error) {
       spinner.fail('Failed to get answer from Claude');
       console.error(chalk.red('Error:'), error);
-      return '';
+      throw error; // Force error handling at the caller level
     }
   }
 
@@ -243,21 +254,32 @@ Keep the answer concise but informative (aim for 3-5 paragraphs).`;
     question: string,
     claudeAnswer: string
   ): Promise<string | null> {
-    console.log(chalk.cyan('\n📝 Claude\'s Answer:\n'));
-    console.log(chalk.white(claudeAnswer));
-    console.log('');
+    // If claudeAnswer is empty, don't show it and force manual entry
+    if (claudeAnswer.trim()) {
+      console.log(chalk.cyan('\n📝 Claude\'s Answer:\n'));
+      console.log(chalk.white(claudeAnswer));
+      console.log('');
+    }
+
+    // If answer is empty, don't allow "Accept as-is" option
+    const choices = claudeAnswer.trim()
+      ? [
+        { name: '✅ Accept as-is', value: 'accept' },
+        { name: '✏️  Edit the answer', value: 'edit' },
+        { name: '✍️  Write my own answer', value: 'rewrite' },
+        { name: '⏭️  Skip this question', value: 'skip' }
+      ]
+      : [
+        { name: '✍️  Write my own answer', value: 'rewrite' },
+        { name: '⏭️  Skip this question', value: 'skip' }
+      ];
 
     const { action } = await inquirer.prompt([
       {
         type: 'list',
         name: 'action',
         message: 'What would you like to do with this answer?',
-        choices: [
-          { name: '✅ Accept as-is', value: 'accept' },
-          { name: '✏️  Edit the answer', value: 'edit' },
-          { name: '✍️  Write my own answer', value: 'rewrite' },
-          { name: '⏭️  Skip this question', value: 'skip' }
-        ]
+        choices
       }
     ]);
 
@@ -274,7 +296,7 @@ Keep the answer concise but informative (aim for 3-5 paragraphs).`;
           default: claudeAnswer
         }
       ]);
-      return edited.trim();
+      return edited.trim() || null;
     }
 
     case 'rewrite': {
