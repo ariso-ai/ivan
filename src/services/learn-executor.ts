@@ -88,6 +88,9 @@ export class LearnExecutor {
       })
       .executeTakeFirst();
 
+    if (result.insertId === undefined) {
+      throw new Error('Failed to create repository: no insertId returned');
+    }
     return Number(result.insertId);
   }
 
