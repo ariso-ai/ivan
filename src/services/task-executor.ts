@@ -134,51 +134,15 @@ export class TaskExecutor {
         ]);
         shouldWaitForComments = waitForComments;
 
-        // Ask if user wants to confirm before each task
-        let confirmBeforeEach = false;
-        if (buildTasks.length > 1) {
-          const { shouldConfirm } = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'shouldConfirm',
-              message: 'Would you like to confirm before executing each task?',
-              default: false
-            }
-          ]);
-          confirmBeforeEach = shouldConfirm;
-        }
-
         console.log(chalk.blue.bold('📋 Executing tasks...'));
 
         // Handle single PR strategy
         if (prStrategy === 'single' && buildTasks.length > 1) {
-          await this.executeTasksWithSinglePR(buildTasks, confirmBeforeEach);
+          await this.executeTasksWithSinglePR(buildTasks);
         } else {
           // Multiple PRs (default behavior)
           for (let i = 0; i < buildTasks.length; i++) {
             const task = buildTasks[i];
-
-            if (confirmBeforeEach) {
-              console.log('');
-              console.log(chalk.yellow(`Task ${i + 1} of ${buildTasks.length}: ${task.description}`));
-
-              const inquirer = (await import('inquirer')).default;
-              const { shouldExecute } = await inquirer.prompt([
-                {
-                  type: 'confirm',
-                  name: 'shouldExecute',
-                  message: 'Execute this task?',
-                  default: true
-                }
-              ]);
-
-              if (!shouldExecute) {
-                console.log(chalk.gray('⏭️  Skipping task'));
-                await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
-                continue;
-              }
-            }
-
             await this.executeTask(task);
           }
         }
@@ -492,7 +456,7 @@ export class TaskExecutor {
     }
   }
 
-  private async executeTasksWithSinglePR(tasks: Task[], confirmBeforeEach: boolean): Promise<void> {
+  private async executeTasksWithSinglePR(tasks: Task[]): Promise<void> {
     console.log('');
     console.log(chalk.blue('📦 Creating single branch for all tasks...'));
 
@@ -528,27 +492,6 @@ export class TaskExecutor {
       // Execute each task on the same branch
       for (let i = 0; i < tasks.length; i++) {
         const task = tasks[i];
-
-        if (confirmBeforeEach) {
-          console.log('');
-          console.log(chalk.yellow(`Task ${i + 1} of ${tasks.length}: ${task.description}`));
-
-          const inquirer = (await import('inquirer')).default;
-          const { shouldExecute } = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'shouldExecute',
-              message: 'Execute this task?',
-              default: true
-            }
-          ]);
-
-          if (!shouldExecute) {
-            console.log(chalk.gray('⏭️  Skipping task'));
-            await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
-            continue;
-          }
-        }
 
         console.log('');
         console.log(chalk.cyan.bold(`📝 Task ${i + 1}/${tasks.length}: ${task.description}`));
@@ -784,7 +727,7 @@ export class TaskExecutor {
 
       // Execute tasks based on PR strategy
       if (prStrategy === 'single' && tasks.length > 1) {
-        await this.executeTasksWithSinglePR(tasks, false);
+        await this.executeTasksWithSinglePR(tasks);
       } else {
         for (const task of tasks) {
           await this.executeTask(task);
