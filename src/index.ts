@@ -269,11 +269,21 @@ async function runMigrations(): Promise<void> {
   }
 }
 
-async function runNonInteractive(configPath: string): Promise<void> {
+async function runNonInteractive(configInput: string): Promise<void> {
   try {
-    // Read and parse config file
-    const configContent = readFileSync(configPath, 'utf-8');
-    const config: NonInteractiveConfig = JSON.parse(configContent);
+    let config: NonInteractiveConfig;
+    let configSource: string;
+
+    // Try to parse as JSON first (inline JSON)
+    try {
+      config = JSON.parse(configInput);
+      configSource = 'inline JSON';
+    } catch {
+      // If parsing fails, treat as file path
+      const configContent = readFileSync(configInput, 'utf-8');
+      config = JSON.parse(configContent);
+      configSource = configInput;
+    }
 
     // Validate config
     if (!config.tasks || !Array.isArray(config.tasks) || config.tasks.length === 0) {
@@ -281,7 +291,7 @@ async function runNonInteractive(configPath: string): Promise<void> {
     }
 
     console.log(chalk.blue.bold('🤖 Running in non-interactive mode'));
-    console.log(chalk.gray(`Config: ${configPath}`));
+    console.log(chalk.gray(`Config: ${configSource}`));
     console.log('');
 
     // Check configuration

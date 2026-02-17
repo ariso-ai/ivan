@@ -1,8 +1,8 @@
 {
   "tasks": [
-    "Add a simple hello world function to the codebase"
+    "Add my name, max heckel, to the readme"
   ],
   "generateSubtasks": false,
   "prStrategy": "multiple",
-  "waitForComments": false
+  "waitForComments": true
 }

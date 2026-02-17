@@ -16,12 +16,14 @@ export class GitManagerPAT implements IGitManager {
   private githubClient: GitHubAPIClient;
   private owner: string;
   private repo: string;
+  private pat: string;
 
   constructor(workingDir: string, pat: string) {
     this.workingDir = workingDir;
     this.originalWorkingDir = workingDir;
     this.configManager = new ConfigManager();
     this.githubClient = new GitHubAPIClient(pat);
+    this.pat = pat;
 
     // Get repository info from git remote
     const repoInfo = GitHubAPIClient.getRepoInfoFromRemote(workingDir);
@@ -97,9 +99,20 @@ export class GitManagerPAT implements IGitManager {
         .replace(/\$/g, '\\$')
         .replace(/!/g, '\\!');
       const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+
+      // Set git author and committer for this commit
+      const gitEnv = {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'ivan-agent',
+        GIT_AUTHOR_EMAIL: 'ivan-agent@users.noreply.github.com',
+        GIT_COMMITTER_NAME: 'ivan-agent',
+        GIT_COMMITTER_EMAIL: 'ivan-agent@users.noreply.github.com'
+      };
+
       execSync(`git commit -m "${commitMessage}"`, {
         cwd: this.workingDir,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        env: gitEnv
       });
       console.log(chalk.green(`✅ Committed changes: ${message}`));
     } catch (error) {
@@ -118,9 +131,20 @@ export class GitManagerPAT implements IGitManager {
         .replace(/\$/g, '\\$')
         .replace(/!/g, '\\!');
       const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+
+      // Set git author and committer for this commit
+      const gitEnv = {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'ivan-agent',
+        GIT_AUTHOR_EMAIL: 'ivan-agent@users.noreply.github.com',
+        GIT_COMMITTER_NAME: 'ivan-agent',
+        GIT_COMMITTER_EMAIL: 'ivan-agent@users.noreply.github.com'
+      };
+
       execSync(`git commit --allow-empty -m "${commitMessage}"`, {
         cwd: this.workingDir,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        env: gitEnv
       });
       console.log(chalk.green(`✅ Created empty commit: ${message}`));
     } catch (error) {
@@ -133,7 +157,11 @@ export class GitManagerPAT implements IGitManager {
 
     try {
       const escapedBranchName = branchName.replace(/"/g, '\\"');
-      execSync(`git push -u origin "${escapedBranchName}"`, {
+
+      // Use PAT for authentication by setting the remote URL with the token
+      const remoteUrl = `https://x-access-token:${this.pat}@github.com/${this.owner}/${this.repo}.git`;
+
+      execSync(`git push -u "${remoteUrl}" "${escapedBranchName}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
