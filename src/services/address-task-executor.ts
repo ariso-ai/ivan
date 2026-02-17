@@ -3,20 +3,20 @@ import ora from 'ora';
 import type { Ora } from 'ora';
 import { execSync } from 'child_process';
 import { JobManager } from './job-manager.js';
-import { GitManager } from './git-manager.js';
 import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { OpenAIService } from './openai-service.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
-import { PRService } from './pr-service.js';
+import { IGitManager, IPRService } from './git-interfaces.js';
+import { createGitManager, createPRService } from './service-factory.js';
 
 export class AddressTaskExecutor {
   private jobManager: JobManager;
-  private gitManager: GitManager | null = null;
+  private gitManager: IGitManager | null = null;
   private claudeExecutor: IClaudeExecutor | null = null;
   private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;
-  private prService: PRService | null = null;
+  private prService: IPRService | null = null;
   private workingDir: string;
   private repoInstructions: string | undefined;
 
@@ -62,8 +62,8 @@ export class AddressTaskExecutor {
       }
 
       this.workingDir = job.directory;
-      this.gitManager = new GitManager(this.workingDir);
-      this.prService = new PRService(this.workingDir);
+      this.gitManager = createGitManager(this.workingDir);
+      this.prService = createPRService(this.workingDir);
 
       this.gitManager.validateGitHubCliInstallation();
       console.log(chalk.green('✅ GitHub CLI is installed'));
@@ -706,7 +706,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
       const repoInfo = execSync(
         'gh repo view --json owner,name',
         {
-          cwd: this.gitManager?.['originalWorkingDir'] || this.workingDir,
+          cwd: this.workingDir,
           encoding: 'utf-8'
         }
       );
@@ -743,7 +743,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
       const graphqlResult = execSync(
         `gh api graphql -f query='${graphqlQuery}'`,
         {
-          cwd: this.gitManager?.['originalWorkingDir'] || this.workingDir,
+          cwd: this.workingDir,
           encoding: 'utf-8'
         }
       );

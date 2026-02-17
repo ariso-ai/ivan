@@ -1,47 +1,32 @@
 import { execSync } from 'child_process';
 import chalk from 'chalk';
+import { IPRService, PullRequest, PRComment } from './git-interfaces.js';
+import { GitHubAPIClient } from './github-api-client.js';
 
-export interface PullRequest {
-  number: number;
-  title: string;
-  branch: string;
-  url: string;
-  hasUnaddressedComments: boolean;
-  hasFailingChecks: boolean;
-  unaddressedComments: PRComment[];
-  failingChecks: string[];
-  hasTestOrLintFailures: boolean;
-  testOrLintFailures: string[];
-}
-
-export interface PRComment {
-  id: string;
-  author: string;
-  body: string;
-  createdAt: string;
-  path?: string;
-  line?: number;
-}
-
-export class PRService {
+export class PRServicePAT implements IPRService {
   private workingDir: string;
+  private githubClient: GitHubAPIClient;
+  private owner: string;
+  private repo: string;
 
-  constructor(workingDir: string) {
+  constructor(workingDir: string, pat: string) {
     this.workingDir = workingDir;
+    this.githubClient = new GitHubAPIClient(pat);
+
+    // Get repository info from git remote
+    const repoInfo = GitHubAPIClient.getRepoInfoFromRemote(workingDir);
+    this.owner = repoInfo.owner;
+    this.repo = repoInfo.repo;
   }
 
   async getSpecificPRWithIssues(prNumber: number): Promise<PullRequest[]> {
     try {
       // Get specific PR
-      const prJson = execSync(`gh pr view ${prNumber} --json number,title,headRefName,url,state`, {
-        cwd: this.workingDir,
-        encoding: 'utf-8'
-      });
-
-      const pr = JSON.parse(prJson);
+      const pr = await this.githubClient.getPR(this.owner, this.repo, prNumber);
 
       // Check if PR is open
-      if (pr.state !== 'OPEN') {
+      // GitHub REST API returns lowercase state: "open", "closed", or "merged"
+      if (pr.state.toUpperCase() !== 'OPEN') {
         console.log(chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${pr.state})`));
         return [];
       }
@@ -85,7 +70,7 @@ export class PRService {
       return [];
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('no pull requests found')) {
+      if (errorMessage.includes('no pull requests found') || errorMessage.includes('404')) {
         console.error(chalk.red(`❌ PR #${prNumber} not found`));
       } else {
         console.error(chalk.red(`Error fetching PR #${prNumber}:`), error);
@@ -97,17 +82,11 @@ export class PRService {
   async getOpenPRsWithIssues(fromUser?: string): Promise<PullRequest[]> {
     try {
       // Get all open PRs, optionally filtered by author
-      let command = 'gh pr list --state open --json number,title,headRefName,url,author';
-      if (fromUser) {
-        command += ` --author ${fromUser}`;
-      }
-
-      const prsJson = execSync(command, {
-        cwd: this.workingDir,
-        encoding: 'utf-8'
+      const prs = await this.githubClient.listPRs(this.owner, this.repo, {
+        state: 'open',
+        author: fromUser
       });
 
-      const prs = JSON.parse(prsJson);
       const pullRequests: PullRequest[] = [];
 
       for (const pr of prs) {
@@ -157,54 +136,8 @@ export class PRService {
 
   async getUnaddressedComments(prNumber: number): Promise<PRComment[]> {
     try {
-      // Get PR owner and repo name
-      const repoInfo = execSync(
-        'gh repo view --json owner,name',
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
-      const { owner, name: repoName } = JSON.parse(repoInfo);
-
-      // Use GraphQL to get review threads with resolved status
-      const graphqlQuery = `
-        query {
-          repository(owner: "${owner.login}", name: "${repoName}") {
-            pullRequest(number: ${prNumber}) {
-              reviewThreads(first: 100) {
-                nodes {
-                  isResolved
-                  comments(first: 100) {
-                    nodes {
-                      id
-                      databaseId
-                      body
-                      author {
-                        login
-                      }
-                      createdAt
-                      path
-                      line
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      `;
-
-      const graphqlResult = execSync(
-        `gh api graphql -f query='${graphqlQuery}'`,
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
-
-      const result = JSON.parse(graphqlResult);
-      const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+      // Get review threads using GraphQL
+      const threads = await this.githubClient.getReviewThreads(this.owner, this.repo, prNumber);
       const unaddressedComments: PRComment[] = [];
 
       // Process each thread
@@ -247,15 +180,8 @@ export class PRService {
 
   private async getFailingChecks(prNumber: number): Promise<{ allFailures: string[], testOrLintFailures: string[] }> {
     try {
-      const checksJson = execSync(
-        `gh pr checks ${prNumber} --json name,state`,
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
+      const checks = await this.githubClient.getPRChecks(this.owner, this.repo, prNumber);
 
-      const checks = JSON.parse(checksJson);
       const failingChecks: string[] = [];
       const testOrLintFailures: string[] = [];
 
@@ -296,43 +222,42 @@ export class PRService {
   }
 
   async checkoutPRBranch(prNumber: number): Promise<void> {
-    execSync(`gh pr checkout ${prNumber}`, {
-      cwd: this.workingDir,
-      stdio: 'inherit'
-    });
+    // For PAT implementation, we need to fetch the PR branch and check it out manually
+    try {
+      const pr = await this.githubClient.getPR(this.owner, this.repo, prNumber);
+      const branchName = pr.headRefName;
+
+      // Fetch the PR branch
+      execSync(`git fetch origin ${branchName}:${branchName}`, {
+        cwd: this.workingDir,
+        stdio: 'inherit'
+      });
+
+      // Checkout the branch
+      execSync(`git checkout ${branchName}`, {
+        cwd: this.workingDir,
+        stdio: 'inherit'
+      });
+    } catch (error) {
+      throw new Error(`Failed to checkout PR branch: ${error}`);
+    }
   }
 
   async getFailingActionLogs(prNumber: number): Promise<string> {
     try {
-      // Get the checks with their workflow information
-      const checksJson = execSync(
-        `gh pr checks ${prNumber} --json name,state,link,workflow`,
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
-
-      const checks = JSON.parse(checksJson);
+      const checks = await this.githubClient.getPRChecks(this.owner, this.repo, prNumber);
       let failingLogs = '';
 
       for (const check of checks) {
         if (check.state === 'FAILURE' || check.state === 'ERROR') {
-          // Extract run ID from the link (format: https://github.com/owner/repo/actions/runs/123456789/job/987654321)
+          // Extract run ID from the link
           const runIdMatch = check.link?.match(/\/runs\/(\d+)/);
           if (runIdMatch) {
-            const runId = runIdMatch[1];
+            const runId = parseInt(runIdMatch[1], 10);
 
             try {
               // Get the failed logs for this run
-              const logs = execSync(
-                `gh run view ${runId} --log-failed`,
-                {
-                  cwd: this.workingDir,
-                  encoding: 'utf-8',
-                  maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large logs
-                }
-              );
+              const logs = await this.githubClient.getWorkflowRunLogs(this.owner, this.repo, runId);
 
               if (logs) {
                 failingLogs += `\n\n=== Failed logs for ${check.name} ===\n`;
@@ -345,7 +270,6 @@ export class PRService {
                 }
               }
             } catch (error) {
-              // If we can't get logs for this specific run, continue with others
               console.error(`Failed to get logs for run ${runId}:`, error);
             }
           }
@@ -359,4 +283,3 @@ export class PRService {
     }
   }
 }
-

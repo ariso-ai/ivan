@@ -1,29 +1,28 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import { JobManager } from './job-manager.js';
-import { GitManager } from './git-manager.js';
 import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { OpenAIService } from './openai-service.js';
-import { RepositoryManager } from './repository-manager.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
-import { PRService } from './pr-service.js';
 import { NonInteractiveConfig } from '../types/non-interactive-config.js';
+import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
+import { createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
-  private gitManager: GitManager | null = null;
+  private gitManager: IGitManager | null = null;
   private claudeExecutor: IClaudeExecutor | null = null;
   private openaiService: OpenAIService | null = null;
-  private repositoryManager: RepositoryManager;
+  private repositoryManager: IRepositoryManager;
   private configManager: ConfigManager;
   private workingDir: string;
   private repoInstructions: string | undefined;
 
   constructor() {
     this.jobManager = new JobManager();
-    this.repositoryManager = new RepositoryManager();
+    this.repositoryManager = createRepositoryManager();
     this.configManager = new ConfigManager();
     this.workingDir = '';
     this.repoInstructions = undefined;
@@ -53,19 +52,26 @@ export class TaskExecutor {
       console.log(chalk.green('✅ Claude Code SDK configured'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
-      this.gitManager = new GitManager(this.workingDir);
+      this.gitManager = createGitManager(this.workingDir);
 
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
       this.gitManager.validateGitHubCliInstallation();
-      console.log(chalk.green('✅ GitHub CLI is installed'));
+      const authType = this.configManager.getGithubAuthType();
+      if (authType === 'gh-cli') {
+        console.log(chalk.green('✅ GitHub CLI is installed'));
+      }
 
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
       this.gitManager.validateGitHubCliAuthentication();
-      console.log(chalk.green('✅ GitHub CLI is authenticated'));
+      if (authType === 'gh-cli') {
+        console.log(chalk.green('✅ GitHub CLI is authenticated'));
+      } else {
+        console.log(chalk.green('✅ GitHub PAT is configured'));
+      }
 
       const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
@@ -189,7 +195,7 @@ export class TaskExecutor {
 
             // Check for unaddressed comments on created PRs
             console.log(chalk.blue('🔍 Checking for PR review comments...'));
-            const prService = new PRService(this.workingDir);
+            const prService = createPRService(this.workingDir);
             const addressTasks = await this.checkAndCreateAddressTasks(createdPRUrls, prService);
 
             if (addressTasks.length > 0) {
@@ -219,7 +225,7 @@ export class TaskExecutor {
     }
   }
 
-  private async checkAndCreateAddressTasks(prUrls: string[], prService: PRService): Promise<Task[]> {
+  private async checkAndCreateAddressTasks(prUrls: string[], prService: IPRService): Promise<Task[]> {
     const addressTasks: Task[] = [];
 
     for (const prUrl of prUrls) {
@@ -669,19 +675,26 @@ export class TaskExecutor {
       console.log(chalk.green('✅ Claude Code SDK configured'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
-      this.gitManager = new GitManager(this.workingDir);
+      this.gitManager = createGitManager(this.workingDir);
 
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
       this.gitManager.validateGitHubCliInstallation();
-      console.log(chalk.green('✅ GitHub CLI is installed'));
+      const authType = this.configManager.getGithubAuthType();
+      if (authType === 'gh-cli') {
+        console.log(chalk.green('✅ GitHub CLI is installed'));
+      }
 
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
       this.gitManager.validateGitHubCliAuthentication();
-      console.log(chalk.green('✅ GitHub CLI is authenticated'));
+      if (authType === 'gh-cli') {
+        console.log(chalk.green('✅ GitHub CLI is authenticated'));
+      } else {
+        console.log(chalk.green('✅ GitHub PAT is configured'));
+      }
 
       const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
@@ -775,7 +788,7 @@ export class TaskExecutor {
 
           // Check for unaddressed comments on created PRs
           console.log(chalk.blue('🔍 Checking for PR review comments...'));
-          const prService = new PRService(this.workingDir);
+          const prService = createPRService(this.workingDir);
           const addressTasks = await this.checkAndCreateAddressTasks(createdPRUrls, prService);
 
           if (addressTasks.length > 0) {
