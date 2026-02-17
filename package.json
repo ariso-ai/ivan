@@ -29,6 +29,7 @@
   "homepage": "https://github.com/ariso-ai/ivan#readme",
   "files": [
     "dist",
+    ".github/workflows/ivanagent.yml",
     "README.md",
     "LICENSE"
   ],

@@ -1,0 +1,133 @@
+name: Ivan Agent Handler
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  handle-ivanagent:
+    if: contains(github.event.comment.body, '@ivan-agent')
+    runs-on: ubuntu-latest
+    environment: ivan
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.OPEN_AI_KEY }}" ]; then
+            echo "Error: OPEN_AI_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.ANTHROPIC_KEY }}" ]; then
+            echo "Error: ANTHROPIC_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.PAT }}" ]; then
+            echo "Error: PAT secret is not set"
+            exit 1
+          fi
+          echo "All required secrets are present"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT }}
+          fetch-depth: 0
+
+      - name: Create Ivan config directory
+        run: mkdir -p ~/.ivan
+
+      - name: Write Ivan config
+        run: |
+          cat > ~/.ivan/config.json << 'EOF'
+          {
+            "openaiApiKey": "${{ secrets.OPEN_AI_KEY }}",
+            "anthropicApiKey": "${{ secrets.ANTHROPIC_KEY }}",
+            "version": "1.0.0",
+            "executorType": "sdk",
+            "githubAuthType": "pat",
+            "githubPat": "${{ secrets.PAT }}",
+            "repoInstructionsDeclined": {},
+            "repoInstructions": {},
+            "reviewAgent": "@coderabbitai"
+          }
+          EOF
+          echo "Config file created at ~/.ivan/config.json"
+
+      - name: Install Ivan CLI
+        run: |
+          npm install -g @ariso-ai/ivan@latest
+          echo "Ivan installed successfully"
+          ivan --version
+
+      - name: Add eyes reaction to comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: eyes
+
+      - name: Get issue body
+        id: get_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            return issue.data.body;
+          result-encoding: string
+
+      - name: Run Ivan command
+        id: run_ivan
+        run: |
+          ISSUE_BODY=$(cat << 'ISSUE_EOF'
+          ${{ steps.get_issue.outputs.result }}
+          ISSUE_EOF
+          )
+
+          # Escape the issue body for JSON
+          ESCAPED_ISSUE=$(echo "$ISSUE_BODY" | jq -Rs .)
+
+          # Run ivan command and capture output
+          OUTPUT=$(ivan -c "{\"tasks\": [$ESCAPED_ISSUE], \"generateSubtasks\": false, \"prStrategy\": \"multiple\", \"waitForComments\": true}" 2>&1 || true)
+
+          echo "$OUTPUT"
+          echo "$OUTPUT" > /tmp/ivan_output.txt
+
+          # Extract PR URL from output (looking for github.com PR URLs)
+          PR_URL=$(echo "$OUTPUT" | grep -oP 'https://github\.com/[^/]+/[^/]+/pull/\d+' | head -1 || echo "")
+
+          if [ -n "$PR_URL" ]; then
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          else
+            echo "pr_url=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on issue with PR link
+        if: steps.run_ivan.outputs.pr_url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ Ivan has created a pull request: ${{ steps.run_ivan.outputs.pr_url }}`
+            });
+
+      - name: Comment on issue if no PR found
+        if: steps.run_ivan.outputs.pr_url == ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `⚠️ Ivan command completed but no pull request URL was found in the output.`
+            });
