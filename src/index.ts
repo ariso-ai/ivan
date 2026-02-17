@@ -8,7 +8,10 @@ import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 import { NonInteractiveConfig } from './types/non-interactive-config.js';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'fs';
+import { execSync } from 'child_process';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const program = new Command();
 const configManager = new ConfigManager();
@@ -60,6 +63,13 @@ program
   .description('Configure which bot to tag for PR review requests (default: @codex)')
   .action(async () => {
     await configManager.promptForReviewAgent();
+  });
+
+program
+  .command('add-action')
+  .description('Add Ivan Agent GitHub Action workflow to current repository')
+  .action(async () => {
+    await addIvanAction();
   });
 
 program
@@ -269,6 +279,167 @@ async function runMigrations(): Promise<void> {
   }
 }
 
+async function addIvanAction(): Promise<void> {
+  try {
+    const workingDir = process.cwd();
+    const workflowDir = join(workingDir, '.github', 'workflows');
+    const workflowPath = join(workflowDir, 'ivanagent.yml');
+
+    console.log(chalk.blue.bold('🚀 Adding Ivan Agent GitHub Action'));
+    console.log('');
+
+    // Check if workflow already exists
+    if (existsSync(workflowPath)) {
+      console.log(chalk.yellow('⚠️  Ivan Agent workflow already exists at .github/workflows/ivanagent.yml'));
+      console.log(chalk.gray('Skipping workflow creation'));
+      return;
+    }
+
+    // Check if we're in a git repository
+    try {
+      execSync('git rev-parse --git-dir', { stdio: 'pipe' });
+    } catch {
+      console.log(chalk.red('❌ Not in a git repository'));
+      console.log(chalk.gray('Please run this command from a git repository'));
+      return;
+    }
+
+    // Stash any current changes
+    console.log(chalk.blue('📦 Stashing current changes...'));
+    try {
+      const stashResult = execSync('git stash push -m "Stashing changes before adding Ivan Action"', {
+        encoding: 'utf-8',
+        stdio: 'pipe'
+      });
+      const hasStashed = !stashResult.includes('No local changes to save');
+      if (hasStashed) {
+        console.log(chalk.green('✓ Changes stashed'));
+      } else {
+        console.log(chalk.gray('No changes to stash'));
+      }
+    } catch (error) {
+      console.log(chalk.yellow('⚠️  Could not stash changes, continuing anyway'));
+    }
+
+    // Checkout main branch
+    console.log(chalk.blue('🔄 Checking out main branch...'));
+    try {
+      const currentBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+      if (currentBranch !== 'main') {
+        execSync('git checkout main', { stdio: 'pipe' });
+        console.log(chalk.green('✓ Checked out main'));
+      } else {
+        console.log(chalk.gray('Already on main'));
+      }
+    } catch (error) {
+      console.log(chalk.red('❌ Failed to checkout main branch'));
+      throw error;
+    }
+
+    // Create new branch
+    const branchName = 'add-ivan-action-workflow';
+    console.log(chalk.blue(`🌿 Creating new branch: ${branchName}...`));
+    try {
+      // Check if branch already exists
+      try {
+        execSync(`git rev-parse --verify ${branchName}`, { stdio: 'pipe' });
+        console.log(chalk.yellow(`⚠️  Branch ${branchName} already exists, switching to it`));
+        execSync(`git checkout ${branchName}`, { stdio: 'pipe' });
+      } catch {
+        // Branch doesn't exist, create it
+        execSync(`git checkout -b ${branchName}`, { stdio: 'pipe' });
+        console.log(chalk.green('✓ Branch created'));
+      }
+    } catch (error) {
+      console.log(chalk.red('❌ Failed to create branch'));
+      throw error;
+    }
+
+    // Create workflows directory if it doesn't exist
+    if (!existsSync(workflowDir)) {
+      console.log(chalk.blue('📁 Creating .github/workflows directory...'));
+      mkdirSync(workflowDir, { recursive: true });
+      console.log(chalk.green('✓ Directory created'));
+    }
+
+    // Get the path to the workflow file in the package
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const packageWorkflowPath = join(__dirname, '..', '.github', 'workflows', 'ivanagent.yml');
+
+    // Copy the workflow file
+    console.log(chalk.blue('📋 Adding workflow file...'));
+    copyFileSync(packageWorkflowPath, workflowPath);
+    console.log(chalk.green('✓ Workflow file added'));
+
+    // Git add the file
+    console.log(chalk.blue('📝 Staging workflow file...'));
+    execSync('git add .github/workflows/ivanagent.yml', { stdio: 'pipe' });
+    console.log(chalk.green('✓ File staged'));
+
+    // Commit the changes
+    console.log(chalk.blue('💾 Committing changes...'));
+    execSync('git commit -m "Add Ivan Agent GitHub Action workflow"', { stdio: 'pipe' });
+    console.log(chalk.green('✓ Changes committed'));
+
+    // Push the branch
+    console.log(chalk.blue('⬆️  Pushing branch to remote...'));
+    try {
+      execSync(`git push -u origin ${branchName}`, { stdio: 'pipe' });
+      console.log(chalk.green('✓ Branch pushed'));
+    } catch (error) {
+      console.log(chalk.red('❌ Failed to push branch'));
+      throw error;
+    }
+
+    // Create PR
+    console.log(chalk.blue('🔀 Creating pull request...'));
+    try {
+      const prBody = `This PR adds the Ivan Agent GitHub Action workflow.
+
+## What does this do?
+
+This workflow allows you to trigger Ivan Agent by commenting \`@ivan-agent\` on any GitHub issue. Ivan will then:
+- Read the issue description
+- Create a plan to address it
+- Implement the solution
+- Open a PR with the changes
+
+## Required Setup
+
+After merging this PR, you'll need to set up the following GitHub secrets in your repository:
+- \`OPEN_AI_KEY\`: Your OpenAI API key
+- \`ANTHROPIC_KEY\`: Your Anthropic API key
+- \`PAT\`: A Personal Access Token with repo permissions
+
+You'll also need to create a GitHub environment named \`ivan\` in your repository settings.`;
+
+      const prUrl = execSync(
+        `gh pr create --title "Add Ivan Agent GitHub Action workflow" --body "${prBody.replace(/"/g, '\\"')}"`,
+        { encoding: 'utf-8', stdio: 'pipe' }
+      ).trim();
+
+      console.log('');
+      console.log(chalk.green.bold('✅ Pull request created successfully!'));
+      console.log(chalk.cyan(`🔗 ${prUrl}`));
+      console.log('');
+      console.log(chalk.gray('Next steps:'));
+      console.log(chalk.gray('1. Review and merge the PR'));
+      console.log(chalk.gray('2. Set up the required GitHub secrets (OPEN_AI_KEY, ANTHROPIC_KEY, PAT)'));
+      console.log(chalk.gray('3. Create a GitHub environment named "ivan"'));
+      console.log(chalk.gray('4. Comment @ivan-agent on any issue to trigger Ivan!'));
+    } catch (error) {
+      console.log(chalk.red('❌ Failed to create pull request'));
+      console.log(chalk.yellow('You can create it manually from the branch:', branchName));
+      throw error;
+    }
+
+  } catch (error) {
+    console.error(chalk.red('❌ Error adding Ivan Action:'), error);
+    process.exit(1);
+  }
+}
+
 async function runNonInteractive(configInput: string): Promise<void> {
   try {
     let config: NonInteractiveConfig;
@@ -331,7 +502,7 @@ async function main() {
       return;
     }
 
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
