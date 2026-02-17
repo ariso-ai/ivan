@@ -2,29 +2,28 @@ import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { JobManager } from './job-manager.js';
-import { PRService } from './pr-service.js';
-import { RepositoryManager } from './repository-manager.js';
-import { GitManager } from './git-manager.js';
 import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
+import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
+import { createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
 
 export class AddressExecutor {
   private jobManager: JobManager;
-  private prService: PRService;
-  private repositoryManager: RepositoryManager;
-  private gitManager: GitManager | null = null;
+  private prService: IPRService;
+  private repositoryManager: IRepositoryManager;
+  private gitManager: IGitManager | null = null;
   private claudeExecutor: IClaudeExecutor | null = null;
   private configManager: ConfigManager;
   private workingDir: string;
 
   constructor() {
     this.jobManager = new JobManager();
-    this.repositoryManager = new RepositoryManager();
+    this.repositoryManager = createRepositoryManager();
     this.configManager = new ConfigManager();
     this.workingDir = '';
-    this.prService = {} as PRService;
+    this.prService = {} as IPRService;
   }
 
   private getClaudeExecutor(): IClaudeExecutor {
@@ -51,8 +50,8 @@ export class AddressExecutor {
       console.log(chalk.green('✅ Claude Code SDK configured'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
-      this.gitManager = new GitManager(this.workingDir);
-      this.prService = new PRService(this.workingDir);
+      this.gitManager = createGitManager(this.workingDir);
+      this.prService = createPRService(this.workingDir);
 
       this.gitManager.validateGitHubCliInstallation();
       console.log(chalk.green('✅ GitHub CLI is installed'));

@@ -5,8 +5,9 @@ import { ConfigManager } from '../config.js';
 import path from 'path';
 import { promises as fs, writeFileSync, unlinkSync } from 'fs';
 import os from 'os';
+import type { IGitManager, PRInfo } from './git-interfaces.js';
 
-export class GitManager {
+export class GitManagerCLI implements IGitManager {
   private workingDir: string;
   private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;
@@ -428,12 +429,7 @@ export class GitManager {
     return `ivan/${sanitized}-${timestamp}`;
   }
 
-  async getPRInfo(prNumber: number): Promise<{
-    headRefName: string;
-    number: number;
-    title: string;
-    url: string;
-  }> {
+  async getPRInfo(prNumber: number): Promise<PRInfo> {
     try {
       const prJson = execSync(`gh pr view ${prNumber} --json headRefName,number,title,url`, {
         cwd: this.workingDir,

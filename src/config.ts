@@ -13,6 +13,8 @@ interface Config {
   claudeModel?: string;
   executorType?: 'sdk' | 'cli';
   reviewAgent?: string;
+  githubAuthType?: 'gh-cli' | 'pat';
+  githubPat?: string;
   repoInstructions?: { [repoPath: string]: string };
   repoAllowedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
@@ -170,10 +172,34 @@ export class ConfigManager {
     console.log(chalk.blue.bold('🤖 Ivan Configuration Setup'));
     console.log('');
 
-    // Check GitHub CLI authentication
-    await this.checkGhAuth();
+    // First ask about GitHub authentication method
+    const githubAuthAnswers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'githubAuthType',
+        message: 'How do you want to authenticate with GitHub?',
+        choices: [
+          {
+            name: 'GitHub CLI (gh) - Recommended, uses `gh auth login`',
+            value: 'gh-cli' as const
+          },
+          {
+            name: 'Personal Access Token (PAT) - Manual token management',
+            value: 'pat' as const
+          }
+        ],
+        default: 'gh-cli'
+      }
+    ]);
 
-    // First ask about executor type
+    const githubAuthType = githubAuthAnswers.githubAuthType;
+
+    // Check GitHub CLI authentication only if using CLI
+    if (githubAuthType === 'gh-cli') {
+      await this.checkGhAuth();
+    }
+
+    // Ask about executor type
     const executorAnswers = await inquirer.prompt([
       {
         type: 'list',
@@ -195,7 +221,7 @@ export class ConfigManager {
 
     const executorType = executorAnswers.executorType;
 
-    // Build questions based on executor type
+    // Build questions based on executor type and auth type
     const questions: any[] = [
       {
         type: 'password',
@@ -233,13 +259,34 @@ export class ConfigManager {
       });
     }
 
+    // Only ask for GitHub PAT if using PAT auth
+    if (githubAuthType === 'pat') {
+      questions.push({
+        type: 'password',
+        name: 'githubPat',
+        message: 'Enter your GitHub Personal Access Token:',
+        validate: (input: string) => {
+          if (!input || input.trim().length === 0) {
+            return 'GitHub PAT is required';
+          }
+          if (!input.startsWith('ghp_') && !input.startsWith('github_pat_')) {
+            return 'GitHub PAT should start with "ghp_" or "github_pat_"';
+          }
+          return true;
+        },
+        mask: '*'
+      });
+    }
+
     const answers = await inquirer.prompt(questions);
 
     const config: Config = {
       openaiApiKey: answers.openaiApiKey.trim(),
       anthropicApiKey: executorType === 'sdk' ? answers.anthropicApiKey.trim() : '',
       version: '1.0.0',
-      executorType: executorType
+      executorType: executorType,
+      githubAuthType: githubAuthType,
+      githubPat: githubAuthType === 'pat' ? answers.githubPat.trim() : undefined
     };
 
     await this.saveConfig(config);
@@ -620,5 +667,101 @@ export class ConfigManager {
 
     console.log('');
     console.log(chalk.green(`✅ Review agent set to: ${reviewAgent}`));
+  }
+
+  getGithubAuthType(): 'gh-cli' | 'pat' {
+    const config = this.getConfig();
+    return config?.githubAuthType || 'gh-cli';
+  }
+
+  getGithubPat(): string | undefined {
+    const config = this.getConfig();
+    return config?.githubPat;
+  }
+
+  async setGithubAuthType(authType: 'gh-cli' | 'pat'): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.githubAuthType = authType;
+    await this.saveConfig(config);
+  }
+
+  async setGithubPat(pat: string): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.githubPat = pat;
+    config.githubAuthType = 'pat';
+    await this.saveConfig(config);
+  }
+
+  async promptForGithubAuth(): Promise<void> {
+    console.log(chalk.blue.bold('🔐 Configure GitHub Authentication'));
+    console.log('');
+    console.log(chalk.yellow('Choose how to authenticate with GitHub'));
+    console.log('');
+
+    const authTypes = [
+      {
+        name: 'GitHub CLI (gh) - Recommended, uses `gh auth login`',
+        value: 'gh-cli' as const,
+        short: 'GitHub CLI'
+      },
+      {
+        name: 'Personal Access Token (PAT) - Manual token management',
+        value: 'pat' as const,
+        short: 'PAT'
+      }
+    ];
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'authType',
+        message: 'Select authentication method:',
+        choices: authTypes,
+        default: 'gh-cli'
+      }
+    ]);
+
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    config.githubAuthType = answers.authType;
+
+    if (answers.authType === 'pat') {
+      const patAnswers = await inquirer.prompt([
+        {
+          type: 'password',
+          name: 'pat',
+          message: 'Enter your GitHub Personal Access Token:',
+          validate: (input: string) => {
+            if (!input || input.trim().length === 0) {
+              return 'GitHub PAT is required';
+            }
+            if (!input.startsWith('ghp_') && !input.startsWith('github_pat_')) {
+              return 'GitHub PAT should start with "ghp_" or "github_pat_"';
+            }
+            return true;
+          },
+          mask: '*'
+        }
+      ]);
+
+      config.githubPat = patAnswers.pat.trim();
+    }
+
+    await this.saveConfig(config);
+
+    const selectedAuth = authTypes.find(a => a.value === answers.authType);
+    console.log('');
+    console.log(chalk.green(`✅ GitHub authentication set to: ${selectedAuth?.short || answers.authType}`));
   }
 }

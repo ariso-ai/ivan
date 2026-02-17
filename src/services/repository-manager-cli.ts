@@ -3,10 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
-import { Selectable } from 'kysely';
+import type { Selectable } from 'kysely';
 import { DatabaseManager, Repository } from '../database.js';
+import type { IRepositoryManager, RepositoryInfo } from './git-interfaces.js';
 
-export class RepositoryManager {
+export class RepositoryManagerCLI implements IRepositoryManager {
   private dbManager: DatabaseManager;
 
   constructor() {
@@ -106,7 +107,7 @@ export class RepositoryManager {
     }
   }
 
-  getRepositoryInfo(workingDir: string): { name: string; branch: string } {
+  getRepositoryInfo(workingDir: string): RepositoryInfo {
     try {
       const repoName = path.basename(workingDir);
       const branch = execSync('git branch --show-current', {
