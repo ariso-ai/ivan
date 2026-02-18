@@ -99,7 +99,7 @@ export class AddressTaskExecutor {
           const parsed = JSON.parse(repoInfo);
           this.repoOwner = parsed.owner.login;
           this.repoName = parsed.name;
-        } catch (error) {
+        } catch {
           if (!quiet) console.log(chalk.yellow('⚠️  Could not get repository info'));
         }
       }
@@ -319,46 +319,60 @@ export class AddressTaskExecutor {
           continue;
         }
 
-        // Get all unaddressed comments for this PR
-        if (!quiet) spinner = ora('Fetching PR comments...').start();
-        if (!prNumber) {
-          throw new Error('PR number not found');
-        }
-        const comments = await this.getUnaddressedComments(parseInt(prNumber));
-        if (spinner) spinner.succeed(`Found ${comments.length} unaddressed comments`);
+        // Process each address task directly (no need to re-fetch comments from GitHub)
+        for (const task of addressTasks) {
+          // Skip tasks that aren't comment-related
+          if (!task.description.includes('comment from @')) {
+            continue;
+          }
 
-        if (comments.length === 0 && addressTasks.some(t => t.description.includes('comment'))) {
-          if (!quiet) console.log(chalk.yellow('⚠️  No unaddressed comments found'));
-          continue;
-        }
+          // Parse comment information from task description
+          // Format: "Address PR #123 comment from @author: "body" (in path:line)"
+          const authorMatch = task.description.match(/comment from @(\w+)/);
+          const bodyMatch = task.description.match(/: "(.+?)"/);
+          const pathMatch = task.description.match(/\(in (.+?)(:\d+)?\)$/);
+          const lineMatch = task.description.match(/:(\d+)\)$/);
 
-        // Process each comment
-        for (const comment of comments) {
-          // In quiet mode, output the comment being addressed
+          if (!authorMatch || !bodyMatch) {
+            if (!quiet) console.log(chalk.yellow(`⚠️  Could not parse comment from task: ${task.description}`));
+            continue;
+          }
+
+          const comment = {
+            author: authorMatch[1],
+            body: bodyMatch[1],
+            path: pathMatch ? pathMatch[1] : undefined,
+            line: lineMatch ? parseInt(lineMatch[1]) : undefined,
+            id: '' // We'll fetch this if needed for replying
+          };
+
+          // Output what we're addressing
           console.log('');
           console.log(chalk.blue(`📝 Addressing comment from @${comment.author}:`));
-          console.log(chalk.gray(`   "${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}"`));
-
-          // Find the corresponding task
-          const task = addressTasks.find(t =>
-            t.description.includes(comment.author) &&
-            t.description.includes(comment.body.substring(0, 50))
-          );
-
-          if (!task) {
-            if (!quiet) console.log(chalk.yellow('⚠️  No task found for this comment'));
-            continue;
+          console.log(chalk.gray(`   "${comment.body}"`));
+          if (comment.path) {
+            console.log(chalk.gray(`   File: ${comment.path}${comment.line ? `:${comment.line}` : ''}`));
           }
 
           await this.jobManager.updateTaskStatus(task.uuid, 'active');
 
-          // Save comment URL
-          if (comment.id && this.repoOwner && this.repoName) {
-            if (!prNumber) {
-              throw new Error('PR number not found');
+          // Fetch the comment ID from GitHub for replying later
+          if (prNumber) {
+            const commentId = await this.findCommentId(
+              parseInt(prNumber),
+              comment.author,
+              comment.body.substring(0, 50),
+              comment.path,
+              comment.line
+            );
+            if (commentId) {
+              comment.id = commentId;
+              // Save comment URL
+              if (this.repoOwner && this.repoName) {
+                const commentUrl = `https://github.com/${this.repoOwner}/${this.repoName}/pull/${prNumber}#discussion_r${commentId}`;
+                await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
+              }
             }
-            const commentUrl = `https://github.com/${this.repoOwner}/${this.repoName}/pull/${prNumber}#discussion_r${comment.id}`;
-            await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
           }
 
           if (!quiet) spinner = ora('Running Claude Code to address comment...').start();
@@ -777,6 +791,79 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
     } catch (error) {
       console.error('Error fetching comments:', error);
       return [];
+    }
+  }
+
+  private async findCommentId(prNumber: number, author: string, bodySnippet: string, path?: string, line?: number): Promise<string | null> {
+    // Fetch ALL comments (including resolved ones) to find the matching comment
+    try {
+      // Get repo info if not already set
+      let owner = this.repoOwner;
+      let repoName = this.repoName;
+
+      if (!owner || !repoName) {
+        const repoInfo = execSync('gh repo view --json owner,name', {
+          cwd: this.workingDir,
+          encoding: 'utf-8'
+        });
+        const parsed = JSON.parse(repoInfo);
+        owner = parsed.owner.login;
+        repoName = parsed.name;
+      }
+
+      // Use GraphQL to get ALL review threads, not just unresolved ones
+      const graphqlQuery = `
+        query {
+          repository(owner: "${owner}", name: "${repoName}") {
+            pullRequest(number: ${prNumber}) {
+              reviewThreads(first: 100) {
+                nodes {
+                  comments(first: 100) {
+                    nodes {
+                      databaseId
+                      body
+                      author {
+                        login
+                      }
+                      path
+                      line
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const graphqlResult = execSync(
+        `gh api graphql -f query='${graphqlQuery.replace(/'/g, "'\\''")}'`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf-8'
+        }
+      );
+
+      const result = JSON.parse(graphqlResult);
+      const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+
+      // Search through all comments in all threads
+      for (const thread of threads) {
+        const comments = thread.comments?.nodes || [];
+        for (const comment of comments) {
+          if (comment.author?.login === author &&
+              comment.body.includes(bodySnippet) &&
+              (!path || comment.path === path) &&
+              (!line || comment.line === line)) {
+            return comment.databaseId ? comment.databaseId.toString() : null;
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error finding comment ID:', error);
+      return null;
     }
   }
 
