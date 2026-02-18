@@ -41,27 +41,34 @@ jobs:
         run: mkdir -p ~/.ivan
 
       - name: Write Ivan config
+        env:
+          OPENAI_KEY: ${{ secrets.OPEN_AI_KEY }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+          GH_PAT: ${{ secrets.PAT }}
         run: |
-          cat > ~/.ivan/config.json << 'EOF'
-          {
-            "openaiApiKey": "${{ secrets.OPEN_AI_KEY }}",
-            "anthropicApiKey": "${{ secrets.ANTHROPIC_KEY }}",
-            "version": "1.0.0",
-            "executorType": "sdk",
-            "githubAuthType": "pat",
-            "githubPat": "${{ secrets.PAT }}",
-            "repoInstructionsDeclined": {},
-            "repoInstructions": {},
-            "reviewAgent": "@coderabbitai"
-          }
-          EOF
+          jq -n \
+            --arg openai "$OPENAI_KEY" \
+            --arg anthropic "$ANTHROPIC_KEY" \
+            --arg pat "$GH_PAT" \
+            '{
+              openaiApiKey: $openai,
+              anthropicApiKey: $anthropic,
+              version: "1.0.0",
+              executorType: "sdk",
+              githubAuthType: "pat",
+              githubPat: $pat,
+              repoInstructionsDeclined: {},
+              repoInstructions: {},
+              reviewAgent: "@coderabbitai"
+            }' \
+            > ~/.ivan/config.json
           echo "Config file created at ~/.ivan/config.json"
 
       - name: Install Ivan CLI
         run: |
-          npm install -g @ariso-ai/ivan@latest
+          npm install -g @ariso-ai/ivan@latest --prefix ~/.local
           echo "Ivan installed successfully"
-          ivan --version
+          ~/.local/bin/ivan --version
 
       - name: Add eyes reaction to comment
         uses: peter-evans/create-or-update-comment@v4
@@ -84,32 +91,62 @@ jobs:
 
       - name: Run Ivan command
         id: run_ivan
+        env:
+          ISSUE_BODY: ${{ steps.get_issue.outputs.result }}
         run: |
-          ISSUE_BODY=$(cat << 'ISSUE_EOF'
-          ${{ steps.get_issue.outputs.result }}
-          ISSUE_EOF
-          )
-
           # Escape the issue body for JSON
           ESCAPED_ISSUE=$(echo "$ISSUE_BODY" | jq -Rs .)
 
-          # Run ivan command and capture output
-          OUTPUT=$(ivan -c "{\"tasks\": [$ESCAPED_ISSUE], \"generateSubtasks\": false, \"prStrategy\": \"multiple\", \"waitForComments\": true}" 2>&1 || true)
+          # Run ivan command with output streaming and also capture to file
+          set +e
+          ~/.local/bin/ivan -c "{\"tasks\": [$ESCAPED_ISSUE], \"generateSubtasks\": false, \"prStrategy\": \"multiple\"}" 2>&1 | tee /tmp/ivan_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
 
-          echo "$OUTPUT"
-          echo "$OUTPUT" > /tmp/ivan_output.txt
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "ivan_failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "ivan_failed=false" >> $GITHUB_OUTPUT
+          fi
 
-          # Extract PR URL from output (looking for github.com PR URLs)
-          PR_URL=$(echo "$OUTPUT" | grep -oP 'https://github\.com/[^/]+/[^/]+/pull/\d+' | head -1 || echo "")
+          # Extract PR URL from output file (looking for github.com PR URLs)
+          PR_URL=$(grep -oP 'https://github\.com/[^/]+/[^/]+/pull/\d+' /tmp/ivan_output.txt | head -1 || echo "")
 
           if [ -n "$PR_URL" ]; then
             echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+            # Extract PR number from URL
+            PR_NUMBER=$(echo "$PR_URL" | grep -oP '/pull/\d+$' | grep -oP '\d+')
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           else
             echo "pr_url=" >> $GITHUB_OUTPUT
+            echo "pr_number=" >> $GITHUB_OUTPUT
           fi
 
-      - name: Comment on issue with PR link
-        if: steps.run_ivan.outputs.pr_url != ''
+      - name: Comment on issue with PR link and output
+        if: steps.run_ivan.outputs.pr_url != '' && steps.run_ivan.outputs.ivan_failed == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const ivanOutput = fs.readFileSync('/tmp/ivan_output.txt', 'utf8');
+            const prUrl = '${{ steps.run_ivan.outputs.pr_url }}';
+
+            const body = '✅ Ivan has created a pull request: ' + prUrl + '\n\n' +
+              '⏳ **Addressing comments now...**\n\n' +
+              '<details>\n' +
+              '<summary>View Ivan command output</summary>\n\n' +
+              '```\n' + ivanOutput + '\n```\n\n' +
+              '</details>';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Comment on issue if Ivan failed
+        if: steps.run_ivan.outputs.ivan_failed == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -117,11 +154,11 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `✅ Ivan has created a pull request: ${{ steps.run_ivan.outputs.pr_url }}`
+              body: `❌ Ivan command failed. Please check the workflow logs for details.`
             });
 
       - name: Comment on issue if no PR found
-        if: steps.run_ivan.outputs.pr_url == ''
+        if: steps.run_ivan.outputs.pr_url == '' && steps.run_ivan.outputs.ivan_failed == 'false'
         uses: actions/github-script@v7
         with:
           script: |
@@ -130,4 +167,39 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: `⚠️ Ivan command completed but no pull request URL was found in the output.`
+            });
+
+      - name: Wait for 15 minutes
+        if: steps.run_ivan.outputs.pr_number != '' && steps.run_ivan.outputs.ivan_failed == 'false'
+        run: |
+          echo "Waiting 15 minutes before running ivan address command..."
+          sleep 900
+
+      - name: Run Ivan address command
+        if: steps.run_ivan.outputs.pr_number != '' && steps.run_ivan.outputs.ivan_failed == 'false'
+        run: |
+          echo "Running ivan address for PR #${{ steps.run_ivan.outputs.pr_number }}"
+          ~/.local/bin/ivan address ${{ steps.run_ivan.outputs.pr_number }} --yes 2>&1 | tee /tmp/ivan_address_output.txt
+
+      - name: Comment on issue after addressing PR
+        if: steps.run_ivan.outputs.pr_number != '' && steps.run_ivan.outputs.ivan_failed == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const addressOutput = fs.readFileSync('/tmp/ivan_address_output.txt', 'utf8');
+            const prNumber = '${{ steps.run_ivan.outputs.pr_number }}';
+
+            const body = '✅ **Ivan has finished addressing comments on PR #' + prNumber + '**\n\n' +
+              'The PR has been updated based on any review comments received.\n\n' +
+              '<details>\n' +
+              '<summary>View ivan address command output</summary>\n\n' +
+              '```\n' + addressOutput + '\n```\n\n' +
+              '</details>';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
             });
