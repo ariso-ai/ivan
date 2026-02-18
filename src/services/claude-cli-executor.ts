@@ -121,6 +121,11 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         args.push('--allowed-tools', ...allowedTools);
       }
 
+      // Add disallowed tools to explicitly block them
+      if (allBlockedTools.length > 0) {
+        args.push('--disallowed-tools', ...allBlockedTools);
+      }
+
       // Add resume flag if we have a session ID
       if (sessionId) {
         args.push('--resume', sessionId);
