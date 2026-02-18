@@ -9,6 +9,7 @@ import type { PRInfo } from './git-interfaces.js';
 import { GitHubAPIClient } from './github-api-client.js';
 
 export class GitManagerPAT implements IGitManager {
+  public quietMode: boolean = false;
   private workingDir: string;
   private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;
@@ -68,7 +69,7 @@ export class GitManagerPAT implements IGitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      console.log(chalk.green(`✅ Created and switched to branch: ${branchName}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Created and switched to branch: ${branchName}`));
     } catch (error) {
       throw new Error(`Failed to create branch ${branchName}: ${error}`);
     }
@@ -83,7 +84,7 @@ export class GitManagerPAT implements IGitManager {
         encoding: 'utf8'
       });
       if (!status.trim()) {
-        console.log(chalk.yellow('⚠️  No changes to commit'));
+        if (!this.quietMode) console.log(chalk.yellow('⚠️  No changes to commit'));
         return;
       }
 
@@ -114,7 +115,7 @@ export class GitManagerPAT implements IGitManager {
         stdio: 'pipe',
         env: gitEnv
       });
-      console.log(chalk.green(`✅ Committed changes: ${message}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Committed changes: ${message}`));
     } catch (error) {
       throw new Error(`Failed to commit changes: ${error}`);
     }
@@ -146,7 +147,7 @@ export class GitManagerPAT implements IGitManager {
         stdio: 'pipe',
         env: gitEnv
       });
-      console.log(chalk.green(`✅ Created empty commit: ${message}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Created empty commit: ${message}`));
     } catch (error) {
       throw new Error(`Failed to create empty commit: ${error}`);
     }
@@ -165,7 +166,7 @@ export class GitManagerPAT implements IGitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      console.log(chalk.green(`✅ Pushed branch to origin: ${branchName}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Pushed branch to origin: ${branchName}`));
     } catch (error) {
       throw new Error(`Failed to push branch ${branchName}: ${error}`);
     }
@@ -200,7 +201,7 @@ export class GitManagerPAT implements IGitManager {
           // Wait before attempting (exponential backoff: 1s, 2s, 4s, 8s, 16s)
           if (attempt > 0) {
             const delay = Math.min(1000 * Math.pow(2, attempt - 1), 16000);
-            console.log(chalk.gray(`⏳ Waiting ${delay / 1000}s for GitHub to process the push...`));
+            if (!this.quietMode) console.log(chalk.gray(`⏳ Waiting ${delay / 1000}s for GitHub to process the push...`));
             await new Promise(resolve => setTimeout(resolve, delay));
           }
 
@@ -213,9 +214,9 @@ export class GitManagerPAT implements IGitManager {
             if (!remoteBranches.trim()) {
               throw new Error(`Branch ${currentBranch} not found on remote`);
             }
-            console.log(chalk.gray(`✓ Verified branch ${currentBranch} exists on remote`));
+            if (!this.quietMode) console.log(chalk.gray(`✓ Verified branch ${currentBranch} exists on remote`));
           } catch (verifyError) {
-            console.log(chalk.yellow(`⚠️  Could not verify branch on remote: ${verifyError}`));
+            if (!this.quietMode) console.log(chalk.yellow(`⚠️  Could not verify branch on remote: ${verifyError}`));
           }
 
           // Create PR using GitHub API
@@ -237,7 +238,7 @@ export class GitManagerPAT implements IGitManager {
 
           // Only retry if it's the "not all refs are readable" error
           if (errorMessage.includes('not all refs are readable') && attempt < maxRetries - 1) {
-            console.log(chalk.yellow(`⚠️  Branch not yet visible to GitHub API (attempt ${attempt + 1}/${maxRetries})`));
+            if (!this.quietMode) console.log(chalk.yellow(`⚠️  Branch not yet visible to GitHub API (attempt ${attempt + 1}/${maxRetries})`));
             continue;
           }
 
@@ -251,7 +252,7 @@ export class GitManagerPAT implements IGitManager {
       }
 
       const prUrl = pr.url;
-      console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
 
       // Try to assign to ivan-agent
       try {
@@ -404,7 +405,7 @@ export class GitManagerPAT implements IGitManager {
       });
 
       if (status.trim()) {
-        console.log(chalk.yellow('⚠️  Stashing uncommitted changes'));
+        if (!this.quietMode) console.log(chalk.yellow('⚠️  Stashing uncommitted changes'));
         execSync('git stash push -u -m "Ivan: stashing before cleanup"', {
           cwd: workDir,
           stdio: 'pipe'
@@ -426,7 +427,7 @@ export class GitManagerPAT implements IGitManager {
         stdio: 'pipe'
       });
 
-      console.log(chalk.green('✅ Cleaned up and synced with main branch'));
+      if (!this.quietMode) console.log(chalk.green('✅ Cleaned up and synced with main branch'));
     } catch (error) {
       throw new Error(`Failed to cleanup and sync main: ${error}`);
     }
@@ -478,9 +479,9 @@ export class GitManagerPAT implements IGitManager {
       const reviewComment = `${reviewAgent} ${reviewInstructions}`;
 
       await this.githubClient.addPRComment(this.owner, this.repo, prNumber, reviewComment);
-      console.log(chalk.green(`✅ Added specific review request for ${reviewAgent}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Added specific review request for ${reviewAgent}`));
     } catch (error) {
-      console.log(chalk.yellow(`⚠️  Could not add review comment: ${error}`));
+      if (!this.quietMode) console.log(chalk.yellow(`⚠️  Could not add review comment: ${error}`));
       try {
         const reviewAgent = this.configManager.getReviewAgent();
         await this.githubClient.addPRComment(
@@ -490,7 +491,7 @@ export class GitManagerPAT implements IGitManager {
           `${reviewAgent} please review the changes and verify the implementation meets requirements`
         );
       } catch (fallbackError) {
-        console.log(chalk.yellow(`⚠️  Could not add fallback review comment: ${fallbackError}`));
+        if (!this.quietMode) console.log(chalk.yellow(`⚠️  Could not add fallback review comment: ${fallbackError}`));
       }
     }
   }
@@ -498,7 +499,7 @@ export class GitManagerPAT implements IGitManager {
   private async generateReviewInstructions(diff: string, changedFiles: string[]): Promise<string> {
     try {
       if (!diff || diff.trim().length === 0) {
-        console.log(chalk.yellow('⚠️  No diff found between branches for review instructions'));
+        if (!this.quietMode) console.log(chalk.yellow('⚠️  No diff found between branches for review instructions'));
         return 'please review the changes in this PR and verify the implementation meets requirements';
       }
 
@@ -546,7 +547,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
       return reviewRequest;
     } catch (error) {
-      console.error('Error generating review instructions:', error);
+      if (!this.quietMode) console.error('Error generating review instructions:', error);
       return 'please review the changes and verify the implementation meets requirements';
     }
   }
@@ -591,13 +592,13 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
       try {
         if (branchExists) {
-          console.log(chalk.gray(`Creating worktree from existing branch: ${branchName}`));
+          if (!this.quietMode) console.log(chalk.gray(`Creating worktree from existing branch: ${branchName}`));
           execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
             cwd: this.originalWorkingDir,
             stdio: 'pipe'
           });
         } else {
-          console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
+          if (!this.quietMode) console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
           execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
             cwd: this.originalWorkingDir,
             stdio: 'pipe'
@@ -606,7 +607,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       } catch (worktreeError: unknown) {
         const errorMessage = worktreeError instanceof Error ? worktreeError.message : String(worktreeError);
         if (errorMessage.includes('already exists')) {
-          console.log(chalk.yellow('⚠️  Worktree already exists. Removing and recreating...'));
+          if (!this.quietMode) console.log(chalk.yellow('⚠️  Worktree already exists. Removing and recreating...'));
 
           try {
             execSync(`git worktree remove --force "${escapedPath}"`, {
@@ -623,13 +624,13 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           });
 
           if (branchExists) {
-            console.log(chalk.gray(`Recreating worktree from existing branch: ${branchName}`));
+            if (!this.quietMode) console.log(chalk.gray(`Recreating worktree from existing branch: ${branchName}`));
             execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
               cwd: this.originalWorkingDir,
               stdio: 'pipe'
             });
           } else {
-            console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
+            if (!this.quietMode) console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
             execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
               cwd: this.originalWorkingDir,
               stdio: 'pipe'
@@ -660,7 +661,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             stdio: 'ignore'
           });
         } catch (permError) {
-          console.log(chalk.yellow(`⚠️ Could not set optimal permissions on worktree: ${permError}`));
+          if (!this.quietMode) console.log(chalk.yellow(`⚠️ Could not set optimal permissions on worktree: ${permError}`));
           try {
             execSync(`chmod -R 755 "${escapedPath}"`, {
               stdio: 'ignore'
@@ -694,25 +695,27 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           });
         }
       } catch (configError) {
-        console.log(chalk.yellow(`⚠️ Could not copy git config to worktree: ${configError}`));
+        if (!this.quietMode) console.log(chalk.yellow(`⚠️ Could not copy git config to worktree: ${configError}`));
       }
 
       try {
         const packageJsonPath = path.join(worktreePath, 'package.json');
         await fs.access(packageJsonPath);
 
-        console.log(chalk.cyan('📦 Found package.json, installing dependencies...'));
+        if (!this.quietMode) console.log(chalk.cyan('📦 Found package.json, installing dependencies...'));
         execSync('npm install', {
           cwd: worktreePath,
-          stdio: 'inherit'
+          stdio: this.quietMode ? 'pipe' : 'inherit'
         });
-        console.log(chalk.green('✅ Dependencies installed successfully'));
+        if (!this.quietMode) console.log(chalk.green('✅ Dependencies installed successfully'));
       } catch {
-        console.log(chalk.gray('ℹ️  No package.json found or npm install not needed'));
+        if (!this.quietMode) console.log(chalk.gray('ℹ️  No package.json found or npm install not needed'));
       }
 
-      console.log(chalk.green(`✅ Created worktree at: ${worktreePath}`));
-      console.log(chalk.gray('You can continue working in your main repository while Ivan works here'));
+      if (!this.quietMode) {
+        console.log(chalk.green(`✅ Created worktree at: ${worktreePath}`));
+        console.log(chalk.gray('You can continue working in your main repository while Ivan works here'));
+      }
       return worktreePath;
     } catch (error) {
       throw new Error(`Failed to create worktree for branch ${branchName}: ${error}`);
@@ -745,9 +748,9 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         // Ignore errors
       }
 
-      console.log(chalk.green(`✅ Removed worktree for branch: ${branchName}`));
+      if (!this.quietMode) console.log(chalk.green(`✅ Removed worktree for branch: ${branchName}`));
     } catch (error) {
-      console.log(chalk.yellow(`⚠️ Could not remove worktree: ${error}`));
+      if (!this.quietMode) console.log(chalk.yellow(`⚠️ Could not remove worktree: ${error}`));
     }
   }
 

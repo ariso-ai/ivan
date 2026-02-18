@@ -6,6 +6,7 @@ import { execSync } from 'child_process';
 import { IClaudeExecutor } from './executor-factory.js';
 
 export class ClaudeExecutor implements IClaudeExecutor {
+  public quietMode: boolean = false;
   private configManager: ConfigManager;
 
   constructor() {
@@ -29,8 +30,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
   }
 
   async executeTask(taskDescription: string, workingDir: string, sessionId?: string): Promise<{ log: string; lastMessage: string; sessionId: string }> {
-    console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
-    console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
+    if (!this.quietMode) {
+      console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
+      console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
+    }
 
     try {
       // Set the API key in environment for the SDK
@@ -104,12 +107,14 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Get the selected model
       const model = this.configManager.getClaudeModel();
 
-      console.log(chalk.gray(`Working directory: ${workingDir}`));
-      console.log(chalk.gray(`Model: ${model}`));
-      if (allowedTools && allowedTools.length > 0) {
-        console.log(chalk.gray(`Allowed tools: ${allowedTools.join(', ')}`));
+      if (!this.quietMode) {
+        console.log(chalk.gray(`Working directory: ${workingDir}`));
+        console.log(chalk.gray(`Model: ${model}`));
+        if (allowedTools && allowedTools.length > 0) {
+          console.log(chalk.gray(`Allowed tools: ${allowedTools.join(', ')}`));
+        }
+        console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
       }
-      console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
 
       let result = '';
       let currentResponse = '';
@@ -120,7 +125,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Handle Ctrl+C
       const handleInterrupt = () => {
         abortController.abort();
-        console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
+        if (!this.quietMode) console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
       };
       process.on('SIGINT', handleInterrupt);
 
@@ -156,11 +161,11 @@ export class ClaudeExecutor implements IClaudeExecutor {
             if (message.message.content) {
               for (const content of message.message.content) {
                 if (content.type === 'text') {
-                  console.log(content.text);
+                  if (!this.quietMode) console.log(content.text);
                   currentResponse += content.text + '\n';
                   lastMessage = content.text; // Also capture text responses as last message
                 } else if (content.type === 'tool_use') {
-                  console.log(chalk.gray(`Using tool: ${content.name}`));
+                  if (!this.quietMode) console.log(chalk.gray(`Using tool: ${content.name}`));
                   // Add tool call to the log
                   const toolCall = `[Tool Call: ${content.name}]`;
                   if (content.input) {
@@ -190,14 +195,14 @@ export class ClaudeExecutor implements IClaudeExecutor {
           } else if (message.type === 'result') {
             // Final result message
             if ('result' in message) {
-              console.log(chalk.green(`Result: ${message.result}`));
+              if (!this.quietMode) console.log(chalk.green(`Result: ${message.result}`));
               currentResponse += message.result + '\n';
               lastMessage = message.result; // Capture the last message
             }
           } else if (message.type === 'system') {
             // System messages for initialization
             if (message.subtype === 'init') {
-              console.log(chalk.gray(`Initialized with model: ${message.model}`));
+              if (!this.quietMode) console.log(chalk.gray(`Initialized with model: ${message.model}`));
               result += `[System: Initialized with model: ${message.model}]\n\n`;
               // Extract session ID from the system message if available
               if ('session_id' in message && typeof message.session_id === 'string') {
@@ -221,7 +226,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
         process.removeListener('SIGINT', handleInterrupt);
       }
 
-      console.log(chalk.green('✅ Claude Code execution completed'));
+      if (!this.quietMode) console.log(chalk.green('✅ Claude Code execution completed'));
       return { log: result, lastMessage, sessionId: currentSessionId || '' };
 
     } catch (error: unknown) {
@@ -231,7 +236,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
         throw new Error('Task execution cancelled by user');
       }
 
-      console.error(chalk.red('❌ Claude Code execution failed:'));
+      if (!this.quietMode) console.error(chalk.red('❌ Claude Code execution failed:'));
       throw new Error(`Claude Code execution failed: ${err.message}`);
     }
   }
