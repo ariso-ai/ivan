@@ -610,9 +610,20 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           });
         }
       } catch (worktreeError: unknown) {
-        // If worktree creation fails because it already exists, remove it and retry
         const errorMessage = worktreeError instanceof Error ? worktreeError.message : String(worktreeError);
-        if (errorMessage.includes('already exists')) {
+
+        // Handle "already used by worktree" error - branch is checked out elsewhere
+        if (errorMessage.includes('is already used by worktree') || errorMessage.includes('is already checked out')) {
+          console.log(chalk.yellow(`⚠️  Branch ${branchName} is already checked out elsewhere. Creating worktree with --force...`));
+
+          // Use --force to allow checking out a branch that's already checked out
+          execSync(`git worktree add --force "${escapedPath}" "${escapedBranchName}"`, {
+            cwd: this.originalWorkingDir,
+            stdio: 'pipe'
+          });
+        }
+        // Handle "already exists" error - worktree path already exists
+        else if (errorMessage.includes('already exists')) {
           console.log(chalk.yellow('⚠️  Worktree already exists. Removing and recreating...'));
 
           // Force remove the existing worktree
@@ -631,13 +642,27 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             stdio: 'pipe'
           });
 
-          // Retry creating the worktree
+          // Retry creating the worktree (with --force if branch exists)
           if (branchExists) {
             console.log(chalk.gray(`Recreating worktree from existing branch: ${branchName}`));
-            execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
-              cwd: this.originalWorkingDir,
-              stdio: 'pipe'
-            });
+            // Try with --force first in case the branch is checked out elsewhere
+            try {
+              execSync(`git worktree add --force "${escapedPath}" "${escapedBranchName}"`, {
+                cwd: this.originalWorkingDir,
+                stdio: 'pipe'
+              });
+            } catch (retryError: unknown) {
+              const retryErrorMessage = retryError instanceof Error ? retryError.message : String(retryError);
+              // If --force fails, it might be due to a different issue, so try without it
+              if (!retryErrorMessage.includes('is already used by worktree') && !retryErrorMessage.includes('is already checked out')) {
+                execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
+                  cwd: this.originalWorkingDir,
+                  stdio: 'pipe'
+                });
+              } else {
+                throw retryError;
+              }
+            }
           } else {
             console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
             execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
