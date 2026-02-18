@@ -168,7 +168,7 @@ export class GitManagerPAT implements IGitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-    } catch (pullError) {
+    } catch {
       // Pull might fail if branch doesn't exist on remote yet, which is fine
       // Or if there are no changes to pull
     }
@@ -624,8 +624,8 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         } catch {
           branchExistsOnRemote = false;
         }
-      } catch (fetchError) {
-        if (!this.quietMode) console.log(chalk.gray(`Branch doesn't exist on remote yet`));
+      } catch {
+        if (!this.quietMode) console.log(chalk.gray('Branch doesn\'t exist on remote yet'));
         branchExistsOnRemote = false;
       }
 
@@ -638,7 +638,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             stdio: 'pipe'
           });
           branchExists = true;
-          if (!this.quietMode) console.log(chalk.green(`✅ Updated local branch with latest remote changes`));
+          if (!this.quietMode) console.log(chalk.green('✅ Updated local branch with latest remote changes'));
         } catch (updateError) {
           if (!this.quietMode) console.log(chalk.yellow(`⚠️  Could not update local branch: ${updateError}`));
         }
