@@ -6,6 +6,7 @@ import { execSync } from 'child_process';
 import { IClaudeExecutor } from './executor-factory.js';
 
 export class ClaudeCliExecutor implements IClaudeExecutor {
+  public quietMode: boolean = false;
   private configManager: ConfigManager;
 
   constructor() {

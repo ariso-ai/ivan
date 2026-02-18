@@ -10,7 +10,7 @@ export interface GitHubPRInfo {
   number: number;
   title: string;
   headRefName: string;
-  url: string;
+  url: string; // GitHub web URL (html_url from API)
   state: string;
   author?: {
     login: string;
@@ -186,7 +186,13 @@ export class GitHubAPIClient {
     base: string,
     draft = true
   ): Promise<GitHubPRInfo> {
-    const response = await this.makeRequest<GitHubPRInfo>(
+    const response = await this.makeRequest<{
+      number: number;
+      title: string;
+      head: { ref: string };
+      html_url: string;
+      state: string;
+    }>(
       `/repos/${owner}/${repo}/pulls`,
       'POST',
       {
@@ -201,8 +207,8 @@ export class GitHubAPIClient {
     return {
       number: response.number,
       title: response.title,
-      headRefName: response.headRefName,
-      url: response.url,
+      headRefName: response.head.ref,
+      url: response.html_url,
       state: response.state
     };
   }
@@ -220,7 +226,23 @@ export class GitHubAPIClient {
    * Get a specific pull request
    */
   async getPR(owner: string, repo: string, prNumber: number): Promise<GitHubPRInfo> {
-    return this.makeRequest<GitHubPRInfo>(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+    const response = await this.makeRequest<{
+      number: number;
+      title: string;
+      head: { ref: string };
+      html_url: string;
+      state: string;
+      user?: { login: string };
+    }>(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+
+    return {
+      number: response.number,
+      title: response.title,
+      headRefName: response.head.ref,
+      url: response.html_url,
+      state: response.state,
+      author: response.user ? { login: response.user.login } : undefined
+    };
   }
 
   /**
@@ -242,14 +264,31 @@ export class GitHubAPIClient {
     if (options.base) params.append('base', options.base);
 
     let endpoint = `/repos/${owner}/${repo}/pulls?${params.toString()}`;
-    const prs = await this.makeRequest<GitHubPRInfo[]>(endpoint);
+    const prs = await this.makeRequest<Array<{
+      number: number;
+      title: string;
+      head: { ref: string };
+      html_url: string;
+      state: string;
+      user?: { login: string };
+    }>>(endpoint);
+
+    // Map to GitHubPRInfo format
+    const mappedPRs = prs.map(pr => ({
+      number: pr.number,
+      title: pr.title,
+      headRefName: pr.head.ref,
+      url: pr.html_url,
+      state: pr.state,
+      author: pr.user ? { login: pr.user.login } : undefined
+    }));
 
     // Filter by author if specified (REST API doesn't support this directly)
     if (options.author) {
-      return prs.filter((pr) => pr.author?.login === options.author);
+      return mappedPRs.filter((pr) => pr.author?.login === options.author);
     }
 
-    return prs;
+    return mappedPRs;
   }
 
   /**

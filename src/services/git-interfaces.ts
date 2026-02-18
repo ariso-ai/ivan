@@ -38,6 +38,7 @@ export interface RepositoryInfo {
 
 // Service interfaces
 export interface IGitManager {
+  quietMode: boolean;
   validateGitHubCliInstallation(): void;
   validateGitHubCliAuthentication(): void;
   createBranch(branchName: string): Promise<void>;

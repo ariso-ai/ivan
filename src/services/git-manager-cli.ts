@@ -8,6 +8,7 @@ import os from 'os';
 import type { IGitManager, PRInfo } from './git-interfaces.js';
 
 export class GitManagerCLI implements IGitManager {
+  public quietMode: boolean = false;
   private workingDir: string;
   private openaiService: OpenAIService | null = null;
   private configManager: ConfigManager;

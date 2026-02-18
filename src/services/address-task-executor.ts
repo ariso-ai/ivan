@@ -40,14 +40,16 @@ export class AddressTaskExecutor {
     return this.openaiService;
   }
 
-  async executeAddressTasks(tasks: Task[]): Promise<void> {
+  async executeAddressTasks(tasks: Task[], quiet: boolean = false): Promise<void> {
     try {
-      console.log(chalk.blue.bold('🚀 Starting address task workflow'));
-      console.log('');
+      if (!quiet) {
+        console.log(chalk.blue.bold('🚀 Starting address task workflow'));
+        console.log('');
+      }
 
       // Validate dependencies
       await this.getClaudeExecutor().validateClaudeCodeInstallation();
-      console.log(chalk.green('✅ Claude Code SDK configured'));
+      if (!quiet) console.log(chalk.green('✅ Claude Code SDK configured'));
 
       // Get working directory from first task's job
       const db = this.jobManager['dbManager'].getKysely();
@@ -66,10 +68,10 @@ export class AddressTaskExecutor {
       this.prService = createPRService(this.workingDir);
 
       this.gitManager.validateGitHubCliInstallation();
-      console.log(chalk.green('✅ GitHub CLI is installed'));
+      if (!quiet) console.log(chalk.green('✅ GitHub CLI is installed'));
 
       this.gitManager.validateGitHubCliAuthentication();
-      console.log(chalk.green('✅ GitHub CLI is authenticated'));
+      if (!quiet) console.log(chalk.green('✅ GitHub CLI is authenticated'));
 
       // Load repository instructions
       this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
@@ -90,14 +92,16 @@ export class AddressTaskExecutor {
       // Execute tasks grouped by branch
       for (const [branch, branchTasks] of tasksByBranch) {
         if (branch === 'unknown') {
-          console.log(chalk.yellow('⚠️  Skipping tasks without branch information'));
+          if (!quiet) console.log(chalk.yellow('⚠️  Skipping tasks without branch information'));
           continue;
         }
 
-        console.log('');
-        console.log(chalk.cyan.bold(`🔄 Creating worktree for branch: ${branch}`));
+        if (!quiet) {
+          console.log('');
+          console.log(chalk.cyan.bold(`🔄 Creating worktree for branch: ${branch}`));
+        }
 
-        let spinner = ora('Creating worktree...').start();
+        let spinner = quiet ? null : ora('Creating worktree...').start();
         let worktreePath: string | null = null;
 
         try {
@@ -107,10 +111,10 @@ export class AddressTaskExecutor {
           }
           worktreePath = await this.gitManager.createWorktree(branch);
           this.gitManager.switchToWorktree(worktreePath);
-          spinner.succeed(`Worktree created: ${worktreePath}`);
+          if (spinner) spinner.succeed(`Worktree created: ${worktreePath}`);
         } catch (error) {
-          spinner.fail(`Failed to create worktree for branch: ${branch}`);
-          console.error(error);
+          if (spinner) spinner.fail(`Failed to create worktree for branch: ${branch}`);
+          if (!quiet) console.error(error);
           continue;
         }
 
@@ -120,8 +124,10 @@ export class AddressTaskExecutor {
 
         // Process lint_and_test tasks first
         for (const task of lintAndTestTasks) {
-          console.log('');
-          console.log(chalk.blue('🔧 Fixing test and lint failures'));
+          if (!quiet) {
+            console.log('');
+            console.log(chalk.blue('🔧 Fixing test and lint failures'));
+          }
 
           await this.jobManager.updateTaskStatus(task.uuid, 'active');
 
@@ -129,24 +135,26 @@ export class AddressTaskExecutor {
           const prNumberMatch = task.description.match(/PR #(\d+)/);
           const taskPrNumber = prNumberMatch ? parseInt(prNumberMatch[1]) : null;
 
-          spinner = ora('Fetching GitHub Actions logs...').start();
+          if (!quiet) spinner = ora('Fetching GitHub Actions logs...').start();
 
           let actionLogs = '';
           if (taskPrNumber && this.prService) {
             try {
               actionLogs = await this.prService.getFailingActionLogs(taskPrNumber);
-              if (actionLogs) {
-                spinner.succeed('GitHub Actions logs fetched');
-              } else {
-                spinner.info('No failing action logs found');
+              if (spinner) {
+                if (actionLogs) {
+                  spinner.succeed('GitHub Actions logs fetched');
+                } else {
+                  spinner.info('No failing action logs found');
+                }
               }
             } catch (error) {
-              spinner.warn('Could not fetch GitHub Actions logs');
-              console.error(error);
+              if (spinner) spinner.warn('Could not fetch GitHub Actions logs');
+              if (!quiet) console.error(error);
             }
           }
 
-          spinner = ora('Running Claude Code to fix test and lint failures...').start();
+          if (!quiet) spinner = ora('Running Claude Code to fix test and lint failures...').start();
 
           // Prepare the prompt for Claude
           let prompt = 'Fix the failing tests and linting issues in this PR.\n\n';
@@ -169,7 +177,7 @@ export class AddressTaskExecutor {
 
           try {
             const result = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
-            spinner.succeed('Claude Code execution completed');
+            if (spinner) spinner.succeed('Claude Code execution completed');
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
 
@@ -178,13 +186,13 @@ export class AddressTaskExecutor {
             }
             const changedFiles = this.gitManager.getChangedFiles();
             if (changedFiles.length === 0) {
-              console.log(chalk.yellow('⚠️  No changes made'));
+              if (!quiet) console.log(chalk.yellow('⚠️  No changes made'));
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
               continue;
             }
 
             // Create commit with co-author
-            spinner = ora('Creating commit...').start();
+            if (!quiet) spinner = ora('Creating commit...').start();
             const commitMessage = 'Fix test and lint failures\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>';
 
             if (!this.gitManager) {
@@ -196,13 +204,14 @@ export class AddressTaskExecutor {
               commitMessage,
               task,
               worktreePath || this.workingDir,
-              spinner
+              spinner,
+              quiet
             );
 
             if (commitResult.succeeded) {
-              spinner.succeed('Changes committed');
+              if (spinner) spinner.succeed('Changes committed');
             } else {
-              spinner.fail('Failed to commit after multiple attempts');
+              if (spinner) spinner.fail('Failed to commit after multiple attempts');
               throw new Error('Pre-commit hook failures could not be fixed');
             }
 
@@ -216,21 +225,21 @@ export class AddressTaskExecutor {
             await this.jobManager.updateTaskCommit(task.uuid, commitHash);
 
             // Push the commit immediately
-            spinner = ora('Pushing commit...').start();
+            if (!quiet) spinner = ora('Pushing commit...').start();
             try {
               if (!this.gitManager) {
                 throw new Error('GitManager not initialized');
               }
               await this.gitManager.pushBranch(branch);
-              spinner.succeed('Commit pushed successfully');
+              if (spinner) spinner.succeed('Commit pushed successfully');
             } catch (error) {
-              spinner.fail('Failed to push commit');
-              console.error(error);
+              if (spinner) spinner.fail('Failed to push commit');
+              if (!quiet) console.error(error);
             }
 
             // Add review comment for lint_and_test task
             if (taskPrNumber) {
-              spinner = ora('Adding review request comment...').start();
+              if (!quiet) spinner = ora('Adding review request comment...').start();
               try {
                 const reviewAgent = this.configManager.getReviewAgent();
                 const reviewComment = `${reviewAgent} please review the test and lint fixes that were applied to address the failing CI checks`;
@@ -242,18 +251,18 @@ export class AddressTaskExecutor {
                     stdio: 'pipe'
                   }
                 );
-                spinner.succeed('Review request comment added');
+                if (spinner) spinner.succeed('Review request comment added');
               } catch (error) {
-                spinner.fail('Failed to add review comment');
-                console.error(error);
+                if (spinner) spinner.fail('Failed to add review comment');
+                if (!quiet) console.error(error);
               }
             }
 
             await this.jobManager.updateTaskStatus(task.uuid, 'completed');
 
           } catch (error) {
-            spinner.fail('Failed to fix test and lint failures');
-            console.error(error);
+            if (spinner) spinner.fail('Failed to fix test and lint failures');
+            if (!quiet) console.error(error);
 
             const errorLog = error instanceof Error ? error.message : String(error);
             await this.jobManager.updateTaskExecutionLog(task.uuid, `ERROR: ${errorLog}`);
@@ -275,20 +284,21 @@ export class AddressTaskExecutor {
         }
 
         // Get all unaddressed comments for this PR
-        spinner = ora('Fetching PR comments...').start();
+        if (!quiet) spinner = ora('Fetching PR comments...').start();
         if (!prNumber) {
           throw new Error('PR number not found');
         }
         const comments = await this.getUnaddressedComments(parseInt(prNumber));
-        spinner.succeed(`Found ${comments.length} unaddressed comments`);
+        if (spinner) spinner.succeed(`Found ${comments.length} unaddressed comments`);
 
         if (comments.length === 0 && addressTasks.some(t => t.description.includes('comment'))) {
-          console.log(chalk.yellow('⚠️  No unaddressed comments found'));
+          if (!quiet) console.log(chalk.yellow('⚠️  No unaddressed comments found'));
           continue;
         }
 
         // Process each comment
         for (const comment of comments) {
+          // In quiet mode, output the comment being addressed
           console.log('');
           console.log(chalk.blue(`📝 Addressing comment from @${comment.author}:`));
           console.log(chalk.gray(`   "${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}"`));
@@ -300,7 +310,7 @@ export class AddressTaskExecutor {
           );
 
           if (!task) {
-            console.log(chalk.yellow('⚠️  No task found for this comment'));
+            if (!quiet) console.log(chalk.yellow('⚠️  No task found for this comment'));
             continue;
           }
 
@@ -323,7 +333,7 @@ export class AddressTaskExecutor {
             await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
           }
 
-          spinner = ora('Running Claude Code to address comment...').start();
+          if (!quiet) spinner = ora('Running Claude Code to address comment...').start();
 
           // Prepare the prompt for Claude
           let prompt = 'Address the following PR review comment:\n\n';
@@ -345,7 +355,11 @@ export class AddressTaskExecutor {
 
           try {
             const result = await this.getClaudeExecutor().executeTask(prompt, worktreePath || this.workingDir);
-            spinner.succeed('Claude Code execution completed');
+            if (spinner) {
+              spinner.succeed('Claude Code execution completed');
+            }
+            // Always output the final message from Claude (even in quiet mode)
+            console.log(result.lastMessage);
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
 
@@ -357,10 +371,10 @@ export class AddressTaskExecutor {
             }
             const changedFiles = this.gitManager.getChangedFiles();
             if (changedFiles.length === 0) {
-              console.log(chalk.yellow('⚠️  No changes made - Claude determined no changes were needed'));
+              if (!quiet) console.log(chalk.yellow('⚠️  No changes made - Claude determined no changes were needed'));
 
               // Reply to the comment explaining why no changes were made
-              spinner = ora('Replying to comment...').start();
+              if (!quiet) spinner = ora('Replying to comment...').start();
               try {
                 // Truncate the message if it's too long (GitHub has a 65536 character limit)
                 const maxLength = 60000;
@@ -455,13 +469,13 @@ export class AddressTaskExecutor {
                       stdio: 'pipe'
                     }
                   );
-                  spinner.succeed('Reply added to comment');
+                  if (spinner) spinner.succeed('Reply added to comment');
                 } finally {
                   unlinkSync(tempFile);
                 }
               } catch (error) {
-                spinner.fail('Failed to reply to comment');
-                console.error(error);
+                if (spinner) spinner.fail('Failed to reply to comment');
+                if (!quiet) console.error(error);
               }
 
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
@@ -469,7 +483,7 @@ export class AddressTaskExecutor {
             }
 
             // Create commit with co-author
-            spinner = ora('Creating commit...').start();
+            if (!quiet) spinner = ora('Creating commit...').start();
             const commitMessage = `Address review comment from @${comment.author}
 
 ${comment.body.substring(0, 200)}${comment.body.length > 200 ? '...' : ''}
@@ -485,13 +499,14 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
               commitMessage,
               task,
               worktreePath || this.workingDir,
-              spinner
+              spinner,
+              quiet
             );
 
             if (commitResult.succeeded) {
-              spinner.succeed('Changes committed');
+              if (spinner) spinner.succeed('Changes committed');
             } else {
-              spinner.fail('Failed to commit after multiple attempts');
+              if (spinner) spinner.fail('Failed to commit after multiple attempts');
               throw new Error('Pre-commit hook failures could not be fixed');
             }
 
@@ -505,20 +520,20 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
             await this.jobManager.updateTaskCommit(task.uuid, commitHash);
 
             // Push the commit immediately
-            spinner = ora('Pushing commit...').start();
+            if (!quiet) spinner = ora('Pushing commit...').start();
             try {
               if (!this.gitManager) {
                 throw new Error('GitManager not initialized');
               }
               await this.gitManager.pushBranch(branch);
-              spinner.succeed('Commit pushed successfully');
+              if (spinner) spinner.succeed('Commit pushed successfully');
             } catch (error) {
-              spinner.fail('Failed to push commit');
-              console.error(error);
+              if (spinner) spinner.fail('Failed to push commit');
+              if (!quiet) console.error(error);
             }
 
             // Reply to the comment with the fix
-            spinner = ora('Replying to comment...').start();
+            if (!quiet) spinner = ora('Replying to comment...').start();
             try {
               // Truncate the message if it's too long (GitHub has a 65536 character limit)
               const maxLength = 60000;
@@ -607,17 +622,17 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
                   stdio: 'pipe'
                 }
               );
-              spinner.succeed('Reply added to comment');
+              if (spinner) spinner.succeed('Reply added to comment');
             } catch (error) {
-              spinner.fail('Failed to reply to comment');
-              console.error(error);
+              if (spinner) spinner.fail('Failed to reply to comment');
+              if (!quiet) console.error(error);
             }
 
             await this.jobManager.updateTaskStatus(task.uuid, 'completed');
 
           } catch (error) {
-            spinner.fail('Failed to address comment');
-            console.error(error);
+            if (spinner) spinner.fail('Failed to address comment');
+            if (!quiet) console.error(error);
 
             const errorLog = error instanceof Error ? error.message : String(error);
             await this.jobManager.updateTaskExecutionLog(task.uuid, `ERROR: ${errorLog}`);
@@ -627,7 +642,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
 
         // Generate and add specific review comment (only if we have a PR number and made changes)
         if (prNumber && (addressTasks.length > 0 || lintAndTestTasks.length > 0)) {
-          spinner = ora('Generating review request...').start();
+          if (!quiet) spinner = ora('Generating review request...').start();
           try {
             // Get the latest commit changes
             const latestCommit = execSync('git rev-parse HEAD', {
@@ -652,10 +667,10 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
               parseInt(prNumber)
             );
 
-            spinner.succeed('Review request generated');
+            if (spinner) spinner.succeed('Review request generated');
 
             // Add the review comment
-            spinner = ora('Adding review request comment...').start();
+            if (!quiet) spinner = ora('Adding review request comment...').start();
             const reviewAgent = this.configManager.getReviewAgent();
             const reviewComment = `${reviewAgent} ${reviewInstructions}`;
 
@@ -666,10 +681,10 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
                 stdio: 'pipe'
               }
             );
-            spinner.succeed('Review request comment added');
+            if (spinner) spinner.succeed('Review request comment added');
           } catch (error) {
-            spinner.fail('Failed to add review comment');
-            console.error(error);
+            if (spinner) spinner.fail('Failed to add review comment');
+            if (!quiet) console.error(error);
           }
         }
 
@@ -679,16 +694,18 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
             this.gitManager.switchToOriginalDir();
             await this.gitManager.removeWorktree(branch);
           } catch (error) {
-            console.log(chalk.yellow(`⚠️ Could not clean up worktree: ${error}`));
+            if (!quiet) console.log(chalk.yellow(`⚠️ Could not clean up worktree: ${error}`));
           }
         }
       }
 
-      console.log('');
-      console.log(chalk.green.bold('🎉 All address tasks completed!'));
+      if (!quiet) {
+        console.log('');
+        console.log(chalk.green.bold('🎉 All address tasks completed!'));
+      }
 
     } catch (error) {
-      console.error(chalk.red.bold('❌ Address workflow failed:'), error);
+      if (!quiet) console.error(chalk.red.bold('❌ Address workflow failed:'), error);
       throw error;
     }
   }
@@ -858,7 +875,8 @@ Return ONLY the review request text, without any prefix like "Please review" sin
     commitMessage: string,
     task: Task,
     workingDir: string,
-    spinner: Ora
+    spinner: Ora | null,
+    quiet: boolean = false
   ): Promise<{ succeeded: boolean }> {
     let commitAttempts = 0;
     const maxCommitAttempts = 3;
@@ -872,7 +890,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         await this.gitManager.commitChanges(commitMessage);
         commitSucceeded = true;
         // Stop the spinner if we're retrying
-        if (commitAttempts > 0 && spinner.isSpinning) {
+        if (commitAttempts > 0 && spinner && spinner.isSpinning) {
           spinner.succeed('Commit successful after retry');
         }
       } catch (commitError) {
@@ -882,8 +900,10 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
         // Check if this is a pre-commit hook failure
         if (errorMessage.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
-          spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
-          console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
+          if (spinner) {
+            spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
+            console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
+          }
 
           // Extract the error details from the commit error
           const errorDetails = errorMessage;
@@ -891,12 +911,12 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           // Prepare prompt for Claude to fix the errors
           const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
 
-          spinner = ora('Running Claude to fix pre-commit errors...').start();
+          if (!quiet) spinner = ora('Running Claude to fix pre-commit errors...').start();
 
           try {
             // Run Claude to fix the errors
             const fixResult = await this.getClaudeExecutor().executeTask(fixPrompt, workingDir);
-            spinner.succeed('Claude attempted to fix the errors');
+            if (spinner) spinner.succeed('Claude attempted to fix the errors');
 
             // Update the execution log with the fix attempt
             const previousLog = await this.jobManager.getTaskExecutionLog(task.uuid);
@@ -906,10 +926,10 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             );
 
             // Try to commit again on the next iteration
-            spinner = ora('Retrying commit...').start();
+            if (!quiet) spinner = ora('Retrying commit...').start();
           } catch (fixError) {
-            spinner.fail('Failed to run Claude to fix errors');
-            console.error(chalk.red('Claude fix attempt failed:'), fixError);
+            if (spinner) spinner.fail('Failed to run Claude to fix errors');
+            if (!quiet) console.error(chalk.red('Claude fix attempt failed:'), fixError);
             throw commitError; // Re-throw the original error
           }
         } else {
