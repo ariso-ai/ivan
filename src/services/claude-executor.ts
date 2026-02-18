@@ -161,7 +161,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
             if (message.message.content) {
               for (const content of message.message.content) {
                 if (content.type === 'text') {
-                  if (!this.quietMode) console.log(content.text);
+                  console.log(content.text);
                   currentResponse += content.text + '\n';
                   lastMessage = content.text; // Also capture text responses as last message
                 } else if (content.type === 'tool_use') {

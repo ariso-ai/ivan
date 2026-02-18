@@ -320,9 +320,6 @@ export class TaskExecutor {
       const result = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath);
       if (spinner) {
         spinner.succeed('Claude Code execution completed');
-      } else if (quiet) {
-        // In quiet mode, output the final message from Claude
-        console.log(result.lastMessage);
       }
 
       if (!quiet) spinner = ora('Storing execution log...').start();
@@ -539,9 +536,6 @@ export class TaskExecutor {
         sessionId = result.sessionId;
         if (spinner) {
           spinner.succeed('Claude Code execution completed');
-        } else if (quiet) {
-          // In quiet mode, output the final message from Claude
-          console.log(result.lastMessage);
         }
 
         if (!quiet) spinner = ora('Storing execution log...').start();
