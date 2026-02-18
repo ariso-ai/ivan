@@ -1,6 +1,6 @@
 {
   "name": "@ariso-ai/ivan",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
