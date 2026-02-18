@@ -329,7 +329,8 @@ export class AddressTaskExecutor {
           // Parse comment information from task description
           // Format: "Address PR #123 comment from @author: "body" (in path:line)"
           const authorMatch = task.description.match(/comment from @(\w+)/);
-          const bodyMatch = task.description.match(/: "(.+?)"/);
+          // Use [\s\S] to match newlines in the body
+          const bodyMatch = task.description.match(/: "([\s\S]+?)"\s*(?:\(in|$)/);
           const pathMatch = task.description.match(/\(in (.+?)(:\d+)?\)$/);
           const lineMatch = task.description.match(/:(\d+)\)$/);
 
@@ -415,19 +416,20 @@ export class AddressTaskExecutor {
             if (changedFiles.length === 0) {
               if (!quiet) console.log(chalk.yellow('⚠️  No changes made - Claude determined no changes were needed'));
 
-              // Reply to the comment explaining why no changes were made
-              if (!quiet) spinner = ora('Replying to comment...').start();
-              try {
-                // Truncate the message if it's too long (GitHub has a 65536 character limit)
-                const maxLength = 60000;
-                let replyBody = `Ivan: ${lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
+              // Reply to the comment explaining why no changes were made (only if we have a comment ID)
+              if (comment.id) {
+                if (!quiet) spinner = ora('Replying to comment...').start();
+                try {
+                  // Truncate the message if it's too long (GitHub has a 65536 character limit)
+                  const maxLength = 60000;
+                  let replyBody = `Ivan: ${lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
 
-                if (replyBody.length > maxLength) {
-                  replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)';
-                }
+                  if (replyBody.length > maxLength) {
+                    replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)';
+                  }
 
-                // Use GitHub API client if available, otherwise fall back to gh command
-                if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
+                  // Use GitHub API client if available, otherwise fall back to gh command
+                  if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
                   await this.githubClient.addReviewThreadReply(
                     this.repoOwner,
                     this.repoName,
@@ -523,9 +525,12 @@ export class AddressTaskExecutor {
                     unlinkSync(tempFile);
                   }
                 }
-              } catch (error) {
-                if (spinner) spinner.fail('Failed to reply to comment');
-                if (!quiet) console.error(error);
+                } catch (error) {
+                  if (spinner) spinner.fail('Failed to reply to comment');
+                  if (!quiet) console.error(error);
+                }
+              } else {
+                if (!quiet) console.log(chalk.yellow('⚠️  Could not reply to comment - comment ID not found'));
               }
 
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
@@ -582,22 +587,23 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
               if (!quiet) console.error(error);
             }
 
-            // Reply to the comment with the fix
-            if (!quiet) spinner = ora('Replying to comment...').start();
-            try {
-              // Truncate the message if it's too long (GitHub has a 65536 character limit)
-              const maxLength = 60000;
-              let replyBody = lastMessage
-                ? `Ivan: ${lastMessage}\n\nThis has been addressed in commit ${commitHash.substring(0, 7)}`
-                : `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
+            // Reply to the comment with the fix (only if we have a comment ID)
+            if (comment.id) {
+              if (!quiet) spinner = ora('Replying to comment...').start();
+              try {
+                // Truncate the message if it's too long (GitHub has a 65536 character limit)
+                const maxLength = 60000;
+                let replyBody = lastMessage
+                  ? `Ivan: ${lastMessage}\n\nThis has been addressed in commit ${commitHash.substring(0, 7)}`
+                  : `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
 
-              if (replyBody.length > maxLength) {
-                replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)\n\n' +
-                  `This has been addressed in commit ${commitHash.substring(0, 7)}`;
-              }
+                if (replyBody.length > maxLength) {
+                  replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)\n\n' +
+                    `This has been addressed in commit ${commitHash.substring(0, 7)}`;
+                }
 
-              // Use GitHub API client if available, otherwise fall back to gh command
-              if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
+                // Use GitHub API client if available, otherwise fall back to gh command
+                if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
                 await this.githubClient.addReviewThreadReply(
                   this.repoOwner,
                   this.repoName,
@@ -682,9 +688,12 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
                 );
                 if (spinner) spinner.succeed('Reply added to comment');
               }
-            } catch (error) {
-              if (spinner) spinner.fail('Failed to reply to comment');
-              if (!quiet) console.error(error);
+              } catch (error) {
+                if (spinner) spinner.fail('Failed to reply to comment');
+                if (!quiet) console.error(error);
+              }
+            } else {
+              if (!quiet) console.log(chalk.yellow('⚠️  Could not reply to comment - comment ID not found'));
             }
 
             await this.jobManager.updateTaskStatus(task.uuid, 'completed');
@@ -811,51 +820,116 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
         repoName = parsed.name;
       }
 
-      // Use GraphQL to get ALL review threads, not just unresolved ones
-      const graphqlQuery = `
-        query {
-          repository(owner: "${owner}", name: "${repoName}") {
-            pullRequest(number: ${prNumber}) {
-              reviewThreads(first: 100) {
-                nodes {
-                  comments(first: 100) {
-                    nodes {
-                      databaseId
-                      body
-                      author {
-                        login
+      // Use GitHubAPIClient if available, otherwise fall back to gh CLI
+      if (this.githubClient && owner && repoName) {
+        // Use the GitHub API client
+        const graphqlQuery = `
+          query {
+            repository(owner: "${owner}", name: "${repoName}") {
+              pullRequest(number: ${prNumber}) {
+                reviewThreads(first: 100) {
+                  nodes {
+                    comments(first: 100) {
+                      nodes {
+                        databaseId
+                        body
+                        author {
+                          login
+                        }
+                        path
+                        line
                       }
-                      path
-                      line
                     }
                   }
                 }
               }
             }
           }
+        `;
+
+        const result = await this.githubClient.graphql<{
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: Array<{
+                  comments: {
+                    nodes: Array<{
+                      databaseId?: number;
+                      body: string;
+                      author?: {
+                        login: string;
+                      };
+                      path?: string;
+                      line?: number;
+                    }>;
+                  };
+                }>;
+              };
+            };
+          };
+        }>(graphqlQuery);
+
+        const threads = result.repository?.pullRequest?.reviewThreads?.nodes || [];
+
+        // Search through all comments in all threads
+        for (const thread of threads) {
+          const comments = thread.comments?.nodes || [];
+          for (const comment of comments) {
+            if (comment.author?.login === author &&
+                comment.body.includes(bodySnippet) &&
+                (!path || comment.path === path) &&
+                (!line || comment.line === line)) {
+              return comment.databaseId ? comment.databaseId.toString() : null;
+            }
+          }
         }
-      `;
+      } else {
+        // Fall back to gh CLI
+        const graphqlQuery = `
+          query {
+            repository(owner: "${owner}", name: "${repoName}") {
+              pullRequest(number: ${prNumber}) {
+                reviewThreads(first: 100) {
+                  nodes {
+                    comments(first: 100) {
+                      nodes {
+                        databaseId
+                        body
+                        author {
+                          login
+                        }
+                        path
+                        line
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `;
 
-      const graphqlResult = execSync(
-        `gh api graphql -f query='${graphqlQuery.replace(/'/g, "'\\''")}'`,
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
+        const graphqlResult = execSync(
+          `gh api graphql -f query='${graphqlQuery.replace(/'/g, "'\\''")}'`,
+          {
+            cwd: this.workingDir,
+            encoding: 'utf-8'
+          }
+        );
 
-      const result = JSON.parse(graphqlResult);
-      const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+        const result = JSON.parse(graphqlResult);
+        const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
 
-      // Search through all comments in all threads
-      for (const thread of threads) {
-        const comments = thread.comments?.nodes || [];
-        for (const comment of comments) {
-          if (comment.author?.login === author &&
-              comment.body.includes(bodySnippet) &&
-              (!path || comment.path === path) &&
-              (!line || comment.line === line)) {
-            return comment.databaseId ? comment.databaseId.toString() : null;
+        // Search through all comments in all threads
+        for (const thread of threads) {
+          const comments = thread.comments?.nodes || [];
+          for (const comment of comments) {
+            if (comment.author?.login === author &&
+                comment.body.includes(bodySnippet) &&
+                (!path || comment.path === path) &&
+                (!line || comment.line === line)) {
+              return comment.databaseId ? comment.databaseId.toString() : null;
+            }
           }
         }
       }
