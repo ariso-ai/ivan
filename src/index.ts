@@ -8,9 +8,10 @@ import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 import { NonInteractiveConfig } from './types/non-interactive-config.js';
-import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync, copyFileSync, writeFileSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
 import { dirname, join } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 
 const program = new Command();
@@ -411,10 +412,21 @@ async function addIvanAction(): Promise<void> {
       throw error;
     }
 
+    // Get org and repo from git remote
+    let orgAndRepo = 'your-org/your-repo';
+    try {
+      const remoteUrl = execSync('git config --get remote.origin.url', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+      const match = remoteUrl.match(/github\.com[:/](.+?)\.git$/) || remoteUrl.match(/github\.com[:/](.+?)$/);
+      if (match) {
+        orgAndRepo = match[1];
+      }
+    } catch {
+      console.log(chalk.yellow('⚠️  Could not determine org/repo from git remote'));
+    }
+
     // Create PR
     console.log(chalk.blue('🔀 Creating pull request...'));
-    try {
-      const prBody = `This PR adds the Ivan Agent GitHub Action workflow.
+    const prBody = `This PR adds the Ivan Agent GitHub Action workflow.
 
 ## What does this do?
 
@@ -424,30 +436,87 @@ This workflow allows you to trigger Ivan Agent by commenting \`@ivan-agent\` on 
 - Implement the solution
 - Open a PR with the changes
 
-## Required Setup
+## Setup Instructions
 
-After merging this PR, you'll need to set up the following GitHub secrets in your repository:
-- \`OPEN_AI_KEY\`: Your OpenAI API key
-- \`ANTHROPIC_KEY\`: Your Anthropic API key
-- \`PAT\`: A Personal Access Token with repo permissions
+After merging this PR, follow these steps to configure the Ivan Agent:
 
-You'll also need to create a GitHub environment named \`ivan\` in your repository settings.`;
+### 1. Create GitHub Environment
 
+Create a new environment called \`ivan\` in your GitHub repository:
+- Visit https://github.com/${orgAndRepo}/settings/environments/new
+- Name the environment: \`ivan\`
+- Click "Configure environment"
+
+### 2. Create Fine-Grained Personal Access Token
+
+Create a new fine-grained personal access token for the user who will open PRs on Ivan's behalf:
+- Visit https://github.com/settings/personal-access-tokens/new
+- Give it a descriptive name (e.g., "Ivan Agent")
+- Set the required scopes:
+  - **Contents**: Read and write
+  - **Pull requests**: Read and write
+- Generate the token and copy it
+
+### 3. Add Environment Secrets
+
+Add the following secrets to the \`ivan\` environment:
+- Visit https://github.com/${orgAndRepo}/settings/environments
+- Click on the \`ivan\` environment
+- Add the following environment secrets:
+  - \`ANTHROPIC_KEY\`: Your Anthropic API key
+  - \`OPEN_AI_KEY\`: Your OpenAI API key
+  - \`PAT\`: The fine-grained personal access token you created in step 2
+
+### 4. Start Using Ivan
+
+Once the PR is merged and secrets are configured, you can comment \`@ivan-agent\` on any issue in GitHub and it will automatically be worked on!`;
+
+    // Write PR body to temp file to avoid escaping issues
+    const tempFile = join(tmpdir(), `ivan-pr-body-${Date.now()}.md`);
+    writeFileSync(tempFile, prBody, 'utf-8');
+
+    try {
       const prUrl = execSync(
-        `gh pr create --title "Add Ivan Agent GitHub Action workflow" --body "${prBody.replace(/"/g, '\\"')}"`,
+        `gh pr create --title "Add Ivan Agent GitHub Action workflow" --body-file "${tempFile}"`,
         { encoding: 'utf-8', stdio: 'pipe' }
       ).trim();
+      unlinkSync(tempFile); // Clean up temp file
 
       console.log('');
       console.log(chalk.green.bold('✅ Pull request created successfully!'));
       console.log(chalk.cyan(`🔗 ${prUrl}`));
       console.log('');
-      console.log(chalk.gray('Next steps:'));
-      console.log(chalk.gray('1. Review and merge the PR'));
-      console.log(chalk.gray('2. Set up the required GitHub secrets (OPEN_AI_KEY, ANTHROPIC_KEY, PAT)'));
-      console.log(chalk.gray('3. Create a GitHub environment named "ivan"'));
-      console.log(chalk.gray('4. Comment @ivan-agent on any issue to trigger Ivan!'));
+      console.log(chalk.yellow.bold('📋 Setup Instructions'));
+      console.log('');
+      console.log(chalk.white('After merging this PR, follow these steps to configure the Ivan Agent:'));
+      console.log('');
+      console.log(chalk.cyan.bold('1. Create GitHub Environment'));
+      console.log(chalk.white(`   Add a new environment in your GitHub repo called ${chalk.bold('ivan')} by visiting:`));
+      console.log(chalk.blue(`   https://github.com/${orgAndRepo}/settings/environments/new`));
+      console.log('');
+      console.log(chalk.cyan.bold('2. Create Fine-Grained Personal Access Token'));
+      console.log(chalk.white('   Create a new fine-grained personal access token for the user who will open PRs'));
+      console.log(chalk.white('   on Ivan\'s behalf. It should have the following scopes:'));
+      console.log(chalk.white(`     • ${chalk.bold('Contents')}: Read and write`));
+      console.log(chalk.white(`     • ${chalk.bold('Pull requests')}: Read and write`));
+      console.log(chalk.white('   You can create it at:'));
+      console.log(chalk.blue('   https://github.com/settings/personal-access-tokens/new'));
+      console.log('');
+      console.log(chalk.cyan.bold('3. Add Environment Secrets'));
+      console.log(chalk.white(`   Add the environment variables to the ${chalk.bold('ivan')} environment:`));
+      console.log(chalk.white(`     • ${chalk.bold('ANTHROPIC_KEY')}: Your Anthropic API key`));
+      console.log(chalk.white(`     • ${chalk.bold('OPEN_AI_KEY')}: Your OpenAI API key`));
+      console.log(chalk.white(`     • ${chalk.bold('PAT')}: The fine-grained personal access token from step 2`));
+      console.log('');
+      console.log(chalk.cyan.bold('4. Start Using Ivan'));
+      console.log(chalk.white(`   Once the PR is merged, you can comment ${chalk.bold('@ivan-agent')} on any issue`));
+      console.log(chalk.white('   in GitHub and it will automatically be worked on!'));
+      console.log('');
     } catch (error) {
+      // Clean up temp file on error
+      try {
+        unlinkSync(tempFile);
+      } catch {}
       console.log(chalk.red('❌ Failed to create pull request'));
       console.log(chalk.yellow('You can create it manually from the branch:', branchName));
       throw error;
