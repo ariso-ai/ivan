@@ -17,6 +17,7 @@ interface Config {
   githubPat?: string;
   repoInstructions?: { [repoPath: string]: string };
   repoAllowedTools?: { [repoPath: string]: string[] };
+  repoBlockedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
 }
 
@@ -430,6 +431,28 @@ export class ConfigManager {
     await this.saveConfig(config);
   }
 
+  async getRepoBlockedTools(repoPath: string): Promise<string[] | undefined> {
+    const config = this.getConfig();
+    if (!config || !config.repoBlockedTools) {
+      return undefined;
+    }
+    return config.repoBlockedTools[repoPath];
+  }
+
+  async setRepoBlockedTools(repoPath: string, blockedTools: string[]): Promise<void> {
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    if (!config.repoBlockedTools) {
+      config.repoBlockedTools = {};
+    }
+
+    config.repoBlockedTools[repoPath] = blockedTools;
+    await this.saveConfig(config);
+  }
+
   async promptForRepoInstructions(repoPath: string): Promise<string> {
     console.log(chalk.blue.bold('📝 Repository-Specific Instructions'));
     console.log(chalk.gray(`Repository: ${repoPath}`));
@@ -508,6 +531,52 @@ export class ConfigManager {
     }
 
     return allowedTools;
+  }
+
+  async promptForRepoBlockedTools(repoPath: string): Promise<string[]> {
+    console.log(chalk.blue.bold('🚫 Repository-Specific Blocked Tools Configuration'));
+    console.log(chalk.gray(`Repository: ${repoPath}`));
+    console.log('');
+    console.log(chalk.yellow('Configure which tools Claude Code CANNOT use in this repository.'));
+    console.log(chalk.gray('These tools will be blocked even if allowed by allowedTools'));
+    console.log(chalk.gray('Available tools: Task, Bash, Read, Write, Edit, EnterPlanMode, ExitPlanMode, etc.'));
+    console.log('');
+
+    // Show current blocked tools if any
+    const currentBlockedTools = await this.getRepoBlockedTools(repoPath);
+    if (currentBlockedTools && currentBlockedTools.length > 0) {
+      console.log(chalk.cyan('Current blocked tools:'));
+      console.log('  ' + currentBlockedTools.join(', '));
+      console.log('');
+    }
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'blockedTools',
+        message: 'Enter blocked tools (comma-separated, or leave empty for none):',
+        default: currentBlockedTools ? currentBlockedTools.join(', ') : '',
+        filter: (input: string) => {
+          const trimmed = input.trim();
+          if (trimmed.length === 0) {
+            return [];
+          }
+          return trimmed.split(',').map(tool => tool.trim()).filter(tool => tool.length > 0);
+        }
+      }
+    ]);
+
+    const blockedTools = answers.blockedTools;
+
+    await this.setRepoBlockedTools(repoPath, blockedTools);
+
+    if (blockedTools.length > 0) {
+      console.log(chalk.green(`✅ Blocked tools configured: ${blockedTools.join(', ')}`));
+    } else {
+      console.log(chalk.green('✅ No tools blocked (cleared)'));
+    }
+
+    return blockedTools;
   }
 
   async promptForModel(): Promise<void> {

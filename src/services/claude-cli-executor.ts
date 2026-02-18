@@ -51,7 +51,50 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       }
 
       // Get repository-specific allowed tools using the original repo path
-      const allowedTools = await this.configManager.getRepoAllowedTools(originalRepoPath);
+      let allowedTools = await this.configManager.getRepoAllowedTools(originalRepoPath);
+
+      // Get repository-specific blocked tools
+      const blockedTools = await this.configManager.getRepoBlockedTools(originalRepoPath);
+
+      // Always block EnterPlanMode and AskUserQuestion globally
+      const globallyBlockedTools = ['EnterPlanMode', 'AskUserQuestion'];
+
+      // Combine globally blocked tools with repository-specific blocked tools
+      const allBlockedTools = blockedTools
+        ? [...new Set([...globallyBlockedTools, ...blockedTools])]
+        : globallyBlockedTools;
+
+      // Apply blocked tools
+      if (allBlockedTools.length > 0) {
+        if (!allowedTools || allowedTools.includes('*')) {
+          // If all tools are allowed (default), create explicit list excluding blocked tools
+          const allTools = [
+            'Task',
+            'AgentOutputTool',
+            'Bash',
+            'Glob',
+            'Grep',
+            'ExitPlanMode',
+            'EnterPlanMode',
+            'Read',
+            'Edit',
+            'Write',
+            'NotebookEdit',
+            'WebFetch',
+            'TodoWrite',
+            'WebSearch',
+            'BashOutput',
+            'KillShell',
+            'AskUserQuestion',
+            'Skill',
+            'SlashCommand'
+          ];
+          allowedTools = allTools.filter(tool => !allBlockedTools.includes(tool));
+        } else {
+          // If specific tools are allowed, remove blocked ones
+          allowedTools = allowedTools.filter(tool => !allBlockedTools.includes(tool));
+        }
+      }
 
       // Get the selected model
       const model = this.configManager.getClaudeModel();

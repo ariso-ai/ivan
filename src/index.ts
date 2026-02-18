@@ -37,6 +37,14 @@ program
   });
 
 program
+  .command('config-blocked-tools')
+  .description('Configure blocked tools for the current repository')
+  .action(async () => {
+    const repoPath = process.cwd();
+    await configManager.promptForRepoBlockedTools(repoPath);
+  });
+
+program
   .command('edit-repo-instructions')
   .description('Set or update repository-specific instructions')
   .action(async () => {
@@ -90,6 +98,7 @@ program
     console.log('');
 
     const allowedTools = await configManager.getRepoAllowedTools(repoPath);
+    const blockedTools = await configManager.getRepoBlockedTools(repoPath);
     const instructions = await configManager.getRepoInstructions(repoPath);
 
     console.log(chalk.cyan('Allowed Tools:'));
@@ -97,6 +106,14 @@ program
       console.log('  ' + allowedTools.join(', '));
     } else {
       console.log(chalk.gray('  [*] (all tools allowed - default)'));
+    }
+
+    console.log('');
+    console.log(chalk.cyan('Blocked Tools:'));
+    if (blockedTools && blockedTools.length > 0) {
+      console.log('  ' + blockedTools.join(', '));
+    } else {
+      console.log(chalk.gray('  (none configured)'));
     }
 
     console.log('');
@@ -502,7 +519,7 @@ async function main() {
       return;
     }
 
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
