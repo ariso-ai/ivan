@@ -449,4 +449,84 @@ export class GitHubAPIClient {
       );
     }
   }
+
+  /**
+   * Add a reply to a review thread
+   */
+  async addReviewThreadReply(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    commentId: string,
+    body: string
+  ): Promise<void> {
+    // First, get all review threads to find the thread containing this comment
+    const query = `
+      query {
+        repository(owner: "${owner}", name: "${repo}") {
+          pullRequest(number: ${prNumber}) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                comments(first: 100) {
+                  nodes {
+                    databaseId
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const data = await this.graphql<{
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            nodes: Array<{
+              id: string;
+              comments: {
+                nodes: Array<{
+                  databaseId?: number;
+                }>;
+              };
+            }>;
+          };
+        };
+      };
+    }>(query);
+
+    const threads = data.repository.pullRequest.reviewThreads.nodes;
+
+    // Find the thread containing this comment
+    let threadId: string | null = null;
+    for (const thread of threads) {
+      const comments = thread.comments?.nodes || [];
+      if (comments.some((c) => c.databaseId?.toString() === commentId)) {
+        threadId = thread.id;
+        break;
+      }
+    }
+
+    if (!threadId) {
+      throw new Error('Could not find review thread for comment');
+    }
+
+    // Add reply using GraphQL mutation
+    const mutation = `
+      mutation {
+        addPullRequestReviewThreadReply(input: {
+          pullRequestReviewThreadId: "${threadId}"
+          body: ${JSON.stringify(body)}
+        }) {
+          comment {
+            id
+          }
+        }
+      }
+    `;
+
+    await this.graphql(mutation);
+  }
 }
