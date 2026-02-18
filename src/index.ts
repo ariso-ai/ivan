@@ -190,7 +190,8 @@ program
   .description('Address open PRs with unaddressed comments or failing checks')
   .argument('[pr-number]', 'Optional PR number to address')
   .option('--from-user <username>', 'Filter PRs by author GitHub username')
-  .action(async (prNumber?: string, options?: { fromUser?: string }) => {
+  .option('--yes', 'Skip interactive prompts and process all PRs')
+  .action(async (prNumber?: string, options?: { fromUser?: string; yes?: boolean }) => {
     const wasConfigured = await checkConfiguration();
     if (wasConfigured) {
       console.log('');
@@ -203,7 +204,8 @@ program
     const addressExecutor = new AddressExecutor();
     await addressExecutor.executeWorkflow(
       prNumber ? parseInt(prNumber) : undefined,
-      options?.fromUser
+      options?.fromUser,
+      options?.yes
     );
   });
 

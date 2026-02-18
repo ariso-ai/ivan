@@ -33,7 +33,7 @@ export class AddressExecutor {
     return this.claudeExecutor;
   }
 
-  async executeWorkflow(specificPrNumber?: number, fromUser?: string): Promise<void> {
+  async executeWorkflow(specificPrNumber?: number, fromUser?: string, skipQuestions?: boolean): Promise<void> {
     try {
       if (specificPrNumber) {
         console.log(chalk.blue.bold(`🔍 Checking PR #${specificPrNumber} for unaddressed issues...`));
@@ -105,15 +105,22 @@ export class AddressExecutor {
         };
       });
 
-      const { selectedPRs } = await inquirer.prompt([
-        {
-          type: 'checkbox',
-          name: 'selectedPRs',
-          message: 'Select PRs to address:',
-          choices: prChoices,
-          validate: (input) => input.length > 0 || 'Please select at least one PR'
-        }
-      ]);
+      let selectedPRs;
+      if (skipQuestions) {
+        selectedPRs = prsWithIssues;
+        console.log(chalk.cyan(`✓ Processing all ${prsWithIssues.length} PRs (--yes mode)`));
+      } else {
+        const response = await inquirer.prompt([
+          {
+            type: 'checkbox',
+            name: 'selectedPRs',
+            message: 'Select PRs to address:',
+            choices: prChoices,
+            validate: (input) => input.length > 0 || 'Please select at least one PR'
+          }
+        ]);
+        selectedPRs = response.selectedPRs;
+      }
 
       // Create tasks for selected PRs
       const tasks: Array<{ description: string; prNumber: number; prBranch: string; type: 'address' | 'lint_and_test' }> = [];
@@ -167,14 +174,21 @@ export class AddressExecutor {
       });
       console.log('');
 
-      const { confirmTasks } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirmTasks',
-          message: `Create these ${tasks.length} tasks?`,
-          default: true
-        }
-      ]);
+      let confirmTasks;
+      if (skipQuestions) {
+        confirmTasks = true;
+        console.log(chalk.cyan('✓ Creating all tasks (--yes mode)'));
+      } else {
+        const response = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirmTasks',
+            message: `Create these ${tasks.length} tasks?`,
+            default: true
+          }
+        ]);
+        confirmTasks = response.confirmTasks;
+      }
 
       if (!confirmTasks) {
         console.log(chalk.yellow('⚠️  Task creation cancelled'));
