@@ -9,6 +9,7 @@ import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { IGitManager, IPRService } from './git-interfaces.js';
 import { createGitManager, createPRService } from './service-factory.js';
+import { GitHubAPIClient } from './github-api-client.js';
 
 export class AddressTaskExecutor {
   private jobManager: JobManager;
@@ -19,6 +20,9 @@ export class AddressTaskExecutor {
   private prService: IPRService | null = null;
   private workingDir: string;
   private repoInstructions: string | undefined;
+  private githubClient: GitHubAPIClient | null = null;
+  private repoOwner: string = '';
+  private repoName: string = '';
 
   constructor() {
     this.jobManager = new JobManager();
@@ -72,6 +76,33 @@ export class AddressTaskExecutor {
 
       this.gitManager.validateGitHubCliAuthentication();
       if (!quiet) console.log(chalk.green('✅ GitHub CLI is authenticated'));
+
+      // Initialize GitHub API client if using PAT
+      const authType = this.configManager.getGithubAuthType();
+      if (authType === 'pat') {
+        const pat = this.configManager.getGithubPat();
+        if (pat) {
+          this.githubClient = new GitHubAPIClient(pat);
+          const repoInfo = GitHubAPIClient.getRepoInfoFromRemote(this.workingDir);
+          this.repoOwner = repoInfo.owner;
+          this.repoName = repoInfo.repo;
+        }
+      }
+
+      // If not using PAT, get repo info from gh command
+      if (!this.githubClient) {
+        try {
+          const repoInfo = execSync('gh repo view --json owner,name', {
+            cwd: this.workingDir,
+            encoding: 'utf-8'
+          });
+          const parsed = JSON.parse(repoInfo);
+          this.repoOwner = parsed.owner.login;
+          this.repoName = parsed.name;
+        } catch (error) {
+          if (!quiet) console.log(chalk.yellow('⚠️  Could not get repository info'));
+        }
+      }
 
       // Load repository instructions
       this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
@@ -244,13 +275,18 @@ export class AddressTaskExecutor {
                 const reviewAgent = this.configManager.getReviewAgent();
                 const reviewComment = `${reviewAgent} please review the test and lint fixes that were applied to address the failing CI checks`;
 
-                execSync(
-                  `gh pr comment ${taskPrNumber} --body "${reviewComment}"`,
-                  {
-                    cwd: worktreePath || this.workingDir,
-                    stdio: 'pipe'
-                  }
-                );
+                // Use GitHub API client if available, otherwise fall back to gh command
+                if (this.githubClient && this.repoOwner && this.repoName) {
+                  await this.githubClient.addPRComment(this.repoOwner, this.repoName, taskPrNumber, reviewComment);
+                } else {
+                  execSync(
+                    `gh pr comment ${taskPrNumber} --body "${reviewComment}"`,
+                    {
+                      cwd: worktreePath || this.workingDir,
+                      stdio: 'pipe'
+                    }
+                  );
+                }
                 if (spinner) spinner.succeed('Review request comment added');
               } catch (error) {
                 if (spinner) spinner.fail('Failed to add review comment');
@@ -317,19 +353,11 @@ export class AddressTaskExecutor {
           await this.jobManager.updateTaskStatus(task.uuid, 'active');
 
           // Save comment URL
-          if (comment.id) {
-            const repoInfo = execSync(
-              'gh repo view --json owner,name',
-              {
-                cwd: worktreePath || this.workingDir,
-                encoding: 'utf-8'
-              }
-            );
-            const { owner, name: repoName } = JSON.parse(repoInfo);
+          if (comment.id && this.repoOwner && this.repoName) {
             if (!prNumber) {
               throw new Error('PR number not found');
             }
-            const commentUrl = `https://github.com/${owner.login}/${repoName}/pull/${prNumber}#discussion_r${comment.id}`;
+            const commentUrl = `https://github.com/${this.repoOwner}/${this.repoName}/pull/${prNumber}#discussion_r${comment.id}`;
             await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
           }
 
@@ -384,94 +412,102 @@ export class AddressTaskExecutor {
                   replyBody = replyBody.substring(0, maxLength) + '\n\n... (message truncated)';
                 }
 
-                // Use a temporary file to avoid shell escaping issues
-                const { writeFileSync, unlinkSync } = await import('fs');
-                const { join } = await import('path');
-                const { tmpdir } = await import('os');
-                const tempFile = join(tmpdir(), `ivan-comment-${Date.now()}.txt`);
-
-                writeFileSync(tempFile, replyBody);
-
-                try {
-                  // Use GraphQL mutation to add a reply to the review thread
-                  const repoInfo = execSync(
-                    'gh repo view --json owner,name',
-                    {
-                      cwd: worktreePath || this.workingDir,
-                      encoding: 'utf-8'
-                    }
+                // Use GitHub API client if available, otherwise fall back to gh command
+                if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
+                  await this.githubClient.addReviewThreadReply(
+                    this.repoOwner,
+                    this.repoName,
+                    parseInt(prNumber),
+                    comment.id,
+                    replyBody
                   );
-                  const { owner, name: repoName } = JSON.parse(repoInfo);
+                  if (spinner) spinner.succeed('Reply added to comment');
+                } else {
+                  // Fallback to gh command
+                  const { writeFileSync, unlinkSync } = await import('fs');
+                  const { join } = await import('path');
+                  const { tmpdir } = await import('os');
+                  const tempFile = join(tmpdir(), `ivan-comment-${Date.now()}.txt`);
 
-                  // Get the review thread ID from the comment
-                  const threadQuery = `
-                    query {
-                      repository(owner: "${owner.login}", name: "${repoName}") {
-                        pullRequest(number: ${prNumber}) {
-                          reviewThreads(first: 100) {
-                            nodes {
-                              id
-                              comments(first: 100) {
-                                nodes {
-                                  databaseId
+                  writeFileSync(tempFile, replyBody);
+
+                  try {
+                    const repoInfo = execSync(
+                      'gh repo view --json owner,name',
+                      {
+                        cwd: worktreePath || this.workingDir,
+                        encoding: 'utf-8'
+                      }
+                    );
+                    const { owner, name: repoName } = JSON.parse(repoInfo);
+
+                    const threadQuery = `
+                      query {
+                        repository(owner: "${owner.login}", name: "${repoName}") {
+                          pullRequest(number: ${prNumber}) {
+                            reviewThreads(first: 100) {
+                              nodes {
+                                id
+                                comments(first: 100) {
+                                  nodes {
+                                    databaseId
+                                  }
                                 }
                               }
                             }
                           }
                         }
                       }
-                    }
-                  `;
+                    `;
 
-                  const threadResult = execSync(
-                    `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
-                    {
-                      cwd: worktreePath || this.workingDir,
-                      encoding: 'utf-8'
-                    }
-                  );
+                    const threadResult = execSync(
+                      `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
+                      {
+                        cwd: worktreePath || this.workingDir,
+                        encoding: 'utf-8'
+                      }
+                    );
 
-                  const threadData = JSON.parse(threadResult);
-                  const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+                    const threadData = JSON.parse(threadResult);
+                    const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
 
-                  // Find the thread containing this comment
-                  let threadId = null;
-                  for (const thread of threads) {
-                    const comments = thread.comments?.nodes || [];
-                    if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
-                      threadId = thread.id;
-                      break;
-                    }
-                  }
-
-                  if (!threadId) {
-                    throw new Error('Could not find review thread for comment');
-                  }
-
-                  // Add reply using GraphQL mutation
-                  const mutation = `
-                    mutation {
-                      addPullRequestReviewThreadReply(input: {
-                        pullRequestReviewThreadId: "${threadId}"
-                        body: ${JSON.stringify(replyBody)}
-                      }) {
-                        comment {
-                          id
-                        }
+                    let threadId = null;
+                    for (const thread of threads) {
+                      const comments = thread.comments?.nodes || [];
+                      if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
+                        threadId = thread.id;
+                        break;
                       }
                     }
-                  `;
 
-                  execSync(
-                    `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
-                    {
-                      cwd: worktreePath || this.workingDir,
-                      stdio: 'pipe'
+                    if (!threadId) {
+                      throw new Error('Could not find review thread for comment');
                     }
-                  );
-                  if (spinner) spinner.succeed('Reply added to comment');
-                } finally {
-                  unlinkSync(tempFile);
+
+                    const mutation = `
+                      mutation {
+                        addPullRequestReviewThreadReply(input: {
+                          pullRequestReviewThreadId: "${threadId}"
+                          body: ${JSON.stringify(replyBody)}
+                        }) {
+                          comment {
+                            id
+                          }
+                        }
+                      }
+                    `;
+
+                    execSync(
+                      `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
+                      {
+                        cwd: worktreePath || this.workingDir,
+                        stdio: 'pipe'
+                      }
+                    );
+                    if (spinner) spinner.succeed('Reply added to comment');
+                  } finally {
+                    unlinkSync(tempFile);
+                  }
                 }
               } catch (error) {
                 if (spinner) spinner.fail('Failed to reply to comment');
@@ -546,83 +582,92 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
                   `This has been addressed in commit ${commitHash.substring(0, 7)}`;
               }
 
-              // Use GraphQL mutation to add a reply to the review thread
-              const repoInfo = execSync(
-                'gh repo view --json owner,name',
-                {
-                  cwd: worktreePath || this.workingDir,
-                  encoding: 'utf-8'
-                }
-              );
-              const { owner, name: repoName } = JSON.parse(repoInfo);
+              // Use GitHub API client if available, otherwise fall back to gh command
+              if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
+                await this.githubClient.addReviewThreadReply(
+                  this.repoOwner,
+                  this.repoName,
+                  parseInt(prNumber),
+                  comment.id,
+                  replyBody
+                );
+                if (spinner) spinner.succeed('Reply added to comment');
+              } else {
+                // Fallback to gh command
+                const repoInfo = execSync(
+                  'gh repo view --json owner,name',
+                  {
+                    cwd: worktreePath || this.workingDir,
+                    encoding: 'utf-8'
+                  }
+                );
+                const { owner, name: repoName } = JSON.parse(repoInfo);
 
-              // Get the review thread ID from the comment
-              const threadQuery = `
-                query {
-                  repository(owner: "${owner.login}", name: "${repoName}") {
-                    pullRequest(number: ${prNumber}) {
-                      reviewThreads(first: 100) {
-                        nodes {
-                          id
-                          comments(first: 100) {
-                            nodes {
-                              databaseId
+                const threadQuery = `
+                  query {
+                    repository(owner: "${owner.login}", name: "${repoName}") {
+                      pullRequest(number: ${prNumber}) {
+                        reviewThreads(first: 100) {
+                          nodes {
+                            id
+                            comments(first: 100) {
+                              nodes {
+                                databaseId
+                              }
                             }
                           }
                         }
                       }
                     }
                   }
-                }
-              `;
+                `;
 
-              const threadResult = execSync(
-                `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
-                {
-                  cwd: worktreePath || this.workingDir,
-                  encoding: 'utf-8'
-                }
-              );
+                const threadResult = execSync(
+                  `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
+                  {
+                    cwd: worktreePath || this.workingDir,
+                    encoding: 'utf-8'
+                  }
+                );
 
-              const threadData = JSON.parse(threadResult);
-              const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+                const threadData = JSON.parse(threadResult);
+                const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
 
-              // Find the thread containing this comment
-              let threadId = null;
-              for (const thread of threads) {
-                const comments = thread.comments?.nodes || [];
-                if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
-                  threadId = thread.id;
-                  break;
-                }
-              }
-
-              if (!threadId) {
-                throw new Error('Could not find review thread for comment');
-              }
-
-              // Add reply using GraphQL mutation
-              const mutation = `
-                mutation {
-                  addPullRequestReviewThreadReply(input: {
-                    pullRequestReviewThreadId: "${threadId}"
-                    body: ${JSON.stringify(replyBody)}
-                  }) {
-                    comment {
-                      id
-                    }
+                let threadId = null;
+                for (const thread of threads) {
+                  const comments = thread.comments?.nodes || [];
+                  if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
+                    threadId = thread.id;
+                    break;
                   }
                 }
-              `;
 
-              execSync(
-                `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
-                {
-                  cwd: worktreePath || this.workingDir,
-                  stdio: 'pipe'
+                if (!threadId) {
+                  throw new Error('Could not find review thread for comment');
                 }
-              );
-              if (spinner) spinner.succeed('Reply added to comment');
+
+                const mutation = `
+                  mutation {
+                    addPullRequestReviewThreadReply(input: {
+                      pullRequestReviewThreadId: "${threadId}"
+                      body: ${JSON.stringify(replyBody)}
+                    }) {
+                      comment {
+                        id
+                      }
+                    }
+                  }
+                `;
+
+                execSync(
+                  `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
+                  {
+                    cwd: worktreePath || this.workingDir,
+                    stdio: 'pipe'
+                  }
+                );
+                if (spinner) spinner.succeed('Reply added to comment');
+              }
             } catch (error) {
               if (spinner) spinner.fail('Failed to reply to comment');
               if (!quiet) console.error(error);
@@ -674,13 +719,18 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
             const reviewAgent = this.configManager.getReviewAgent();
             const reviewComment = `${reviewAgent} ${reviewInstructions}`;
 
-            execSync(
-              `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
-              {
-                cwd: worktreePath || this.workingDir,
-                stdio: 'pipe'
-              }
-            );
+            // Use GitHub API client if available, otherwise fall back to gh command
+            if (this.githubClient && this.repoOwner && this.repoName) {
+              await this.githubClient.addPRComment(this.repoOwner, this.repoName, parseInt(prNumber), reviewComment);
+            } else {
+              execSync(
+                `gh pr comment ${prNumber} --body "${reviewComment.replace(/"/g, '\\"')}"`,
+                {
+                  cwd: worktreePath || this.workingDir,
+                  stdio: 'pipe'
+                }
+              );
+            }
             if (spinner) spinner.succeed('Review request comment added');
           } catch (error) {
             if (spinner) spinner.fail('Failed to add review comment');
@@ -718,96 +768,12 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
     path?: string;
     line?: number;
   }>> {
+    if (!this.prService) {
+      throw new Error('PR service not initialized');
+    }
+
     try {
-      // Get PR owner and repo name
-      const repoInfo = execSync(
-        'gh repo view --json owner,name',
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
-      const { owner, name: repoName } = JSON.parse(repoInfo);
-
-      // Use GraphQL to get review threads with resolved status
-      const graphqlQuery = `
-        query {
-          repository(owner: "${owner.login}", name: "${repoName}") {
-            pullRequest(number: ${prNumber}) {
-              reviewThreads(first: 100) {
-                nodes {
-                  isResolved
-                  comments(first: 100) {
-                    nodes {
-                      id
-                      databaseId
-                      body
-                      author {
-                        login
-                      }
-                      createdAt
-                      path
-                      line
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      `;
-
-      const graphqlResult = execSync(
-        `gh api graphql -f query='${graphqlQuery}'`,
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
-
-      const result = JSON.parse(graphqlResult);
-      const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
-      const unaddressedComments: Array<{
-        id: string;
-        author: string;
-        body: string;
-        createdAt: string;
-        path?: string;
-        line?: number;
-      }> = [];
-
-      // Process each thread
-      for (const thread of threads) {
-        // Skip resolved threads
-        if (thread.isResolved) {
-          continue;
-        }
-
-        const comments = thread.comments?.nodes || [];
-        if (comments.length === 0) {
-          continue;
-        }
-
-        // Get the first comment (the main review comment)
-        const firstComment = comments[0];
-
-        // Check if there are replies (more than one comment in thread)
-        const hasReplies = comments.length > 1;
-
-        if (!hasReplies && firstComment.path) {
-          // Only include if it's an inline code comment (has a path) and has no replies
-          unaddressedComments.push({
-            id: firstComment.databaseId ? firstComment.databaseId.toString() : firstComment.id,
-            author: firstComment.author.login,
-            body: firstComment.body,
-            createdAt: firstComment.createdAt,
-            path: firstComment.path,
-            line: firstComment.line
-          });
-        }
-      }
-
-      return unaddressedComments;
+      return await this.prService.getUnaddressedComments(prNumber);
     } catch (error) {
       console.error('Error fetching comments:', error);
       return [];

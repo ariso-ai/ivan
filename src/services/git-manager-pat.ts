@@ -156,12 +156,24 @@ export class GitManagerPAT implements IGitManager {
   async pushBranch(branchName: string): Promise<void> {
     this.ensureGitRepo();
 
+    const escapedBranchName = branchName.replace(/"/g, '\\"');
+
+    // Use PAT for authentication by setting the remote URL with the token
+    const remoteUrl = `https://x-access-token:${this.pat}@github.com/${this.owner}/${this.repo}.git`;
+
+    // First, try to pull any remote changes to avoid conflicts
+    // This handles the case where someone else pushed between worktree creation and now
     try {
-      const escapedBranchName = branchName.replace(/"/g, '\\"');
+      execSync(`git pull --rebase "${remoteUrl}" "${escapedBranchName}"`, {
+        cwd: this.workingDir,
+        stdio: 'pipe'
+      });
+    } catch (pullError) {
+      // Pull might fail if branch doesn't exist on remote yet, which is fine
+      // Or if there are no changes to pull
+    }
 
-      // Use PAT for authentication by setting the remote URL with the token
-      const remoteUrl = `https://x-access-token:${this.pat}@github.com/${this.owner}/${this.repo}.git`;
-
+    try {
       execSync(`git push -u "${remoteUrl}" "${escapedBranchName}"`, {
         cwd: this.workingDir,
         stdio: 'pipe'
@@ -579,7 +591,11 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       const escapedBranchName = branchName.replace(/"/g, '\\"');
       const escapedPath = worktreePath.replace(/"/g, '\\"');
 
+      // Check if branch exists locally or on remote
       let branchExists = false;
+      let branchExistsOnRemote = false;
+
+      // Check if branch exists locally
       try {
         execSync(`git rev-parse --verify "${escapedBranchName}"`, {
           cwd: this.originalWorkingDir,
@@ -590,28 +606,41 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         branchExists = false;
       }
 
-      // Fetch the latest changes from remote for this branch
-      if (branchExists) {
+      // Always fetch to get the latest remote state
+      try {
+        if (!this.quietMode) console.log(chalk.gray(`Fetching latest changes for branch: ${branchName}`));
+        execSync(`git fetch origin "${escapedBranchName}"`, {
+          cwd: this.originalWorkingDir,
+          stdio: 'pipe'
+        });
+
+        // Check if branch exists on remote after fetch
         try {
-          if (!this.quietMode) console.log(chalk.gray(`Fetching latest changes for branch: ${branchName}`));
-
-          // Fetch the remote branch
-          execSync(`git fetch origin "${escapedBranchName}"`, {
+          execSync(`git rev-parse --verify origin/"${escapedBranchName}"`, {
             cwd: this.originalWorkingDir,
-            stdio: 'pipe'
+            stdio: 'ignore'
           });
+          branchExistsOnRemote = true;
+        } catch {
+          branchExistsOnRemote = false;
+        }
+      } catch (fetchError) {
+        if (!this.quietMode) console.log(chalk.gray(`Branch doesn't exist on remote yet`));
+        branchExistsOnRemote = false;
+      }
 
-          // Update the local branch to match the remote without checking it out
-          // This avoids issues with uncommitted changes in the working directory
+      // If branch exists on remote, ensure local branch is up to date
+      if (branchExistsOnRemote) {
+        try {
+          // Update or create the local branch to match the remote
           execSync(`git branch -f "${escapedBranchName}" origin/"${escapedBranchName}"`, {
             cwd: this.originalWorkingDir,
             stdio: 'pipe'
           });
-
-          if (!this.quietMode) console.log(chalk.green(`✅ Updated branch with latest remote changes`));
-        } catch (fetchError) {
-          if (!this.quietMode) console.log(chalk.yellow(`⚠️  Could not fetch/pull latest changes: ${fetchError}`));
-          // Continue anyway - the branch might not exist on remote yet
+          branchExists = true;
+          if (!this.quietMode) console.log(chalk.green(`✅ Updated local branch with latest remote changes`));
+        } catch (updateError) {
+          if (!this.quietMode) console.log(chalk.yellow(`⚠️  Could not update local branch: ${updateError}`));
         }
       }
 
