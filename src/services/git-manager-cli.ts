@@ -593,6 +593,31 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         branchExists = false;
       }
 
+      // Fetch the latest changes from remote for this branch
+      if (branchExists) {
+        try {
+          console.log(chalk.gray(`Fetching latest changes for branch: ${branchName}`));
+
+          // Fetch the remote branch
+          execSync(`git fetch origin "${escapedBranchName}"`, {
+            cwd: this.originalWorkingDir,
+            stdio: 'pipe'
+          });
+
+          // Update the local branch to match the remote without checking it out
+          // This avoids issues with uncommitted changes in the working directory
+          execSync(`git branch -f "${escapedBranchName}" origin/"${escapedBranchName}"`, {
+            cwd: this.originalWorkingDir,
+            stdio: 'pipe'
+          });
+
+          console.log(chalk.green(`✅ Updated branch with latest remote changes`));
+        } catch (fetchError) {
+          console.log(chalk.yellow(`⚠️  Could not fetch/pull latest changes: ${fetchError}`));
+          // Continue anyway - the branch might not exist on remote yet
+        }
+      }
+
       // Try to create the worktree
       try {
         if (branchExists) {
