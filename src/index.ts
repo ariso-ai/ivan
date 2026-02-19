@@ -590,7 +590,35 @@ async function main() {
       return;
     }
 
-    if (args.length === 0 || (args.length === 1 && !['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'].includes(args[0]))) {
+    // Check if first argument is a task description (not a recognized command)
+    const recognizedCommands = ['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'];
+    if (args.length > 0 && !recognizedCommands.includes(args[0])) {
+      // Treat the first argument as a task description
+      const taskDescription = args[0];
+
+      // Create a NonInteractiveConfig with the task
+      const config: NonInteractiveConfig = {
+        tasks: [taskDescription]
+      };
+
+      // Check configuration before running
+      const wasConfigured = await checkConfiguration();
+      if (wasConfigured) {
+        throw new Error('Ivan needs to be configured. Please run "ivan reconfigure" first.');
+      }
+
+      await runMigrations();
+
+      // Run in non-interactive mode with the task
+      const taskExecutor = new TaskExecutor();
+      await taskExecutor.executeNonInteractiveWorkflow(config);
+
+      console.log('');
+      console.log(chalk.green.bold('✅ Task completed successfully!'));
+      return;
+    }
+
+    if (args.length === 0) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');

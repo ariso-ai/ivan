@@ -189,11 +189,11 @@ Ivan will prompt you for what to build, then:
 # Provide task description as an argument
 ivan "Add user authentication with JWT tokens"
 
-# Skip the review waiting prompt
-ivan "Refactor the database module" --no-wait
+# Or use a JSON config file
+ivan -c config.json
 
-# Wait for PR reviews after completion
-ivan "Add comprehensive test coverage" --wait-for-reviews
+# Or provide inline JSON config
+ivan -c '{"tasks": ["Add authentication", "Add tests"], "prStrategy": "single"}'
 ```
 
 Perfect for CI/CD pipelines, automated workflows, and scripting.
