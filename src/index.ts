@@ -430,7 +430,7 @@ async function addIvanAction(): Promise<void> {
 
 ## What does this do?
 
-This workflow allows you to trigger Ivan Agent by commenting \`@ivan-agent\` on any GitHub issue. Ivan will then:
+This workflow allows you to trigger Ivan Agent by commenting \`@ivan-agent /build\` on any GitHub issue. Ivan will then:
 - Read the issue description
 - Create a plan to address it
 - Implement the solution
@@ -469,7 +469,7 @@ Add the following secrets to the \`ivan\` environment:
 
 ### 4. Start Using Ivan
 
-Once the PR is merged and secrets are configured, you can comment \`@ivan-agent\` on any issue in GitHub and it will automatically be worked on!`;
+Once the PR is merged and secrets are configured, you can comment \`@ivan-agent /build\` on any issue in GitHub and it will automatically be worked on!`;
 
     // Write PR body to temp file to avoid escaping issues
     const tempFile = join(tmpdir(), `ivan-pr-body-${Date.now()}.md`);
@@ -509,7 +509,7 @@ Once the PR is merged and secrets are configured, you can comment \`@ivan-agent\
       console.log(chalk.white(`     • ${chalk.bold('PAT')}: The fine-grained personal access token from step 2`));
       console.log('');
       console.log(chalk.cyan.bold('4. Start Using Ivan'));
-      console.log(chalk.white(`   Once the PR is merged, you can comment ${chalk.bold('@ivan-agent')} on any issue`));
+      console.log(chalk.white(`   Once the PR is merged, you can comment ${chalk.bold('@ivan-agent /build')} on any issue`));
       console.log(chalk.white('   in GitHub and it will automatically be worked on!'));
       console.log('');
     } catch (error) {

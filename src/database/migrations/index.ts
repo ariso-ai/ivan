@@ -9,6 +9,7 @@ import { migration as addCommitToTasks } from './007_add_commit_to_tasks.js';
 import { migration008 as addLintAndTestTaskType } from './008_add_lint_and_test_task_type.js';
 import { migration as createRepositoryTable } from './009_create_repository_table.js';
 import { migration as addRepositoryIdToJobsAndTasks } from './010_add_repository_id_to_jobs_and_tasks.js';
+import { migration as addCommentIdToTasks } from './013_add_comment_id_to_tasks.js';
 
 export const migrations: Migration[] = [
   createJobsTable,
@@ -20,5 +21,6 @@ export const migrations: Migration[] = [
   addCommitToTasks,
   addLintAndTestTaskType,
   createRepositoryTable,
-  addRepositoryIdToJobsAndTasks
+  addRepositoryIdToJobsAndTasks,
+  addCommentIdToTasks
 ];

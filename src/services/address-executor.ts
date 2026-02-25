@@ -123,7 +123,7 @@ export class AddressExecutor {
       }
 
       // Create tasks for selected PRs
-      const tasks: Array<{ description: string; prNumber: number; prBranch: string; type: 'address' | 'lint_and_test' }> = [];
+      const tasks: Array<{ description: string; prNumber: number; prBranch: string; type: 'address' | 'lint_and_test'; commentId?: string }> = [];
 
       for (const pr of selectedPRs) {
         // Create tasks for unaddressed comments
@@ -138,7 +138,8 @@ export class AddressExecutor {
             description,
             prNumber: pr.number,
             prBranch: pr.branch,
-            type: 'address'
+            type: 'address',
+            commentId: comment.id
           });
         }
 
@@ -200,7 +201,7 @@ export class AddressExecutor {
 
       const createdTasks: Task[] = [];
       for (const task of tasks) {
-        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, repository.id, task.type);
+        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, repository.id, task.type, task.commentId);
         // Store the branch name for the task
         await this.jobManager.updateTaskBranch(taskUuid, task.prBranch);
         const createdTask = await this.jobManager.getTask(taskUuid);
