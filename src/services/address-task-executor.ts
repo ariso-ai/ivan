@@ -357,8 +357,16 @@ export class AddressTaskExecutor {
 
           await this.jobManager.updateTaskStatus(task.uuid, 'active');
 
-          // Fetch the comment ID from GitHub for replying later
-          if (prNumber) {
+          // Use the comment ID stored in the task (if available)
+          if (task.comment_id) {
+            comment.id = task.comment_id;
+            // Save comment URL if not already set
+            if (this.repoOwner && this.repoName && prNumber && !task.comment_url) {
+              const commentUrl = `https://github.com/${this.repoOwner}/${this.repoName}/pull/${prNumber}#discussion_r${task.comment_id}`;
+              await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
+            }
+          } else if (prNumber) {
+            // Fallback: try to find the comment ID if not stored (for backward compatibility)
             const commentId = await this.findCommentId(
               parseInt(prNumber),
               comment.author,
@@ -368,10 +376,11 @@ export class AddressTaskExecutor {
             );
             if (commentId) {
               comment.id = commentId;
-              // Save comment URL
+              // Save comment URL and ID for future use
               if (this.repoOwner && this.repoName) {
                 const commentUrl = `https://github.com/${this.repoOwner}/${this.repoName}/pull/${prNumber}#discussion_r${commentId}`;
                 await this.jobManager.updateTaskCommentUrl(task.uuid, commentUrl);
+                await this.jobManager.updateTaskCommentId(task.uuid, commentId);
               }
             }
           }

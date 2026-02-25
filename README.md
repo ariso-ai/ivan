@@ -61,7 +61,7 @@ ivan add-action
 ```
 
 This creates a GitHub Actions workflow that:
-1. Triggers when someone mentions `@ivan-agent` in an issue
+1. Triggers when someone mentions `@ivan-agent /build` in an issue
 2. Reads the issue description as the task
 3. Creates a PR with the implementation
 4. Waits 15 minutes for reviews
@@ -336,7 +336,7 @@ Available models:
 5. **Review Requests**: Adds context-specific review instructions
 
 ### GitHub Actions Workflow (via `ivan add-action`)
-1. **Trigger**: Someone mentions `@ivan-agent` in an issue
+1. **Trigger**: Someone mentions `@ivan-agent /build` in an issue
 2. **Task Execution**: Reads issue body and runs `ivan` command
 3. **PR Creation**: Creates PR with implementation
 4. **Wait Period**: Waits 15 minutes for reviews

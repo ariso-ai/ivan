@@ -26,6 +26,7 @@ export interface Task {
   branch: string | null;
   type: 'build' | 'address' | 'lint_and_test';
   comment_url: string | null;
+  comment_id: string | null;
   commit_sha: string | null;
   repository_id: number;
 }

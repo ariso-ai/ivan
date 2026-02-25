@@ -15,6 +15,9 @@ export class MigrationManager {
 
     await this.createMigrationsTable();
 
+    let ranCount = 0;
+    let skippedCount = 0;
+
     for (const migration of migrations) {
       if (!(await this.hasMigrationRun(migration.id))) {
         try {
@@ -24,14 +27,22 @@ export class MigrationManager {
           }
           await this.recordMigration(migration.id, migration.name);
           console.log(chalk.green(`✅ Migration ${migration.id}: ${migration.name}`));
+          ranCount++;
         } catch (error) {
-          console.error(chalk.red(`❌ Failed to run migration ${migration.id}:`), error);
+          console.error(chalk.red(`❌ Failed to run migration ${migration.id}: ${migration.name}`));
+          console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
           throw error;
         }
+      } else {
+        skippedCount++;
       }
     }
 
-    console.log(chalk.green('✅ Database migrations completed'));
+    if (ranCount > 0) {
+      console.log(chalk.green(`✅ Database migrations completed (${ranCount} run, ${skippedCount} already applied)`));
+    } else {
+      console.log(chalk.gray(`✅ Database up to date (${skippedCount} migrations already applied)`));
+    }
   }
 
   private async createMigrationsTable(): Promise<void> {

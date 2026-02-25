@@ -244,6 +244,7 @@ export class JobManager {
       branch: null,
       type: 'build' as const,
       comment_url: null,
+      comment_id: null,
       commit_sha: null,
       repository_id: repositoryId
     }));
@@ -299,6 +300,15 @@ export class JobManager {
       .execute();
   }
 
+  async updateTaskCommentId(taskUuid: string, commentId: string): Promise<void> {
+    const db = this.dbManager.getKysely();
+    await db
+      .updateTable('tasks')
+      .set({ comment_id: commentId })
+      .where('uuid', '=', taskUuid)
+      .execute();
+  }
+
   async updateTaskCommit(taskUuid: string, commit_sha: string): Promise<void> {
     const db = this.dbManager.getKysely();
     await db
@@ -308,7 +318,7 @@ export class JobManager {
       .execute();
   }
 
-  async createTask(jobUuid: string, description: string, repositoryId: number, type: 'build' | 'address' | 'lint_and_test' = 'build'): Promise<string> {
+  async createTask(jobUuid: string, description: string, repositoryId: number, type: 'build' | 'address' | 'lint_and_test' = 'build', commentId?: string): Promise<string> {
     const task: Task = {
       uuid: randomUUID(),
       job_uuid: jobUuid,
@@ -319,6 +329,7 @@ export class JobManager {
       branch: null,
       type,
       comment_url: null,
+      comment_id: commentId || null,
       commit_sha: null,
       repository_id: repositoryId
     };
