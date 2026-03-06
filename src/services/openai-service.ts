@@ -230,13 +230,12 @@ Return only the commit message, nothing else.`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: ticket }
         ],
-        max_tokens: 10000,
         temperature: 0.2
       });
 
       const content = response.choices[0]?.message?.content?.trim();
       if (!content) throw new Error('No rewritten prompt returned');
-      return `${content}\n\n## Agent Instructions\nAnswer all open questions yourself using the codebase — do not ask the user. Make your best judgment based on available context and proceed with implementation. Prefer editing existing patterns over introducing new abstractions.`;
+      return `${content}\n\n## Agent Instructions\nAnswer all open questions yourself using the codebase and search — do not ask the user. Make your best judgment based on available context and proceed with implementation. We are a pre-revenue startup. Avoid unnecessary complexity. Is this implementation overly complex? Are we introducing abstractions too early? Can we ship a simpler version? Prefer editing existing patterns over introducing new abstractions. **Do NOT stop until all affected tests, lints, builds and typechecks pass.**`;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       throw new Error(`Prompt rewrite failed: ${msg}`);
