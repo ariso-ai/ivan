@@ -22,8 +22,8 @@ export class ServiceFactory {
   }
 
   /**
-  * Create a GitManager instance based on the configured authentication type
-  */
+   * Create a GitManager instance based on the configured authentication type
+   */
   createGitManager(workingDir: string): IGitManager {
     const authType = this.configManager.getGithubAuthType();
 
@@ -42,8 +42,8 @@ export class ServiceFactory {
   }
 
   /**
-  * Create a PRService instance based on the configured authentication type
-  */
+   * Create a PRService instance based on the configured authentication type
+   */
   createPRService(workingDir: string): IPRService {
     const authType = this.configManager.getGithubAuthType();
 
@@ -62,8 +62,8 @@ export class ServiceFactory {
   }
 
   /**
-  * Create a RepositoryManager instance based on the configured authentication type
-  */
+   * Create a RepositoryManager instance based on the configured authentication type
+   */
   createRepositoryManager(): IRepositoryManager {
     const authType = this.configManager.getGithubAuthType();
 
