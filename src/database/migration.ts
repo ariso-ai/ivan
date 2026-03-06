@@ -21,28 +21,16 @@ export class MigrationManager {
     for (const migration of migrations) {
       if (!(await this.hasMigrationRun(migration.id))) {
         try {
-          const statements = Array.isArray(migration.up)
-            ? migration.up
-            : [migration.up];
+          const statements = Array.isArray(migration.up) ? migration.up : [migration.up];
           for (const statement of statements) {
             await sql.raw(statement).execute(this.db);
           }
           await this.recordMigration(migration.id, migration.name);
-          console.log(
-            chalk.green(`✅ Migration ${migration.id}: ${migration.name}`)
-          );
+          console.log(chalk.green(`✅ Migration ${migration.id}: ${migration.name}`));
           ranCount++;
         } catch (error) {
-          console.error(
-            chalk.red(
-              `❌ Failed to run migration ${migration.id}: ${migration.name}`
-            )
-          );
-          console.error(
-            chalk.red(
-              `Error: ${error instanceof Error ? error.message : String(error)}`
-            )
-          );
+          console.error(chalk.red(`❌ Failed to run migration ${migration.id}: ${migration.name}`));
+          console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
           throw error;
         }
       } else {
@@ -51,17 +39,9 @@ export class MigrationManager {
     }
 
     if (ranCount > 0) {
-      console.log(
-        chalk.green(
-          `✅ Database migrations completed (${ranCount} run, ${skippedCount} already applied)`
-        )
-      );
+      console.log(chalk.green(`✅ Database migrations completed (${ranCount} run, ${skippedCount} already applied)`));
     } else {
-      console.log(
-        chalk.gray(
-          `✅ Database up to date (${skippedCount} migrations already applied)`
-        )
-      );
+      console.log(chalk.gray(`✅ Database up to date (${skippedCount} migrations already applied)`));
     }
   }
 
@@ -90,10 +70,7 @@ export class MigrationManager {
     }
   }
 
-  private async recordMigration(
-    migrationId: number,
-    name: string
-  ): Promise<void> {
+  private async recordMigration(migrationId: number, name: string): Promise<void> {
     await this.db
       .insertInto('migrations')
       .values({

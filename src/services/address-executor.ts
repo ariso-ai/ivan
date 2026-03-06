@@ -6,16 +6,8 @@ import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
-import {
-  IGitManager,
-  IPRService,
-  IRepositoryManager
-} from './git-interfaces.js';
-import {
-  createGitManager,
-  createPRService,
-  createRepositoryManager
-} from './service-factory.js';
+import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
+import { createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
 
 export class AddressExecutor {
   private jobManager: JobManager;
@@ -41,28 +33,14 @@ export class AddressExecutor {
     return this.claudeExecutor;
   }
 
-  async executeWorkflow(
-    specificPrNumber?: number,
-    fromUser?: string,
-    skipQuestions?: boolean
-  ): Promise<void> {
+  async executeWorkflow(specificPrNumber?: number, fromUser?: string, skipQuestions?: boolean): Promise<void> {
     try {
       if (specificPrNumber) {
-        console.log(
-          chalk.blue.bold(
-            `🔍 Checking PR #${specificPrNumber} for unaddressed issues...`
-          )
-        );
+        console.log(chalk.blue.bold(`🔍 Checking PR #${specificPrNumber} for unaddressed issues...`));
       } else if (fromUser) {
-        console.log(
-          chalk.blue.bold(
-            `🔍 Scanning for PRs from @${fromUser} with unaddressed issues...`
-          )
-        );
+        console.log(chalk.blue.bold(`🔍 Scanning for PRs from @${fromUser} with unaddressed issues...`));
       } else {
-        console.log(
-          chalk.blue.bold('🔍 Scanning for PRs with unaddressed issues...')
-        );
+        console.log(chalk.blue.bold('🔍 Scanning for PRs with unaddressed issues...'));
       }
       console.log('');
 
@@ -81,43 +59,25 @@ export class AddressExecutor {
       this.gitManager.validateGitHubCliAuthentication();
       console.log(chalk.green('✅ GitHub CLI is authenticated'));
 
-      const repoInfo = this.repositoryManager.getRepositoryInfo(
-        this.workingDir
-      );
+      const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
       console.log(chalk.blue(`📂 Working in: ${repoInfo.name}`));
       console.log('');
 
       // Get or create repository in database
-      const repository = await this.repositoryManager.getOrCreateRepository(
-        this.workingDir
-      );
+      const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
 
       // Fetch PRs with issues
-      const spinner = ora(
-        specificPrNumber
-          ? `Fetching PR #${specificPrNumber}...`
-          : 'Fetching open PRs...'
-      ).start();
+      const spinner = ora(specificPrNumber ? `Fetching PR #${specificPrNumber}...` : 'Fetching open PRs...').start();
       const prsWithIssues = specificPrNumber
         ? await this.prService.getSpecificPRWithIssues(specificPrNumber)
         : await this.prService.getOpenPRsWithIssues(fromUser);
-      spinner.succeed(
-        `Found ${prsWithIssues.length} PRs with unaddressed issues`
-      );
+      spinner.succeed(`Found ${prsWithIssues.length} PRs with unaddressed issues`);
 
       if (prsWithIssues.length === 0) {
         if (specificPrNumber) {
-          console.log(
-            chalk.green(
-              `✨ PR #${specificPrNumber} has no unaddressed comments or failing checks!`
-            )
-          );
+          console.log(chalk.green(`✨ PR #${specificPrNumber} has no unaddressed comments or failing checks!`));
         } else {
-          console.log(
-            chalk.green(
-              '✨ No PRs with unaddressed comments or failing checks found!'
-            )
-          );
+          console.log(chalk.green('✨ No PRs with unaddressed comments or failing checks found!'));
         }
         return;
       }
@@ -127,12 +87,10 @@ export class AddressExecutor {
       console.log(chalk.blue.bold('📋 PRs with issues:'));
       console.log('');
 
-      const prChoices = prsWithIssues.map((pr) => {
+      const prChoices = prsWithIssues.map(pr => {
         const issues = [];
         if (pr.hasUnaddressedComments) {
-          issues.push(
-            `${pr.unaddressedComments.length} unaddressed comment(s)`
-          );
+          issues.push(`${pr.unaddressedComments.length} unaddressed comment(s)`);
         }
         if (pr.hasTestOrLintFailures) {
           issues.push(`${pr.testOrLintFailures.length} test/lint failure(s)`);
@@ -150,11 +108,7 @@ export class AddressExecutor {
       let selectedPRs;
       if (skipQuestions) {
         selectedPRs = prsWithIssues;
-        console.log(
-          chalk.cyan(
-            `✓ Processing all ${prsWithIssues.length} PRs (--yes mode)`
-          )
-        );
+        console.log(chalk.cyan(`✓ Processing all ${prsWithIssues.length} PRs (--yes mode)`));
       } else {
         const response = await inquirer.prompt([
           {
@@ -162,21 +116,14 @@ export class AddressExecutor {
             name: 'selectedPRs',
             message: 'Select PRs to address:',
             choices: prChoices,
-            validate: (input) =>
-              input.length > 0 || 'Please select at least one PR'
+            validate: (input) => input.length > 0 || 'Please select at least one PR'
           }
         ]);
         selectedPRs = response.selectedPRs;
       }
 
       // Create tasks for selected PRs
-      const tasks: Array<{
-        description: string;
-        prNumber: number;
-        prBranch: string;
-        type: 'address' | 'lint_and_test';
-        commentId?: string;
-      }> = [];
+      const tasks: Array<{ description: string; prNumber: number; prBranch: string; type: 'address' | 'lint_and_test'; commentId?: string }> = [];
 
       for (const pr of selectedPRs) {
         // Create tasks for unaddressed comments
@@ -250,21 +197,11 @@ export class AddressExecutor {
       }
 
       // Create job and tasks in database
-      const jobUuid = await this.jobManager.createJob(
-        `Address PR issues - ${new Date().toLocaleDateString()}`,
-        this.workingDir,
-        repository.id
-      );
+      const jobUuid = await this.jobManager.createJob(`Address PR issues - ${new Date().toLocaleDateString()}`, this.workingDir, repository.id);
 
       const createdTasks: Task[] = [];
       for (const task of tasks) {
-        const taskUuid = await this.jobManager.createTask(
-          jobUuid,
-          task.description,
-          repository.id,
-          task.type,
-          task.commentId
-        );
+        const taskUuid = await this.jobManager.createTask(jobUuid, task.description, repository.id, task.type, task.commentId);
         // Store the branch name for the task
         await this.jobManager.updateTaskBranch(taskUuid, task.prBranch);
         const createdTask = await this.jobManager.getTask(taskUuid);
@@ -282,6 +219,7 @@ export class AddressExecutor {
 
       console.log('');
       console.log(chalk.green.bold('🎉 All tasks completed successfully!'));
+
     } catch (error) {
       console.error(chalk.red.bold('❌ Workflow failed:'), error);
       throw error;
@@ -290,3 +228,4 @@ export class AddressExecutor {
     }
   }
 }
+

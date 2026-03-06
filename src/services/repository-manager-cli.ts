@@ -20,9 +20,7 @@ export class RepositoryManagerCLI implements IRepositoryManager {
       return currentDir;
     }
 
-    console.log(
-      chalk.yellow('⚠️  Current directory is not a valid target repository')
-    );
+    console.log(chalk.yellow('⚠️  Current directory is not a valid target repository'));
 
     if (!this.isGitRepository(currentDir)) {
       console.log(chalk.red('❌ Not a git repository'));
@@ -53,9 +51,7 @@ export class RepositoryManagerCLI implements IRepositoryManager {
       }
 
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      return (
-        packageJson.name === '@ariso-ai/ivan' || packageJson.name === 'ivan'
-      );
+      return packageJson.name === '@ariso-ai/ivan' || packageJson.name === 'ivan';
     } catch {
       return false;
     }
@@ -67,9 +63,7 @@ export class RepositoryManagerCLI implements IRepositoryManager {
 
   private async promptForRepositoryPath(): Promise<string> {
     console.log('');
-    console.log(
-      chalk.blue('📁 Please specify the repository where Ivan should work')
-    );
+    console.log(chalk.blue('📁 Please specify the repository where Ivan should work'));
 
     while (true) {
       const { repositoryPath } = await inquirer.prompt([
@@ -139,9 +133,7 @@ export class RepositoryManagerCLI implements IRepositoryManager {
     }
   }
 
-  async getOrCreateRepository(
-    workingDir: string
-  ): Promise<Selectable<Repository>> {
+  async getOrCreateRepository(workingDir: string): Promise<Selectable<Repository>> {
     const db = this.dbManager.getKysely();
 
     // Check if repository exists
@@ -159,14 +151,11 @@ export class RepositoryManagerCLI implements IRepositoryManager {
     const { name } = this.getRepositoryInfo(workingDir);
     const remoteUrl = this.getRemoteUrl(workingDir);
 
-    await db
-      .insertInto('repositories')
-      .values({
-        remote_url: remoteUrl,
-        directory: workingDir,
-        name
-      })
-      .execute();
+    await db.insertInto('repositories').values({
+      remote_url: remoteUrl,
+      directory: workingDir,
+      name
+    }).execute();
 
     // Fetch the created repository with its id
     const createdRepo = await db

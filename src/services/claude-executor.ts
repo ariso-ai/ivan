@@ -29,15 +29,9 @@ export class ClaudeExecutor implements IClaudeExecutor {
     return config.anthropicApiKey;
   }
 
-  async executeTask(
-    taskDescription: string,
-    workingDir: string,
-    sessionId?: string
-  ): Promise<{ log: string; lastMessage: string; sessionId: string }> {
+  async executeTask(taskDescription: string, workingDir: string, sessionId?: string): Promise<{ log: string; lastMessage: string; sessionId: string }> {
     if (!this.quietMode) {
-      console.log(
-        chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`)
-      );
+      console.log(chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`));
       console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
     }
 
@@ -51,9 +45,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Check if we're in a worktree by looking for .git file (not directory)
       try {
         const gitPath = path.join(workingDir, '.git');
-        const gitInfo = execSync(`cat "${gitPath}"`, {
-          encoding: 'utf8'
-        }).trim();
+        const gitInfo = execSync(`cat "${gitPath}"`, { encoding: 'utf8' }).trim();
         if (gitInfo.startsWith('gitdir:')) {
           // We're in a worktree, extract the main repo path
           const gitDirPath = gitInfo.replace('gitdir:', '').trim();
@@ -67,12 +59,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
       }
 
       // Get repository-specific allowed tools using the original repo path
-      let allowedTools =
-        await this.configManager.getRepoAllowedTools(originalRepoPath);
+      let allowedTools = await this.configManager.getRepoAllowedTools(originalRepoPath);
 
       // Get repository-specific blocked tools
-      const blockedTools =
-        await this.configManager.getRepoBlockedTools(originalRepoPath);
+      const blockedTools = await this.configManager.getRepoBlockedTools(originalRepoPath);
 
       // Always block EnterPlanMode and AskUserQuestion globally
       const globallyBlockedTools = ['EnterPlanMode', 'AskUserQuestion'];
@@ -107,14 +97,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
             'Skill',
             'SlashCommand'
           ];
-          allowedTools = allTools.filter(
-            (tool) => !allBlockedTools.includes(tool)
-          );
+          allowedTools = allTools.filter(tool => !allBlockedTools.includes(tool));
         } else {
           // If specific tools are allowed, remove blocked ones
-          allowedTools = allowedTools.filter(
-            (tool) => !allBlockedTools.includes(tool)
-          );
+          allowedTools = allowedTools.filter(tool => !allBlockedTools.includes(tool));
         }
       }
 
@@ -139,8 +125,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Handle Ctrl+C
       const handleInterrupt = () => {
         abortController.abort();
-        if (!this.quietMode)
-          console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
+        if (!this.quietMode) console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
       };
       process.on('SIGINT', handleInterrupt);
 
@@ -180,15 +165,13 @@ export class ClaudeExecutor implements IClaudeExecutor {
                   currentResponse += content.text + '\n';
                   lastMessage = content.text; // Also capture text responses as last message
                 } else if (content.type === 'tool_use') {
-                  if (!this.quietMode)
-                    console.log(chalk.gray(`Using tool: ${content.name}`));
+                  if (!this.quietMode) console.log(chalk.gray(`Using tool: ${content.name}`));
                   // Add tool call to the log
                   const toolCall = `[Tool Call: ${content.name}]`;
                   if (content.input) {
-                    const inputStr =
-                      typeof content.input === 'object'
-                        ? JSON.stringify(content.input, null, 2)
-                        : String(content.input);
+                    const inputStr = typeof content.input === 'object'
+                      ? JSON.stringify(content.input, null, 2)
+                      : String(content.input);
                     currentResponse += `${toolCall}\n${inputStr}\n\n`;
                   } else {
                     currentResponse += `${toolCall}\n\n`;
@@ -199,11 +182,9 @@ export class ClaudeExecutor implements IClaudeExecutor {
           } else if (message.type === 'stream_event') {
             // Stream events may contain tool results
             if ('event' in message && message.event?.type === 'tool_result') {
-              const toolResult = `[Tool Result]\n${
-                typeof message.event.result === 'object'
-                  ? JSON.stringify(message.event.result, null, 2)
-                  : String(message.event.result)
-              }\n`;
+              const toolResult = `[Tool Result]\n${typeof message.event.result === 'object'
+                ? JSON.stringify(message.event.result, null, 2)
+                : String(message.event.result)}\n`;
               currentResponse += toolResult;
               // Add separation after tool result for next Claude response
               if (currentResponse.trim()) {
@@ -214,31 +195,21 @@ export class ClaudeExecutor implements IClaudeExecutor {
           } else if (message.type === 'result') {
             // Final result message
             if ('result' in message) {
-              if (!this.quietMode)
-                console.log(chalk.green(`Result: ${message.result}`));
+              if (!this.quietMode) console.log(chalk.green(`Result: ${message.result}`));
               currentResponse += message.result + '\n';
               lastMessage = message.result; // Capture the last message
             }
           } else if (message.type === 'system') {
             // System messages for initialization
             if (message.subtype === 'init') {
-              if (!this.quietMode)
-                console.log(
-                  chalk.gray(`Initialized with model: ${message.model}`)
-                );
+              if (!this.quietMode) console.log(chalk.gray(`Initialized with model: ${message.model}`));
               result += `[System: Initialized with model: ${message.model}]\n\n`;
               // Extract session ID from the system message if available
-              if (
-                'session_id' in message &&
-                typeof message.session_id === 'string'
-              ) {
+              if ('session_id' in message && typeof message.session_id === 'string') {
                 currentSessionId = message.session_id;
               }
             }
-          } else if (
-            'session_id' in message &&
-            typeof message.session_id === 'string'
-          ) {
+          } else if ('session_id' in message && typeof message.session_id === 'string') {
             // Capture session ID from any message that has it
             currentSessionId = message.session_id;
           }
@@ -255,9 +226,9 @@ export class ClaudeExecutor implements IClaudeExecutor {
         process.removeListener('SIGINT', handleInterrupt);
       }
 
-      if (!this.quietMode)
-        console.log(chalk.green('✅ Claude Code execution completed'));
+      if (!this.quietMode) console.log(chalk.green('✅ Claude Code execution completed'));
       return { log: result, lastMessage, sessionId: currentSessionId || '' };
+
     } catch (error: unknown) {
       const err = error as Error & { message?: string };
 
@@ -265,25 +236,19 @@ export class ClaudeExecutor implements IClaudeExecutor {
         throw new Error('Task execution cancelled by user');
       }
 
-      if (!this.quietMode)
-        console.error(chalk.red('❌ Claude Code execution failed:'));
+      if (!this.quietMode) console.error(chalk.red('❌ Claude Code execution failed:'));
       throw new Error(`Claude Code execution failed: ${err.message}`);
     }
   }
 
-  async generateTaskBreakdown(
-    jobDescription: string,
-    workingDir: string
-  ): Promise<string[]> {
+  async generateTaskBreakdown(jobDescription: string, workingDir: string): Promise<string[]> {
     try {
       // Set the API key in environment for the SDK
       process.env.ANTHROPIC_API_KEY = await this.getApiKey();
 
       const prompt = `Return a new-line separated list of tasks you would do to best accomplish the following: '${jobDescription}'. Respond with ONLY the new line separated list, do not introduce the results. Each task should be considered as something that should be opened as a pull request. do NOT include tasks like searching, finding/locating files or researching, analyzing the codebase or looking for certain parts of the code.`;
 
-      console.log(
-        chalk.blue('🤖 Generating task breakdown with Claude Code...')
-      );
+      console.log(chalk.blue('🤖 Generating task breakdown with Claude Code...'));
       console.log(chalk.yellow('💡 Press Ctrl+C to cancel'));
       console.log(chalk.gray(`Working directory: ${workingDir}`));
 
@@ -293,11 +258,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Handle Ctrl+C
       const handleInterrupt = () => {
         abortController.abort();
-        console.log(
-          chalk.yellow(
-            '\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'
-          )
-        );
+        console.log(chalk.yellow('\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'));
       };
       process.on('SIGINT', handleInterrupt);
 
@@ -314,8 +275,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
           prompt,
           options: {
             abortController,
-            systemPrompt:
-              'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
+            systemPrompt: 'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
             cwd: workingDir,
             model: model,
             // Use plan mode for task breakdown
@@ -341,11 +301,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
           } else if (message.type === 'system') {
             // System messages for initialization
             if (message.subtype === 'init') {
-              console.log(
-                chalk.gray(
-                  `Initialized with model: ${message.model} in plan mode`
-                )
-              );
+              console.log(chalk.gray(`Initialized with model: ${message.model} in plan mode`));
             }
           } else if (message.type === 'result') {
             // Final result message
@@ -374,6 +330,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
 
       console.log(chalk.green(`✅ Generated ${tasks.length} tasks`));
       return tasks;
+
     } catch (error: unknown) {
       const err = error as Error;
 
@@ -381,9 +338,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
         throw new Error('Task breakdown generation cancelled by user');
       }
 
-      console.error(
-        chalk.red('❌ Failed to generate task breakdown with Claude Code')
-      );
+      console.error(chalk.red('❌ Failed to generate task breakdown with Claude Code'));
       throw new Error(`Failed to generate task breakdown: ${err.message}`);
     }
   }
