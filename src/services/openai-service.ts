@@ -88,6 +88,73 @@ Return only the commit message, nothing else.`;
   }
 
   /**
+   * Rewrite a verbose development ticket into a structured prompt optimized for coding agents.
+   */
+  async rewritePrompt(ticket: string): Promise<string> {
+    await this.ensureInitialized();
+
+    const systemPrompt = `You are a prompt optimizer for coding agents. Transform verbose development tickets into clean, structured prompts for Claude Code.
+
+OUTPUT FORMAT (use this exact structure):
+## Task
+[Clear, specific statement of what to implement/fix]
+
+## Current Behavior
+[Only if bug fix - what happens now, concisely. Omit if not applicable.]
+
+## Expected Behavior
+[What should happen after implementation]
+
+## Relevant Files
+[File paths and function names explicitly mentioned in the ticket. If none mentioned, omit this section.]
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Constraints
+[Technical constraints or patterns to follow. Omit if none.]
+
+NOISE TO REMOVE:
+- Slack metadata (channel IDs, "Reported by:", "Requested by:", usernames)
+- Assignee directives ("@ivan-agent /build", "Please assign to", "@max requested")
+- Generic boilerplate ("This issue was created by Ari...", "Implementation Notes:", "Codebase Context:")
+- Speculative context ("I searched but didn't find...", "I think this might be in...")
+- Duplicate explanations of the same thing
+- Build trigger comments
+
+INFORMATION TO PRESERVE:
+- The actual problem or feature description
+- Acceptance criteria (reformat as checkboxes)
+- Technical constraints
+- File paths and function names explicitly mentioned
+- Specific behavior descriptions (current vs expected)
+
+Output ONLY the rewritten prompt. No preamble, no explanation.`;
+
+    try {
+      if (!this.openai) throw new Error('OpenAI client not initialized');
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: ticket }
+        ],
+        max_tokens: 2000,
+        temperature: 0.2
+      });
+
+      const content = response.choices[0]?.message?.content?.trim();
+      if (!content) throw new Error('No rewritten prompt returned');
+      return content;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Prompt rewrite failed: ${msg}`);
+    }
+  }
+
+  /**
    * Step 1 of 3-step pipeline: Extract objective research questions from a ticket.
    * This is the ONLY step that sees the original ticket.
    */
