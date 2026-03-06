@@ -1,7 +1,6 @@
 import js from '@eslint/js';
 import typescript from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
-import prettier from 'eslint-config-prettier';
 
 export default [
   js.configs.recommended,
@@ -40,11 +39,16 @@ export default [
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-non-null-assertion': 'warn',
       'no-console': 'off',
-      'no-unused-vars': 'off'
+      'no-unused-vars': 'off',
+      'semi': ['error', 'always'],
+      'quotes': ['error', 'single', { avoidEscape: true }],
+      'indent': ['error', 2],
+      'comma-dangle': ['error', 'never'],
+      'no-trailing-spaces': 'error',
+      'eol-last': ['error', 'always']
     }
   },
   {
     ignores: ['dist/**', 'node_modules/**', '*.config.js']
-  },
-  prettier
+  }
 ];

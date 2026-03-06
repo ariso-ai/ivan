@@ -7,16 +7,8 @@ import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
 import { NonInteractiveConfig } from '../types/non-interactive-config.js';
-import {
-  IGitManager,
-  IPRService,
-  IRepositoryManager
-} from './git-interfaces.js';
-import {
-  createGitManager,
-  createPRService,
-  createRepositoryManager
-} from './service-factory.js';
+import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
+import { createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -81,59 +73,36 @@ export class TaskExecutor {
         console.log(chalk.green('✅ GitHub PAT is configured'));
       }
 
-      const repoInfo = this.repositoryManager.getRepositoryInfo(
-        this.workingDir
-      );
-      console.log(
-        chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`)
-      );
+      const repoInfo = this.repositoryManager.getRepositoryInfo(this.workingDir);
+      console.log(chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`));
       console.log('');
 
       // Get or create repository in database
-      const repository = await this.repositoryManager.getOrCreateRepository(
-        this.workingDir
-      );
+      const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
 
       // Check for repository-specific instructions
-      this.repoInstructions = await this.configManager.getRepoInstructions(
-        this.workingDir
-      );
+      this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
       if (!this.repoInstructions) {
         // Only prompt if the user hasn't previously declined for this repo
-        const hasDeclined =
-          await this.configManager.hasDeclinedRepoInstructions(this.workingDir);
+        const hasDeclined = await this.configManager.hasDeclinedRepoInstructions(this.workingDir);
         if (!hasDeclined) {
-          console.log(
-            chalk.yellow(
-              '⚠️  No repository-specific instructions found for this repository.'
-            )
-          );
+          console.log(chalk.yellow('⚠️  No repository-specific instructions found for this repository.'));
           const inquirer = (await import('inquirer')).default;
           const { shouldSetInstructions } = await inquirer.prompt([
             {
               type: 'confirm',
               name: 'shouldSetInstructions',
-              message:
-                'Would you like to set repository-specific instructions now?',
+              message: 'Would you like to set repository-specific instructions now?',
               default: false
             }
           ]);
 
           if (shouldSetInstructions) {
-            this.repoInstructions =
-              await this.configManager.promptForRepoInstructions(
-                this.workingDir
-              );
+            this.repoInstructions = await this.configManager.promptForRepoInstructions(this.workingDir);
           } else {
             // Mark that the user declined so we don't ask again
-            await this.configManager.markRepoInstructionsDeclined(
-              this.workingDir
-            );
-            console.log(
-              chalk.gray(
-                'You can configure instructions later with: ivan edit-repo-instructions'
-              )
-            );
+            await this.configManager.markRepoInstructionsDeclined(this.workingDir);
+            console.log(chalk.gray('You can configure instructions later with: ivan edit-repo-instructions'));
           }
           console.log('');
         }
@@ -141,16 +110,13 @@ export class TaskExecutor {
         console.log(chalk.green('✅ Repository-specific instructions loaded'));
       }
 
-      const { tasks, prStrategy } = await this.jobManager.promptForTasks(
-        this.workingDir,
-        repository.id
-      );
+      const { tasks, prStrategy } = await this.jobManager.promptForTasks(this.workingDir, repository.id);
 
       console.log('');
 
       // Check if these are address tasks
-      const addressTasks = tasks.filter((t) => t.type === 'address');
-      const buildTasks = tasks.filter((t) => t.type === 'build');
+      const addressTasks = tasks.filter(t => t.type === 'address');
+      const buildTasks = tasks.filter(t => t.type === 'build');
 
       // Handle address tasks separately
       if (addressTasks.length > 0) {
@@ -168,8 +134,7 @@ export class TaskExecutor {
           {
             type: 'confirm',
             name: 'waitForComments',
-            message:
-              'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
+            message: 'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
             default: false
           }
         ]);
@@ -189,9 +154,7 @@ export class TaskExecutor {
         }
 
         console.log('');
-        console.log(
-          chalk.green.bold('🎉 All initial tasks completed successfully!')
-        );
+        console.log(chalk.green.bold('🎉 All initial tasks completed successfully!'));
 
         // Collect PR URLs created during this session by reloading tasks from DB
         const createdPRUrls: string[] = [];
@@ -206,16 +169,14 @@ export class TaskExecutor {
           // Show PRs created
           console.log('');
           console.log(chalk.blue('📋 PRs created:'));
-          createdPRUrls.forEach((url) => console.log(chalk.cyan(`  - ${url}`)));
+          createdPRUrls.forEach(url => console.log(chalk.cyan(`  - ${url}`)));
 
           if (shouldWaitForComments) {
             // Wait 30 minutes for reviewers to comment
             console.log('');
             console.log(chalk.blue('⏰ Waiting 30 minutes for PR reviews...'));
             console.log(chalk.gray('PRs being monitored:'));
-            createdPRUrls.forEach((url) =>
-              console.log(chalk.gray(`  - ${url}`))
-            );
+            createdPRUrls.forEach(url => console.log(chalk.gray(`  - ${url}`)));
             console.log('');
 
             const waitTime = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -225,53 +186,37 @@ export class TaskExecutor {
               const remaining = waitTime - elapsed;
               const minutes = Math.floor(remaining / 60000);
               const seconds = Math.floor((remaining % 60000) / 1000);
-              process.stdout.write(
-                `\r${chalk.blue('⏰')} Time remaining: ${minutes}:${seconds.toString().padStart(2, '0')}  `
-              );
+              process.stdout.write(`\r${chalk.blue('⏰')} Time remaining: ${minutes}:${seconds.toString().padStart(2, '0')}  `);
             }, 1000);
 
-            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            await new Promise(resolve => setTimeout(resolve, waitTime));
             clearInterval(interval);
             console.log('\n');
 
             // Check for unaddressed comments on created PRs
             console.log(chalk.blue('🔍 Checking for PR review comments...'));
             const prService = createPRService(this.workingDir);
-            const addressTasks = await this.checkAndCreateAddressTasks(
-              createdPRUrls,
-              prService
-            );
+            const addressTasks = await this.checkAndCreateAddressTasks(createdPRUrls, prService);
 
             if (addressTasks.length > 0) {
               console.log('');
-              console.log(
-                chalk.blue.bold(
-                  `📋 Found ${addressTasks.length} comments to address`
-                )
-              );
+              console.log(chalk.blue.bold(`📋 Found ${addressTasks.length} comments to address`));
 
               // Execute address tasks automatically
               const addressExecutor = new AddressTaskExecutor();
               await addressExecutor.executeAddressTasks(addressTasks);
 
               console.log('');
-              console.log(
-                chalk.green.bold('🎉 All PR comments addressed successfully!')
-              );
+              console.log(chalk.green.bold('🎉 All PR comments addressed successfully!'));
             } else {
-              console.log(
-                chalk.green('✨ No unaddressed comments found on PRs!')
-              );
+              console.log(chalk.green('✨ No unaddressed comments found on PRs!'));
             }
           } else {
-            console.log(
-              chalk.blue(
-                '💡 You can run "ivan address" later to handle any PR comments'
-              )
-            );
+            console.log(chalk.blue('💡 You can run "ivan address" later to handle any PR comments'));
           }
         }
       }
+
     } catch (error) {
       console.error(chalk.red.bold('❌ Workflow failed:'), error);
       throw error;
@@ -280,10 +225,7 @@ export class TaskExecutor {
     }
   }
 
-  private async checkAndCreateAddressTasks(
-    prUrls: string[],
-    prService: IPRService
-  ): Promise<Task[]> {
+  private async checkAndCreateAddressTasks(prUrls: string[], prService: IPRService): Promise<Task[]> {
     const addressTasks: Task[] = [];
 
     for (const prUrl of prUrls) {
@@ -312,22 +254,13 @@ export class TaskExecutor {
           }
 
           // Get the current job ID from one of the build tasks
-          const jobUuid =
-            this.jobManager.getCurrentJobUuid() ||
-            (await this.jobManager.getLatestJobId(this.workingDir));
+          const jobUuid = this.jobManager.getCurrentJobUuid() || (await this.jobManager.getLatestJobId(this.workingDir));
 
           // Get repository for this working directory
-          const repository = await this.repositoryManager.getOrCreateRepository(
-            this.workingDir
-          );
+          const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
 
           // Create the address task
-          const taskUuid = await this.jobManager.createTask(
-            jobUuid,
-            description,
-            repository.id,
-            'address'
-          );
+          const taskUuid = await this.jobManager.createTask(jobUuid, description, repository.id, 'address');
           await this.jobManager.updateTaskBranch(taskUuid, branch);
 
           const task = await this.jobManager.getTask(taskUuid);
@@ -355,8 +288,7 @@ export class TaskExecutor {
       await this.jobManager.updateTaskStatus(task.uuid, 'active');
       if (spinner) spinner.succeed('Task marked as active');
 
-      if (!quiet)
-        spinner = ora('Cleaning up and syncing with main branch...').start();
+      if (!quiet) spinner = ora('Cleaning up and syncing with main branch...').start();
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
@@ -368,8 +300,7 @@ export class TaskExecutor {
       }
       branchName = this.gitManager.generateBranchName(task.description);
 
-      if (!quiet)
-        spinner = ora(`Creating worktree for branch: ${branchName}`).start();
+      if (!quiet) spinner = ora(`Creating worktree for branch: ${branchName}`).start();
       worktreePath = await this.gitManager.createWorktree(branchName);
       this.gitManager.switchToWorktree(worktreePath);
       if (spinner) spinner.succeed(`Worktree created: ${worktreePath}`);
@@ -386,10 +317,7 @@ export class TaskExecutor {
 
       // Use worktree path for Claude execution, falling back to workingDir if needed
       const executionPath = worktreePath || this.workingDir;
-      const result = await this.getClaudeExecutor().executeTask(
-        taskWithInstructions,
-        executionPath
-      );
+      const result = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath);
       if (spinner) {
         spinner.succeed('Claude Code execution completed');
       }
@@ -403,12 +331,7 @@ export class TaskExecutor {
       }
       const changedFiles = this.gitManager.getChangedFiles();
       if (changedFiles.length === 0) {
-        if (!quiet)
-          console.log(
-            chalk.yellow(
-              '⚠️  No changes detected, skipping commit and PR creation'
-            )
-          );
+        if (!quiet) console.log(chalk.yellow('⚠️  No changes detected, skipping commit and PR creation'));
         await this.jobManager.updateTaskStatus(task.uuid, 'completed');
         return;
       }
@@ -419,12 +342,8 @@ export class TaskExecutor {
       const diff = this.gitManager.getDiff();
 
       if (!quiet) spinner = ora('Generating commit message...').start();
-      const commitMessage = await this.getOpenAIService().generateCommitMessage(
-        diff,
-        changedFiles
-      );
-      if (spinner)
-        spinner.succeed(`Commit message generated: ${commitMessage}`);
+      const commitMessage = await this.getOpenAIService().generateCommitMessage(diff, changedFiles);
+      if (spinner) spinner.succeed(`Commit message generated: ${commitMessage}`);
 
       if (!quiet) spinner = ora('Committing changes...').start();
       if (!this.gitManager) {
@@ -451,23 +370,13 @@ export class TaskExecutor {
         } catch (commitError) {
           commitAttempts++;
 
-          const errorMessage =
-            commitError instanceof Error
-              ? commitError.message
-              : String(commitError);
+          const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
 
           // Check if this is a pre-commit hook failure
-          if (
-            errorMessage.includes('pre-commit') &&
-            commitAttempts < maxCommitAttempts
-          ) {
+          if (errorMessage.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
             if (spinner) {
-              spinner.fail(
-                `Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`
-              );
-              console.log(
-                chalk.yellow('🔧 Running Claude to fix pre-commit errors...')
-              );
+              spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
+              console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
             }
 
             // Extract the error details from the commit error
@@ -476,24 +385,15 @@ export class TaskExecutor {
             // Prepare prompt for Claude to fix the errors
             const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
 
-            if (!quiet)
-              spinner = ora(
-                'Running Claude to fix pre-commit errors...'
-              ).start();
+            if (!quiet) spinner = ora('Running Claude to fix pre-commit errors...').start();
 
             try {
               // Run Claude to fix the errors
-              const fixResult = await this.getClaudeExecutor().executeTask(
-                fixPrompt,
-                worktreePath || this.workingDir
-              );
-              if (spinner)
-                spinner.succeed('Claude attempted to fix the errors');
+              const fixResult = await this.getClaudeExecutor().executeTask(fixPrompt, worktreePath || this.workingDir);
+              if (spinner) spinner.succeed('Claude attempted to fix the errors');
 
               // Update the execution log with the fix attempt
-              const previousLog = await this.jobManager.getTaskExecutionLog(
-                task.uuid
-              );
+              const previousLog = await this.jobManager.getTaskExecutionLog(task.uuid);
               await this.jobManager.updateTaskExecutionLog(
                 task.uuid,
                 `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
@@ -503,11 +403,7 @@ export class TaskExecutor {
               if (!quiet) spinner = ora('Retrying commit...').start();
             } catch (fixError) {
               if (spinner) spinner.fail('Failed to run Claude to fix errors');
-              if (!quiet)
-                console.error(
-                  chalk.red('Claude fix attempt failed:'),
-                  fixError
-                );
+              if (!quiet) console.error(chalk.red('Claude fix attempt failed:'), fixError);
               throw commitError; // Re-throw the original error
             }
           } else {
@@ -518,9 +414,7 @@ export class TaskExecutor {
       }
 
       if (!commitSucceeded) {
-        throw new Error(
-          `Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`
-        );
+        throw new Error(`Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`);
       }
 
       if (!quiet) spinner = ora('Pushing branch...').start();
@@ -531,12 +425,11 @@ export class TaskExecutor {
       if (spinner) spinner.succeed('Branch pushed to origin');
 
       if (!quiet) spinner = ora('Generating PR description...').start();
-      const { title, body } =
-        await this.getOpenAIService().generatePullRequestDescription(
-          task.description,
-          diff,
-          changedFiles
-        );
+      const { title, body } = await this.getOpenAIService().generatePullRequestDescription(
+        task.description,
+        diff,
+        changedFiles
+      );
       if (spinner) spinner.succeed('PR description generated');
 
       if (!quiet) spinner = ora('Creating pull request...').start();
@@ -553,6 +446,7 @@ export class TaskExecutor {
         console.log(chalk.green(`✅ Task completed: ${task.description}`));
         console.log(chalk.cyan(`🔗 PR: ${prUrl}`));
       }
+
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail('Task execution failed');
@@ -561,21 +455,13 @@ export class TaskExecutor {
       // Store error log if execution failed
       try {
         const errorLog = error instanceof Error ? error.message : String(error);
-        await this.jobManager.updateTaskExecutionLog(
-          task.uuid,
-          `ERROR: ${errorLog}`
-        );
+        await this.jobManager.updateTaskExecutionLog(task.uuid, `ERROR: ${errorLog}`);
         if (!quiet) console.log(chalk.gray('Error log stored to database'));
       } catch (logError) {
-        if (!quiet)
-          console.error(chalk.red('Failed to store error log:'), logError);
+        if (!quiet) console.error(chalk.red('Failed to store error log:'), logError);
       }
 
-      if (!quiet)
-        console.error(
-          chalk.red(`❌ Failed to execute task: ${task.description}`),
-          error
-        );
+      if (!quiet) console.error(chalk.red(`❌ Failed to execute task: ${task.description}`), error);
       throw error;
     } finally {
       // Switch back to original directory and clean up worktree
@@ -586,18 +472,13 @@ export class TaskExecutor {
     }
   }
 
-  private async executeTasksWithSinglePR(
-    tasks: Task[],
-    quiet: boolean = false
-  ): Promise<void> {
+  private async executeTasksWithSinglePR(tasks: Task[], quiet: boolean = false): Promise<void> {
     if (!quiet) {
       console.log('');
       console.log(chalk.blue('📦 Creating single branch for all tasks...'));
     }
 
-    let spinner = quiet
-      ? null
-      : ora('Cleaning up and syncing with main branch...').start();
+    let spinner = quiet ? null : ora('Cleaning up and syncing with main branch...').start();
     let worktreePath: string | null = null;
     let branchName: string | null = null;
     let sessionId: string | undefined;
@@ -610,18 +491,13 @@ export class TaskExecutor {
       if (spinner) spinner.succeed('Repository cleaned and synced with main');
 
       // Generate branch name based on all tasks
-      const combinedDescription =
-        tasks.length === 1
-          ? tasks[0].description
-          : `Multiple tasks: ${tasks
-              .slice(0, 2)
-              .map((t) => t.description)
-              .join(', ')}${tasks.length > 2 ? '...' : ''}`;
+      const combinedDescription = tasks.length === 1
+        ? tasks[0].description
+        : `Multiple tasks: ${tasks.slice(0, 2).map(t => t.description).join(', ')}${tasks.length > 2 ? '...' : ''}`;
 
       branchName = this.gitManager.generateBranchName(combinedDescription);
 
-      if (!quiet)
-        spinner = ora(`Creating worktree for branch: ${branchName}`).start();
+      if (!quiet) spinner = ora(`Creating worktree for branch: ${branchName}`).start();
       worktreePath = await this.gitManager.createWorktree(branchName);
       this.gitManager.switchToWorktree(worktreePath);
       if (spinner) spinner.succeed(`Worktree created: ${worktreePath}`);
@@ -637,11 +513,7 @@ export class TaskExecutor {
 
         if (!quiet) {
           console.log('');
-          console.log(
-            chalk.cyan.bold(
-              `📝 Task ${i + 1}/${tasks.length}: ${task.description}`
-            )
-          );
+          console.log(chalk.cyan.bold(`📝 Task ${i + 1}/${tasks.length}: ${task.description}`));
         }
 
         if (!quiet) spinner = ora('Updating task status...').start();
@@ -659,11 +531,7 @@ export class TaskExecutor {
         // Use worktree path for Claude execution
         const executionPath = worktreePath || this.workingDir;
         // Pass session ID to maintain context between tasks
-        const result = await this.getClaudeExecutor().executeTask(
-          taskWithInstructions,
-          executionPath,
-          sessionId
-        );
+        const result = await this.getClaudeExecutor().executeTask(taskWithInstructions, executionPath, sessionId);
         // Store the session ID for the next task
         sessionId = result.sessionId;
         if (spinner) {
@@ -683,13 +551,8 @@ export class TaskExecutor {
           const diff = this.gitManager.getDiff();
 
           if (!quiet) spinner = ora('Generating commit message...').start();
-          const commitMessage =
-            await this.getOpenAIService().generateCommitMessage(
-              diff,
-              changedFiles
-            );
-          if (spinner)
-            spinner.succeed(`Commit message generated: ${commitMessage}`);
+          const commitMessage = await this.getOpenAIService().generateCommitMessage(diff, changedFiles);
+          if (spinner) spinner.succeed(`Commit message generated: ${commitMessage}`);
 
           if (!quiet) spinner = ora('Committing changes...').start();
 
@@ -713,25 +576,13 @@ export class TaskExecutor {
             } catch (commitError) {
               commitAttempts++;
 
-              const errorMessage =
-                commitError instanceof Error
-                  ? commitError.message
-                  : String(commitError);
+              const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
 
               // Check if this is a pre-commit hook failure
-              if (
-                errorMessage.includes('pre-commit') &&
-                commitAttempts < maxCommitAttempts
-              ) {
+              if (errorMessage.includes('pre-commit') && commitAttempts < maxCommitAttempts) {
                 if (spinner) {
-                  spinner.fail(
-                    `Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`
-                  );
-                  console.log(
-                    chalk.yellow(
-                      '🔧 Running Claude to fix pre-commit errors...'
-                    )
-                  );
+                  spinner.fail(`Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`);
+                  console.log(chalk.yellow('🔧 Running Claude to fix pre-commit errors...'));
                 }
 
                 // Extract the error details from the commit error
@@ -740,27 +591,17 @@ export class TaskExecutor {
                 // Prepare prompt for Claude to fix the errors
                 const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
 
-                if (!quiet)
-                  spinner = ora(
-                    'Running Claude to fix pre-commit errors...'
-                  ).start();
+                if (!quiet) spinner = ora('Running Claude to fix pre-commit errors...').start();
 
                 try {
                   // Run Claude to fix the errors (pass session ID to maintain context)
-                  const fixResult = await this.getClaudeExecutor().executeTask(
-                    fixPrompt,
-                    executionPath,
-                    sessionId
-                  );
+                  const fixResult = await this.getClaudeExecutor().executeTask(fixPrompt, executionPath, sessionId);
                   // Update session ID
                   sessionId = fixResult.sessionId;
-                  if (spinner)
-                    spinner.succeed('Claude attempted to fix the errors');
+                  if (spinner) spinner.succeed('Claude attempted to fix the errors');
 
                   // Update the execution log with the fix attempt
-                  const previousLog = await this.jobManager.getTaskExecutionLog(
-                    task.uuid
-                  );
+                  const previousLog = await this.jobManager.getTaskExecutionLog(task.uuid);
                   await this.jobManager.updateTaskExecutionLog(
                     task.uuid,
                     `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
@@ -769,13 +610,8 @@ export class TaskExecutor {
                   // Try to commit again on the next iteration
                   if (!quiet) spinner = ora('Retrying commit...').start();
                 } catch (fixError) {
-                  if (spinner)
-                    spinner.fail('Failed to run Claude to fix errors');
-                  if (!quiet)
-                    console.error(
-                      chalk.red('Claude fix attempt failed:'),
-                      fixError
-                    );
+                  if (spinner) spinner.fail('Failed to run Claude to fix errors');
+                  if (!quiet) console.error(chalk.red('Claude fix attempt failed:'), fixError);
                   throw commitError; // Re-throw the original error
                 }
               } else {
@@ -786,20 +622,14 @@ export class TaskExecutor {
           }
 
           if (!commitSucceeded) {
-            throw new Error(
-              `Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`
-            );
+            throw new Error(`Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`);
           }
         } else {
-          if (!quiet)
-            console.log(chalk.yellow('⚠️  No changes detected for this task'));
+          if (!quiet) console.log(chalk.yellow('⚠️  No changes detected for this task'));
         }
 
         await this.jobManager.updateTaskStatus(task.uuid, 'completed');
-        if (!quiet)
-          console.log(
-            chalk.green(`✅ Task ${i + 1}/${tasks.length} completed`)
-          );
+        if (!quiet) console.log(chalk.green(`✅ Task ${i + 1}/${tasks.length} completed`));
       }
 
       // After all tasks are complete, create a single PR
@@ -811,23 +641,19 @@ export class TaskExecutor {
       if (spinner) spinner.succeed('Branch pushed to origin');
 
       // Generate PR description based on all tasks
-      if (!quiet)
-        spinner = ora('Generating pull request description...').start();
-      const allTaskDescriptions = tasks
-        .map((t) => `- ${t.description}`)
-        .join('\n');
+      if (!quiet) spinner = ora('Generating pull request description...').start();
+      const allTaskDescriptions = tasks.map(t => `- ${t.description}`).join('\n');
       const prTaskDescription = `Completed ${tasks.length} tasks:\n\n${allTaskDescriptions}`;
 
       // Get combined diff for PR description
       const finalDiff = this.gitManager.getDiff('origin/main', 'HEAD');
       const allChangedFiles = this.gitManager.getChangedFiles('origin/main');
 
-      const { title, body } =
-        await this.getOpenAIService().generatePullRequestDescription(
-          prTaskDescription,
-          finalDiff,
-          allChangedFiles
-        );
+      const { title, body } = await this.getOpenAIService().generatePullRequestDescription(
+        prTaskDescription,
+        finalDiff,
+        allChangedFiles
+      );
       if (spinner) spinner.succeed('PR description generated');
 
       if (!quiet) spinner = ora('Creating pull request...').start();
@@ -841,23 +667,16 @@ export class TaskExecutor {
 
       if (!quiet) {
         console.log('');
-        console.log(
-          chalk.green.bold(
-            `✅ All ${tasks.length} tasks completed in a single PR!`
-          )
-        );
+        console.log(chalk.green.bold(`✅ All ${tasks.length} tasks completed in a single PR!`));
         console.log(chalk.cyan(`🔗 PR: ${prUrl}`));
       }
+
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail('Batch task execution failed');
       }
 
-      if (!quiet)
-        console.error(
-          chalk.red('❌ Failed to execute tasks with single PR:'),
-          error
-        );
+      if (!quiet) console.error(chalk.red('❌ Failed to execute tasks with single PR:'), error);
       throw error;
     } finally {
       // Switch back to original directory and clean up worktree
@@ -868,9 +687,7 @@ export class TaskExecutor {
     }
   }
 
-  async executeNonInteractiveWorkflow(
-    config: NonInteractiveConfig
-  ): Promise<void> {
+  async executeNonInteractiveWorkflow(config: NonInteractiveConfig): Promise<void> {
     try {
       // Quiet mode: suppress all intermediate output
       const executor = this.getClaudeExecutor();
@@ -888,14 +705,10 @@ export class TaskExecutor {
       this.gitManager.validateGitHubCliAuthentication();
 
       // Get or create repository in database
-      const repository = await this.repositoryManager.getOrCreateRepository(
-        this.workingDir
-      );
+      const repository = await this.repositoryManager.getOrCreateRepository(this.workingDir);
 
       // Load repository-specific instructions
-      this.repoInstructions = await this.configManager.getRepoInstructions(
-        this.workingDir
-      );
+      this.repoInstructions = await this.configManager.getRepoInstructions(this.workingDir);
 
       // Process tasks based on config
       let finalTasks = config.tasks;
@@ -903,31 +716,16 @@ export class TaskExecutor {
 
       // If single task and generateSubtasks is true, break it down
       if (config.tasks.length === 1 && config.generateSubtasks) {
-        finalTasks = await this.jobManager.generateTaskBreakdownWithClaude(
-          config.tasks[0],
-          this.workingDir
-        );
+        finalTasks = await this.jobManager.generateTaskBreakdownWithClaude(config.tasks[0], this.workingDir);
       }
 
       // Create job and tasks
-      const jobDescription =
-        config.tasks.length === 1
-          ? config.tasks[0]
-          : `Multiple tasks: ${config.tasks.slice(0, 2).join(', ')}${config.tasks.length > 2 ? '...' : ''}`;
-      const jobUuid = await this.jobManager.createJob(
-        jobDescription,
-        this.workingDir,
-        repository.id
-      );
+      const jobDescription = config.tasks.length === 1 ? config.tasks[0] : `Multiple tasks: ${config.tasks.slice(0, 2).join(', ')}${config.tasks.length > 2 ? '...' : ''}`;
+      const jobUuid = await this.jobManager.createJob(jobDescription, this.workingDir, repository.id);
       const tasks: Task[] = [];
 
       for (const taskDescription of finalTasks) {
-        const taskUuid = await this.jobManager.createTask(
-          jobUuid,
-          taskDescription,
-          repository.id,
-          'build'
-        );
+        const taskUuid = await this.jobManager.createTask(jobUuid, taskDescription, repository.id, 'build');
         const task = await this.jobManager.getTask(taskUuid);
         if (task) {
           tasks.push(task);
@@ -956,19 +754,16 @@ export class TaskExecutor {
 
       // Output final results
       if (createdPRUrls.length > 0) {
-        createdPRUrls.forEach((url) => console.log(url));
+        createdPRUrls.forEach(url => console.log(url));
 
         if (shouldWaitForComments) {
           // Wait 30 minutes for reviewers to comment (silent wait)
           const waitTime = 30 * 60 * 1000; // 30 minutes in milliseconds
-          await new Promise((resolve) => setTimeout(resolve, waitTime));
+          await new Promise(resolve => setTimeout(resolve, waitTime));
 
           // Check for unaddressed comments on created PRs
           const prService = createPRService(this.workingDir);
-          const addressTasks = await this.checkAndCreateAddressTasks(
-            createdPRUrls,
-            prService
-          );
+          const addressTasks = await this.checkAndCreateAddressTasks(createdPRUrls, prService);
 
           if (addressTasks.length > 0) {
             // Execute address tasks automatically (quiet mode)
@@ -977,14 +772,13 @@ export class TaskExecutor {
           }
         }
       }
+
     } catch (error) {
-      console.error(
-        chalk.red.bold('❌ Non-interactive workflow failed:'),
-        error
-      );
+      console.error(chalk.red.bold('❌ Non-interactive workflow failed:'), error);
       throw error;
     } finally {
       this.jobManager.close();
     }
   }
 }
+

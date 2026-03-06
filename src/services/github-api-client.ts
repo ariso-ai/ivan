@@ -70,13 +70,11 @@ export class GitHubAPIClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
     body?: Record<string, unknown>
   ): Promise<T> {
-    const url = endpoint.startsWith('http')
-      ? endpoint
-      : `${this.baseUrl}${endpoint}`;
+    const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.pat}`,
-      Accept: 'application/vnd.github+json',
+      'Authorization': `Bearer ${this.pat}`,
+      'Accept': 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28'
     };
 
@@ -92,9 +90,7 @@ export class GitHubAPIClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `GitHub API request failed: ${response.status} ${response.statusText}\n${errorText}`
-      );
+      throw new Error(`GitHub API request failed: ${response.status} ${response.statusText}\n${errorText}`);
     }
 
     return response.json() as Promise<T>;
@@ -114,10 +110,7 @@ export class GitHubAPIClient {
   /**
    * Get repository information from remote URL
    */
-  static getRepoInfoFromRemote(workingDir: string): {
-    owner: string;
-    repo: string;
-  } {
+  static getRepoInfoFromRemote(workingDir: string): { owner: string; repo: string } {
     try {
       const remoteUrl = execSync('git config --get remote.origin.url', {
         cwd: workingDir,
@@ -199,13 +192,17 @@ export class GitHubAPIClient {
       head: { ref: string };
       html_url: string;
       state: string;
-    }>(`/repos/${owner}/${repo}/pulls`, 'POST', {
-      title,
-      body,
-      head,
-      base,
-      draft
-    });
+    }>(
+      `/repos/${owner}/${repo}/pulls`,
+      'POST',
+      {
+        title,
+        body,
+        head,
+        base,
+        draft
+      }
+    );
 
     return {
       number: response.number,
@@ -219,29 +216,16 @@ export class GitHubAPIClient {
   /**
    * Add a comment to a pull request
    */
-  async addPRComment(
-    owner: string,
-    repo: string,
-    prNumber: number,
-    body: string
-  ): Promise<void> {
-    await this.makeRequest(
-      `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
-      'POST',
-      {
-        body
-      }
-    );
+  async addPRComment(owner: string, repo: string, prNumber: number, body: string): Promise<void> {
+    await this.makeRequest(`/repos/${owner}/${repo}/issues/${prNumber}/comments`, 'POST', {
+      body
+    });
   }
 
   /**
    * Get a specific pull request
    */
-  async getPR(
-    owner: string,
-    repo: string,
-    prNumber: number
-  ): Promise<GitHubPRInfo> {
+  async getPR(owner: string, repo: string, prNumber: number): Promise<GitHubPRInfo> {
     const response = await this.makeRequest<{
       number: number;
       title: string;
@@ -280,19 +264,17 @@ export class GitHubAPIClient {
     if (options.base) params.append('base', options.base);
 
     let endpoint = `/repos/${owner}/${repo}/pulls?${params.toString()}`;
-    const prs = await this.makeRequest<
-      Array<{
-        number: number;
-        title: string;
-        head: { ref: string };
-        html_url: string;
-        state: string;
-        user?: { login: string };
-      }>
-    >(endpoint);
+    const prs = await this.makeRequest<Array<{
+      number: number;
+      title: string;
+      head: { ref: string };
+      html_url: string;
+      state: string;
+      user?: { login: string };
+    }>>(endpoint);
 
     // Map to GitHubPRInfo format
-    const mappedPRs = prs.map((pr) => ({
+    const mappedPRs = prs.map(pr => ({
       number: pr.number,
       title: pr.title,
       headRefName: pr.head.ref,
@@ -312,11 +294,7 @@ export class GitHubAPIClient {
   /**
    * Get PR checks/status
    */
-  async getPRChecks(
-    owner: string,
-    repo: string,
-    prNumber: number
-  ): Promise<GitHubCheck[]> {
+  async getPRChecks(owner: string, repo: string, prNumber: number): Promise<GitHubCheck[]> {
     const pr = await this.getPR(owner, repo, prNumber);
     const headSha = (pr as unknown as { head?: { sha?: string } }).head?.sha;
 
@@ -338,10 +316,7 @@ export class GitHubAPIClient {
 
     return checkRuns.check_runs.map((check) => ({
       name: check.name,
-      state:
-        check.conclusion?.toUpperCase() ||
-        check.status?.toUpperCase() ||
-        'PENDING',
+      state: check.conclusion?.toUpperCase() || check.status?.toUpperCase() || 'PENDING',
       link: check.html_url
     }));
   }
@@ -397,11 +372,7 @@ export class GitHubAPIClient {
   /**
    * Get workflow run logs (for failed actions)
    */
-  async getWorkflowRunLogs(
-    owner: string,
-    repo: string,
-    runId: number
-  ): Promise<string> {
+  async getWorkflowRunLogs(owner: string, repo: string, runId: number): Promise<string> {
     try {
       interface Job {
         id: number;

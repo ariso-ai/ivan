@@ -41,3 +41,4 @@ export const migration008: Migration = {
     `ALTER TABLE tasks_new RENAME TO tasks`
   ]
 };
+

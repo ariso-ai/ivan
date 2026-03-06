@@ -4,15 +4,8 @@ import { ConfigManager } from '../config.js';
 
 export interface IClaudeExecutor {
   quietMode: boolean;
-  executeTask(
-    taskDescription: string,
-    workingDir: string,
-    sessionId?: string
-  ): Promise<{ log: string; lastMessage: string; sessionId: string }>;
-  generateTaskBreakdown(
-    jobDescription: string,
-    workingDir: string
-  ): Promise<string[]>;
+  executeTask(taskDescription: string, workingDir: string, sessionId?: string): Promise<{ log: string; lastMessage: string; sessionId: string }>;
+  generateTaskBreakdown(jobDescription: string, workingDir: string): Promise<string[]>;
   validateClaudeCodeInstallation(): Promise<void>;
 }
 

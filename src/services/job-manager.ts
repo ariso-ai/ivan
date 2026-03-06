@@ -15,10 +15,7 @@ export class JobManager {
     this.claudeExecutor = ExecutorFactory.getExecutor();
   }
 
-  async promptForTasks(
-    workingDir: string,
-    repositoryId: number
-  ): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {
+  async promptForTasks(workingDir: string, repositoryId: number): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {
     console.log(chalk.blue.bold('🎯 What would you like to work on today?'));
     console.log('');
 
@@ -27,12 +24,11 @@ export class JobManager {
         type: 'editor',
         name: 'taskInput',
         message: 'Enter task(s) - one per line (press Enter to open editor):',
-        default:
-          '# Enter your tasks below (one per line)\n# Lines starting with # will be ignored\n\n',
+        default: '# Enter your tasks below (one per line)\n# Lines starting with # will be ignored\n\n',
         validate: (input: string) => {
           const cleanedInput = input
             .split('\n')
-            .filter((line) => line.trim() && !line.trim().startsWith('#'))
+            .filter(line => line.trim() && !line.trim().startsWith('#'))
             .join('\n')
             .trim();
 
@@ -58,17 +54,13 @@ export class JobManager {
         {
           type: 'confirm',
           name: 'shouldBreakDown',
-          message:
-            'Would you like to break this task down into multiple smaller tasks?',
+          message: 'Would you like to break this task down into multiple smaller tasks?',
           default: false
         }
       ]);
 
       if (shouldBreakDown) {
-        finalTasks = await this.generateTaskBreakdownWithClaude(
-          inputTasks[0],
-          workingDir
-        );
+        finalTasks = await this.generateTaskBreakdownWithClaude(inputTasks[0], workingDir);
 
         // If multiple tasks were generated, ask about PR strategy
         if (finalTasks.length > 1) {
@@ -76,17 +68,10 @@ export class JobManager {
             {
               type: 'list',
               name: 'userPrStrategy',
-              message:
-                'How would you like to handle pull requests for these tasks?',
+              message: 'How would you like to handle pull requests for these tasks?',
               choices: [
-                {
-                  name: 'Create one pull request per task (default)',
-                  value: 'multiple'
-                },
-                {
-                  name: 'Create a single pull request for all tasks',
-                  value: 'single'
-                }
+                { name: 'Create one pull request per task (default)', value: 'multiple' },
+                { name: 'Create a single pull request for all tasks', value: 'single' }
               ],
               default: 'multiple'
             }
@@ -118,25 +103,24 @@ export class JobManager {
       ]);
 
       if (selectionMode === 'select') {
-        const { selectedTasks } = await inquirer.prompt<{
-          selectedTasks: string[];
-        }>({
-          type: 'checkbox',
-          name: 'selectedTasks',
-          message:
-            'Select tasks to execute (use space to select, enter to confirm):',
-          choices: inputTasks.map((task: string, index: number) => ({
-            name: `${index + 1}. ${task}`,
-            value: task,
-            checked: true
-          })),
-          validate: (input) => {
-            if (input.length === 0) {
-              return 'Please select at least one task';
+        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>(
+          {
+            type: 'checkbox',
+            name: 'selectedTasks',
+            message: 'Select tasks to execute (use space to select, enter to confirm):',
+            choices: inputTasks.map((task: string, index: number) => ({
+              name: `${index + 1}. ${task}`,
+              value: task,
+              checked: true
+            })),
+            validate: (input) => {
+              if (input.length === 0) {
+                return 'Please select at least one task';
+              }
+              return true;
             }
-            return true;
           }
-        });
+        );
 
         finalTasks = selectedTasks;
         console.log(chalk.green(`✅ Selected ${selectedTasks.length} task(s)`));
@@ -144,16 +128,11 @@ export class JobManager {
     }
 
     // Create a clean description for the job (without comments)
-    const jobDescription =
-      finalTasks.length === 1
-        ? finalTasks[0]
-        : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
+    const jobDescription = finalTasks.length === 1
+      ? finalTasks[0]
+      : `${finalTasks.length} tasks: ${finalTasks.slice(0, 3).join('; ')}${finalTasks.length > 3 ? '...' : ''}`;
 
-    const jobUuid = await this.createJob(
-      jobDescription,
-      workingDir,
-      repositoryId
-    );
+    const jobUuid = await this.createJob(jobDescription, workingDir, repositoryId);
     this.currentJobUuid = jobUuid;
     const tasks = await this.createTasks(jobUuid, finalTasks, repositoryId);
 
@@ -176,26 +155,16 @@ export class JobManager {
     return { job, tasks, prStrategy };
   }
 
-  async generateTaskBreakdownWithClaude(
-    originalTask: string,
-    workingDir: string
-  ): Promise<string[]> {
+  async generateTaskBreakdownWithClaude(originalTask: string, workingDir: string): Promise<string[]> {
     console.log('');
     console.log(chalk.yellow('🤖 Using Claude Code to break down the task...'));
     console.log('');
 
     try {
-      const tasks = await this.claudeExecutor.generateTaskBreakdown(
-        originalTask,
-        workingDir
-      );
+      const tasks = await this.claudeExecutor.generateTaskBreakdown(originalTask, workingDir);
 
       if (tasks.length === 0) {
-        console.log(
-          chalk.red(
-            'Claude Code returned no tasks, falling back to original task'
-          )
-        );
+        console.log(chalk.red('Claude Code returned no tasks, falling back to original task'));
         return [originalTask];
       }
 
@@ -226,25 +195,24 @@ export class JobManager {
       }
 
       if (selectionMode === 'select') {
-        const { selectedTasks } = await inquirer.prompt<{
-          selectedTasks: string[];
-        }>({
-          type: 'checkbox',
-          name: 'selectedTasks',
-          message:
-            'Select tasks to execute (use space to select, enter to confirm):',
-          choices: tasks.map((task: string, index: number) => ({
-            name: `${index + 1}. ${task}`,
-            value: task,
-            checked: true
-          })),
-          validate: (input) => {
-            if (input.length === 0) {
-              return 'Please select at least one task';
+        const { selectedTasks } = await inquirer.prompt<{ selectedTasks: string[] }>(
+          {
+            type: 'checkbox',
+            name: 'selectedTasks',
+            message: 'Select tasks to execute (use space to select, enter to confirm):',
+            choices: tasks.map((task: string, index: number) => ({
+              name: `${index + 1}. ${task}`,
+              value: task,
+              checked: true
+            })),
+            validate: (input) => {
+              if (input.length === 0) {
+                return 'Please select at least one task';
+              }
+              return true;
             }
-            return true;
           }
-        });
+        );
 
         if (selectedTasks.length === 0) {
           console.log(chalk.yellow('No tasks selected, using original task'));
@@ -256,6 +224,7 @@ export class JobManager {
       }
 
       return tasks;
+
     } catch (error) {
       console.error(chalk.red('Failed to generate task breakdown:'), error);
       console.log(chalk.yellow('Falling back to original task'));
@@ -263,12 +232,9 @@ export class JobManager {
     }
   }
 
-  private async createTasks(
-    jobUuid: string,
-    taskDescriptions: string[],
-    repositoryId: number
-  ): Promise<Task[]> {
-    const tasks: Task[] = taskDescriptions.map((description) => ({
+
+  private async createTasks(jobUuid: string, taskDescriptions: string[], repositoryId: number): Promise<Task[]> {
+    const tasks: Task[] = taskDescriptions.map(description => ({
       uuid: randomUUID(),
       job_uuid: jobUuid,
       description,
@@ -289,10 +255,7 @@ export class JobManager {
     return tasks;
   }
 
-  async updateTaskStatus(
-    taskUuid: string,
-    status: Task['status']
-  ): Promise<void> {
+  async updateTaskStatus(taskUuid: string, status: Task['status']): Promise<void> {
     const db = this.dbManager.getKysely();
     await db
       .updateTable('tasks')
@@ -310,10 +273,7 @@ export class JobManager {
       .execute();
   }
 
-  async updateTaskExecutionLog(
-    taskUuid: string,
-    executionLog: string
-  ): Promise<void> {
+  async updateTaskExecutionLog(taskUuid: string, executionLog: string): Promise<void> {
     const db = this.dbManager.getKysely();
     await db
       .updateTable('tasks')
@@ -331,10 +291,7 @@ export class JobManager {
       .execute();
   }
 
-  async updateTaskCommentUrl(
-    taskUuid: string,
-    commentUrl: string
-  ): Promise<void> {
+  async updateTaskCommentUrl(taskUuid: string, commentUrl: string): Promise<void> {
     const db = this.dbManager.getKysely();
     await db
       .updateTable('tasks')
@@ -343,10 +300,7 @@ export class JobManager {
       .execute();
   }
 
-  async updateTaskCommentId(
-    taskUuid: string,
-    commentId: string
-  ): Promise<void> {
+  async updateTaskCommentId(taskUuid: string, commentId: string): Promise<void> {
     const db = this.dbManager.getKysely();
     await db
       .updateTable('tasks')
@@ -364,13 +318,7 @@ export class JobManager {
       .execute();
   }
 
-  async createTask(
-    jobUuid: string,
-    description: string,
-    repositoryId: number,
-    type: 'build' | 'address' | 'lint_and_test' = 'build',
-    commentId?: string
-  ): Promise<string> {
+  async createTask(jobUuid: string, description: string, repositoryId: number, type: 'build' | 'address' | 'lint_and_test' = 'build', commentId?: string): Promise<string> {
     const task: Task = {
       uuid: randomUUID(),
       job_uuid: jobUuid,
@@ -414,11 +362,7 @@ export class JobManager {
     return task?.execution_log || '';
   }
 
-  async createJob(
-    description: string,
-    workingDir: string,
-    repositoryId: number
-  ): Promise<string> {
+  async createJob(description: string, workingDir: string, repositoryId: number): Promise<string> {
     const job: Job = {
       uuid: randomUUID(),
       description,
@@ -462,3 +406,4 @@ export class JobManager {
     this.dbManager.close();
   }
 }
+

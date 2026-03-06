@@ -22,21 +22,13 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
     }
   }
 
-  async executeTask(
-    taskDescription: string,
-    workingDir: string,
-    sessionId?: string
-  ): Promise<{ log: string; lastMessage: string; sessionId: string }> {
-    console.log(
-      chalk.blue(`🤖 Executing task with Claude Code CLI: ${taskDescription}`)
-    );
+  async executeTask(taskDescription: string, workingDir: string, sessionId?: string): Promise<{ log: string; lastMessage: string; sessionId: string }> {
+    console.log(chalk.blue(`🤖 Executing task with Claude Code CLI: ${taskDescription}`));
     console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
 
     // Check if Claude CLI is installed
     if (!this.checkClaudeCliInstalled()) {
-      throw new Error(
-        'Claude CLI is not installed. Please install it first or use the SDK executor.'
-      );
+      throw new Error('Claude CLI is not installed. Please install it first or use the SDK executor.');
     }
 
     try {
@@ -46,9 +38,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       // Check if we're in a worktree by looking for .git file (not directory)
       try {
         const gitPath = path.join(workingDir, '.git');
-        const gitInfo = execSync(`cat "${gitPath}"`, {
-          encoding: 'utf8'
-        }).trim();
+        const gitInfo = execSync(`cat "${gitPath}"`, { encoding: 'utf8' }).trim();
         if (gitInfo.startsWith('gitdir:')) {
           // We're in a worktree, extract the main repo path
           const gitDirPath = gitInfo.replace('gitdir:', '').trim();
@@ -62,12 +52,10 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       }
 
       // Get repository-specific allowed tools using the original repo path
-      let allowedTools =
-        await this.configManager.getRepoAllowedTools(originalRepoPath);
+      let allowedTools = await this.configManager.getRepoAllowedTools(originalRepoPath);
 
       // Get repository-specific blocked tools
-      const blockedTools =
-        await this.configManager.getRepoBlockedTools(originalRepoPath);
+      const blockedTools = await this.configManager.getRepoBlockedTools(originalRepoPath);
 
       // Always block EnterPlanMode and AskUserQuestion globally
       const globallyBlockedTools = ['EnterPlanMode', 'AskUserQuestion'];
@@ -102,14 +90,10 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
             'Skill',
             'SlashCommand'
           ];
-          allowedTools = allTools.filter(
-            (tool) => !allBlockedTools.includes(tool)
-          );
+          allowedTools = allTools.filter(tool => !allBlockedTools.includes(tool));
         } else {
           // If specific tools are allowed, remove blocked ones
-          allowedTools = allowedTools.filter(
-            (tool) => !allBlockedTools.includes(tool)
-          );
+          allowedTools = allowedTools.filter(tool => !allBlockedTools.includes(tool));
         }
       }
 
@@ -129,18 +113,12 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       // Build Claude CLI arguments - options must come before the prompt
       const args: string[] = [
         '--print', // Non-interactive mode
-        '--model',
-        model,
-        '--permission-mode',
-        'bypassPermissions' // Skip permission prompts
+        '--model', model,
+        '--permission-mode', 'bypassPermissions' // Skip permission prompts
       ];
 
       // Add allowed tools if specified
-      if (
-        allowedTools &&
-        allowedTools.length > 0 &&
-        !allowedTools.includes('*')
-      ) {
+      if (allowedTools && allowedTools.length > 0 && !allowedTools.includes('*')) {
         args.push('--allowed-tools', ...allowedTools);
       }
 
@@ -176,9 +154,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
           process.stdout.write(output);
 
           // Track the last non-empty line as lastMessage
-          const lines = output
-            .split('\n')
-            .filter((line: string) => line.trim());
+          const lines = output.split('\n').filter((line: string) => line.trim());
           if (lines.length > 0) {
             lastMessage = lines[lines.length - 1].trim();
           }
@@ -197,11 +173,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         claudeProcess.on('close', (code) => {
           if (code === 0) {
             console.log(chalk.green('✅ Claude Code CLI execution completed'));
-            resolve({
-              log: fullOutput,
-              lastMessage,
-              sessionId: currentSessionId
-            });
+            resolve({ log: fullOutput, lastMessage, sessionId: currentSessionId });
           } else {
             console.error(chalk.red('❌ Claude Code CLI execution failed'));
             if (stderr) {
@@ -230,6 +202,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
           process.removeListener('SIGINT', handleInterrupt);
         });
       });
+
     } catch (error: unknown) {
       const err = error as Error & { message?: string };
 
@@ -242,23 +215,16 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
     }
   }
 
-  async generateTaskBreakdown(
-    jobDescription: string,
-    workingDir: string
-  ): Promise<string[]> {
+  async generateTaskBreakdown(jobDescription: string, workingDir: string): Promise<string[]> {
     // Check if Claude CLI is installed
     if (!this.checkClaudeCliInstalled()) {
-      throw new Error(
-        'Claude CLI is not installed. Please install it first or use the SDK executor.'
-      );
+      throw new Error('Claude CLI is not installed. Please install it first or use the SDK executor.');
     }
 
     try {
       const prompt = `Return a new-line separated list of tasks you would do to best accomplish the following: '${jobDescription}'. Respond with ONLY the new line separated list, do not introduce the results. Each task should be considered as something that should be opened as a pull request. do NOT include tasks like searching, finding/locating files or researching, analyzing the codebase or looking for certain parts of the code.`;
 
-      console.log(
-        chalk.blue('🤖 Generating task breakdown with Claude Code CLI...')
-      );
+      console.log(chalk.blue('🤖 Generating task breakdown with Claude Code CLI...'));
       console.log(chalk.yellow('💡 Press Ctrl+C to cancel'));
       console.log(chalk.gray(`Working directory: ${workingDir}`));
 
@@ -268,10 +234,8 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       // Build Claude CLI arguments for task breakdown
       const args: string[] = [
         '--print', // Non-interactive mode
-        '--model',
-        model,
-        '--max-turns',
-        '1', // Only one turn needed for task breakdown
+        '--model', model,
+        '--max-turns', '1', // Only one turn needed for task breakdown
         prompt
       ];
 
@@ -321,11 +285,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
             console.log(chalk.green(`✅ Generated ${tasks.length} tasks`));
             resolve(tasks);
           } else {
-            console.error(
-              chalk.red(
-                '❌ Failed to generate task breakdown with Claude Code CLI'
-              )
-            );
+            console.error(chalk.red('❌ Failed to generate task breakdown with Claude Code CLI'));
             if (stderr) {
               console.error(chalk.red('Error output:'), stderr);
             }
@@ -342,11 +302,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         // Handle Ctrl+C
         const handleInterrupt = () => {
           claudeProcess.kill('SIGINT');
-          console.log(
-            chalk.yellow(
-              '\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'
-            )
-          );
+          console.log(chalk.yellow('\n⚠️  Task breakdown generation cancelled by user (Ctrl+C)'));
           reject(new Error('Task breakdown generation cancelled by user'));
         };
         process.on('SIGINT', handleInterrupt);
@@ -356,6 +312,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
           process.removeListener('SIGINT', handleInterrupt);
         });
       });
+
     } catch (error: unknown) {
       const err = error as Error;
 
@@ -363,18 +320,14 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         throw new Error('Task breakdown generation cancelled by user');
       }
 
-      console.error(
-        chalk.red('❌ Failed to generate task breakdown with Claude Code CLI')
-      );
+      console.error(chalk.red('❌ Failed to generate task breakdown with Claude Code CLI'));
       throw new Error(`Failed to generate task breakdown: ${err.message}`);
     }
   }
 
   async validateClaudeCodeInstallation(): Promise<void> {
     if (!this.checkClaudeCliInstalled()) {
-      throw new Error(
-        'Claude CLI is not installed. Install it from: https://docs.claude.com/en/docs/claude-code/installation'
-      );
+      throw new Error('Claude CLI is not installed. Install it from: https://docs.claude.com/en/docs/claude-code/installation');
     }
     console.log(chalk.green('✅ Claude CLI is installed and ready to use'));
   }
