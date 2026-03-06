@@ -26,21 +26,25 @@ export class WebServer {
     // API Routes
     this.app.get('/api/jobs', this.getJobs.bind(this));
     this.app.get('/api/jobs/:jobId/tasks', this.getJobTasks.bind(this));
-    
+
     // Serve the main HTML page for all non-API routes
     this.app.get('/', (req, res) => {
       res.send(this.getMainHTML());
     });
   }
 
-  private async getJobs(req: express.Request, res: express.Response): Promise<void> {
+  private async getJobs(
+    req: express.Request,
+    res: express.Response
+  ): Promise<void> {
     try {
       const db = this.dbManager.getKysely();
-      const jobs = await db.selectFrom('jobs')
+      const jobs = await db
+        .selectFrom('jobs')
         .selectAll()
         .orderBy('created_at', 'desc')
         .execute();
-      
+
       res.json(jobs);
     } catch (error) {
       console.error('Error fetching jobs:', error);
@@ -48,26 +52,31 @@ export class WebServer {
     }
   }
 
-  private async getJobTasks(req: express.Request, res: express.Response): Promise<void> {
+  private async getJobTasks(
+    req: express.Request,
+    res: express.Response
+  ): Promise<void> {
     try {
       const { jobId } = req.params;
       const db = this.dbManager.getKysely();
-      
-      const job = await db.selectFrom('jobs')
+
+      const job = await db
+        .selectFrom('jobs')
         .selectAll()
         .where('uuid', '=', jobId)
         .executeTakeFirst();
-        
+
       if (!job) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
 
-      const tasks = await db.selectFrom('tasks')
+      const tasks = await db
+        .selectFrom('tasks')
         .selectAll()
         .where('job_uuid', '=', jobId)
         .execute();
-      
+
       res.json({ job, tasks });
     } catch (error) {
       console.error('Error fetching job tasks:', error);
@@ -472,7 +481,9 @@ export class WebServer {
   public start(): Promise<void> {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.port, () => {
-        console.log(`🌐 Ivan web server running at http://localhost:${this.port}`);
+        console.log(
+          `🌐 Ivan web server running at http://localhost:${this.port}`
+        );
         resolve();
       });
     });

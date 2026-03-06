@@ -27,7 +27,9 @@ export class PRServicePAT implements IPRService {
       // Check if PR is open
       // GitHub REST API returns lowercase state: "open", "closed", or "merged"
       if (pr.state.toUpperCase() !== 'OPEN') {
-        console.log(chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${pr.state})`));
+        console.log(
+          chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${pr.state})`)
+        );
         return [];
       }
 
@@ -52,7 +54,9 @@ export class PRServicePAT implements IPRService {
       }
 
       // Check for failing checks
-      const { allFailures, testOrLintFailures } = await this.getFailingChecks(pr.number);
+      const { allFailures, testOrLintFailures } = await this.getFailingChecks(
+        pr.number
+      );
       if (allFailures.length > 0) {
         pullRequest.hasFailingChecks = true;
         pullRequest.failingChecks = allFailures;
@@ -69,8 +73,12 @@ export class PRServicePAT implements IPRService {
 
       return [];
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('no pull requests found') || errorMessage.includes('404')) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes('no pull requests found') ||
+        errorMessage.includes('404')
+      ) {
         console.error(chalk.red(`❌ PR #${prNumber} not found`));
       } else {
         console.error(chalk.red(`Error fetching PR #${prNumber}:`), error);
@@ -111,7 +119,9 @@ export class PRServicePAT implements IPRService {
         }
 
         // Check for failing checks
-        const { allFailures, testOrLintFailures } = await this.getFailingChecks(pr.number);
+        const { allFailures, testOrLintFailures } = await this.getFailingChecks(
+          pr.number
+        );
         if (allFailures.length > 0) {
           pullRequest.hasFailingChecks = true;
           pullRequest.failingChecks = allFailures;
@@ -122,7 +132,10 @@ export class PRServicePAT implements IPRService {
         }
 
         // Only include PRs that have issues
-        if (pullRequest.hasUnaddressedComments || pullRequest.hasFailingChecks) {
+        if (
+          pullRequest.hasUnaddressedComments ||
+          pullRequest.hasFailingChecks
+        ) {
           pullRequests.push(pullRequest);
         }
       }
@@ -137,7 +150,11 @@ export class PRServicePAT implements IPRService {
   async getUnaddressedComments(prNumber: number): Promise<PRComment[]> {
     try {
       // Get review threads using GraphQL
-      const threads = await this.githubClient.getReviewThreads(this.owner, this.repo, prNumber);
+      const threads = await this.githubClient.getReviewThreads(
+        this.owner,
+        this.repo,
+        prNumber
+      );
       const unaddressedComments: PRComment[] = [];
 
       // Process each thread
@@ -161,7 +178,9 @@ export class PRServicePAT implements IPRService {
         if (!hasReplies && firstComment.path) {
           // Only include if it's an inline code comment (has a path) and has no replies
           unaddressedComments.push({
-            id: firstComment.databaseId ? firstComment.databaseId.toString() : firstComment.id,
+            id: firstComment.databaseId
+              ? firstComment.databaseId.toString()
+              : firstComment.id,
             author: firstComment.author.login,
             body: firstComment.body,
             createdAt: firstComment.createdAt,
@@ -178,9 +197,15 @@ export class PRServicePAT implements IPRService {
     }
   }
 
-  private async getFailingChecks(prNumber: number): Promise<{ allFailures: string[], testOrLintFailures: string[] }> {
+  private async getFailingChecks(
+    prNumber: number
+  ): Promise<{ allFailures: string[]; testOrLintFailures: string[] }> {
     try {
-      const checks = await this.githubClient.getPRChecks(this.owner, this.repo, prNumber);
+      const checks = await this.githubClient.getPRChecks(
+        this.owner,
+        this.repo,
+        prNumber
+      );
 
       const failingChecks: string[] = [];
       const testOrLintFailures: string[] = [];
@@ -245,7 +270,11 @@ export class PRServicePAT implements IPRService {
 
   async getFailingActionLogs(prNumber: number): Promise<string> {
     try {
-      const checks = await this.githubClient.getPRChecks(this.owner, this.repo, prNumber);
+      const checks = await this.githubClient.getPRChecks(
+        this.owner,
+        this.repo,
+        prNumber
+      );
       let failingLogs = '';
 
       for (const check of checks) {
@@ -257,7 +286,11 @@ export class PRServicePAT implements IPRService {
 
             try {
               // Get the failed logs for this run
-              const logs = await this.githubClient.getWorkflowRunLogs(this.owner, this.repo, runId);
+              const logs = await this.githubClient.getWorkflowRunLogs(
+                this.owner,
+                this.repo,
+                runId
+              );
 
               if (logs) {
                 failingLogs += `\n\n=== Failed logs for ${check.name} ===\n`;
