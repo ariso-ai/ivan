@@ -5,8 +5,5 @@ export const migration: Migration = {
   name: 'add_original_description_column',
   up: [
     'ALTER TABLE tasks ADD COLUMN original_description TEXT'
-  ],
-  down: [
-    'ALTER TABLE tasks DROP COLUMN original_description'
   ]
 };
