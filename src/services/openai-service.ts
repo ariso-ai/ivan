@@ -171,7 +171,7 @@ FORMAT REQUIREMENTS:
 
       const content = response.choices[0]?.message?.content?.trim();
       if (!content) throw new Error('No rewritten prompt returned');
-      return content;
+      return `${content}\n\n## Agent Instructions\nDo not ask clarifying questions mid-task. Make your best judgment based on available context and proceed with implementation. Prefer editing existing patterns over introducing new abstractions. If multiple approaches exist, pick the simplest one.`;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       throw new Error(`Prompt rewrite failed: ${msg}`);
