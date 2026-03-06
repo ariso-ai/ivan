@@ -529,21 +529,23 @@ Once the PR is merged and secrets are configured, you can comment \`@ivan-agent 
   }
 }
 
-async function runNonInteractive(configInput: string, rewritePromptOverride?: boolean): Promise<void> {
+async function runNonInteractive(configInput: string): Promise<void> {
   try {
     let config: NonInteractiveConfig;
     let configSource: string;
 
-    // Try to parse as JSON first (inline JSON)
     try {
       config = JSON.parse(configInput);
       configSource = 'inline JSON';
     } catch {
-      // If parsing fails, treat as file path
       const configContent = readFileSync(configInput, 'utf-8');
       config = JSON.parse(configContent);
       configSource = configInput;
     }
+
+    // Apply --rewrite-prompt flag if passed on CLI
+    const { rewritePrompt } = program.opts<{ rewritePrompt: boolean }>();
+    if (rewritePrompt) config.rewritePrompt = true;
 
     // Validate config
     if (!config.tasks || !Array.isArray(config.tasks) || config.tasks.length === 0) {
@@ -568,11 +570,6 @@ async function runNonInteractive(configInput: string, rewritePromptOverride?: bo
       console.log(chalk.blue(`📂 Changed to directory: ${config.workingDir}`));
     }
 
-    // Allow --rewrite-prompt flag to override config
-    if (rewritePromptOverride) {
-      config.rewritePrompt = true;
-    }
-
     const taskExecutor = new TaskExecutor();
     await taskExecutor.executeNonInteractiveWorkflow(config);
 
@@ -595,8 +592,7 @@ async function main() {
     // Check for -c/--config flag
     const configFlagIndex = args.findIndex(arg => arg === '-c' || arg === '--config');
     if (configFlagIndex !== -1 && args[configFlagIndex + 1]) {
-      const configPath = args[configFlagIndex + 1];
-      await runNonInteractive(configPath, hasRewriteFlag);
+      await runNonInteractive(args[configFlagIndex + 1]);
       return;
     }
 

@@ -215,14 +215,6 @@ Return only the commit message, nothing else.`;
     - For required sections that truly cannot be populated, write: Not specified in ticket.
     - For Open Questions for Research, write: None. when no unresolved details remain.`;
 
-    const MAX_TICKET_LENGTH = 24000;
-    let normalizedTicket = ticket;
-    if (ticket.length > MAX_TICKET_LENGTH) {
-      const firstPart = ticket.slice(0, MAX_TICKET_LENGTH / 2);
-      const lastPart = ticket.slice(ticket.length - MAX_TICKET_LENGTH / 2);
-      normalizedTicket = `${firstPart}\n\n[...ticket truncated for length: ${ticket.length} characters...]\n\n${lastPart}`;
-    }
-
     try {
       const config = this.configManager.getConfig();
       if (!config?.openaiApiKey) {
@@ -233,10 +225,10 @@ Return only the commit message, nothing else.`;
       if (!this.openai) throw new Error('OpenAI client not initialized');
 
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.2',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: normalizedTicket }
+          { role: 'user', content: ticket }
         ],
         max_tokens: 2000,
         temperature: 0.2
