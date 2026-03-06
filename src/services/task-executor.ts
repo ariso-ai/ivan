@@ -9,6 +9,7 @@ import { AddressTaskExecutor } from './address-task-executor.js';
 import { NonInteractiveConfig } from '../types/non-interactive-config.js';
 import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
 import { createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
+import { PromptRewriter } from './prompt-rewriter.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -724,8 +725,35 @@ export class TaskExecutor {
       const jobUuid = await this.jobManager.createJob(jobDescription, this.workingDir, repository.id);
       const tasks: Task[] = [];
 
+      // Optionally rewrite prompts using 3-step pipeline
+      const shouldRewrite = config.rewritePrompt || false;
+
       for (const taskDescription of finalTasks) {
-        const taskUuid = await this.jobManager.createTask(jobUuid, taskDescription, repository.id, 'build');
+        let description = taskDescription;
+        let originalDescription: string | null = null;
+        let rewrittenDescription: string | null = null;
+
+        if (shouldRewrite) {
+          try {
+            console.log(chalk.blue('🔄 Rewriting prompt (3-step pipeline)...'));
+            const rewriter = new PromptRewriter(this.getOpenAIService(), this.getClaudeExecutor(), this.workingDir, true);
+            const result = await rewriter.rewrite(taskDescription);
+            description = result.rewritten;
+            originalDescription = result.original;
+            rewrittenDescription = result.rewritten;
+            console.log(chalk.green('✅ Prompt rewritten'));
+          } catch (error) {
+            console.warn(chalk.yellow('⚠️  Prompt rewriting failed, using original:'), error);
+          }
+        }
+
+        const taskUuid = await this.jobManager.createTask(jobUuid, description, repository.id, 'build');
+
+        // Store original and rewritten descriptions if rewriting was performed
+        if (originalDescription) {
+          await this.jobManager.updateTaskRewriteData(taskUuid, originalDescription, rewrittenDescription);
+        }
+
         const task = await this.jobManager.getTask(taskUuid);
         if (task) {
           tasks.push(task);

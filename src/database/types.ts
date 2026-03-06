@@ -29,6 +29,8 @@ export interface Task {
   comment_id: string | null;
   commit_sha: string | null;
   repository_id: number;
+  original_description: string | null;
+  rewritten_description: string | null;
 }
 
 export interface Migration {

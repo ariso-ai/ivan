@@ -528,7 +528,7 @@ Once the PR is merged and secrets are configured, you can comment \`@ivan-agent 
   }
 }
 
-async function runNonInteractive(configInput: string): Promise<void> {
+async function runNonInteractive(configInput: string, rewritePromptOverride?: boolean): Promise<void> {
   try {
     let config: NonInteractiveConfig;
     let configSource: string;
@@ -567,6 +567,11 @@ async function runNonInteractive(configInput: string): Promise<void> {
       console.log(chalk.blue(`📂 Changed to directory: ${config.workingDir}`));
     }
 
+    // Allow --rewrite-prompt flag to override config
+    if (rewritePromptOverride) {
+      config.rewritePrompt = true;
+    }
+
     const taskExecutor = new TaskExecutor();
     await taskExecutor.executeNonInteractiveWorkflow(config);
 
@@ -586,19 +591,24 @@ async function main() {
     const configFlagIndex = args.findIndex(arg => arg === '-c' || arg === '--config');
     if (configFlagIndex !== -1 && args[configFlagIndex + 1]) {
       const configPath = args[configFlagIndex + 1];
-      await runNonInteractive(configPath);
+      const rewritePrompt = args.includes('--rewrite-prompt');
+      await runNonInteractive(configPath, rewritePrompt);
       return;
     }
 
     // Check if first argument is a task description (not a recognized command)
     const recognizedCommands = ['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'];
-    if (args.length > 0 && !recognizedCommands.includes(args[0])) {
-      // Treat the first argument as a task description
-      const taskDescription = args[0];
+    const nonFlagArgs = args.filter(arg => !arg.startsWith('--'));
+    const hasRewriteFlag = args.includes('--rewrite-prompt');
+
+    if (nonFlagArgs.length > 0 && !recognizedCommands.includes(nonFlagArgs[0])) {
+      // Treat the first non-flag argument as a task description
+      const taskDescription = nonFlagArgs[0];
 
       // Create a NonInteractiveConfig with the task
       const config: NonInteractiveConfig = {
-        tasks: [taskDescription]
+        tasks: [taskDescription],
+        rewritePrompt: hasRewriteFlag
       };
 
       // Check configuration before running
