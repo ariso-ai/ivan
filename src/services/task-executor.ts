@@ -43,7 +43,7 @@ export class TaskExecutor {
     return this.openaiService;
   }
 
-  async executeWorkflow(): Promise<void> {
+  async executeWorkflow(rewritePrompt: boolean = false): Promise<void> {
     try {
       console.log(chalk.blue.bold('🚀 Starting Ivan workflow'));
       console.log('');
@@ -140,6 +140,21 @@ export class TaskExecutor {
           }
         ]);
         shouldWaitForComments = waitForComments;
+
+        // Optionally rewrite prompts before execution
+        if (rewritePrompt) {
+          for (const task of buildTasks) {
+            try {
+              console.log(chalk.blue(`🔄 Rewriting prompt for: ${task.description.substring(0, 60)}...`));
+              const rewriter = new PromptRewriter(this.getOpenAIService());
+              const result = await rewriter.rewrite(task.description);
+              await this.jobManager.updateTaskRewriteData(task.uuid, result.original, result.rewritten);
+              task.description = result.rewritten;
+            } catch (error) {
+              console.warn(chalk.yellow('⚠️  Prompt rewriting failed, using original:'), error);
+            }
+          }
+        }
 
         console.log(chalk.blue.bold('📋 Executing tasks...'));
 

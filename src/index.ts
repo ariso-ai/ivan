@@ -628,7 +628,7 @@ async function main() {
       return;
     }
 
-    if (args.length === 0) {
+    if (nonFlagArgs.length === 0) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
@@ -639,7 +639,7 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow();
+      await taskExecutor.executeWorkflow(hasRewriteFlag);
       return;
     }
 
