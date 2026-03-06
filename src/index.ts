@@ -20,7 +20,8 @@ const configManager = new ConfigManager();
 program
   .name('ivan')
   .description('Ivan - A coding orchestration agent CLI')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('--rewrite-prompt', 'Rewrite verbose task descriptions before execution using GPT-4o-mini');
 
 program
   .command('reconfigure')
@@ -587,23 +588,24 @@ async function main() {
   try {
     const args = process.argv.slice(2);
 
+    // Parse known options early; operands are everything left after stripping flags
+    const { operands } = program.parseOptions(args);
+    const { rewritePrompt: hasRewriteFlag } = program.opts<{ rewritePrompt: boolean }>();
+
     // Check for -c/--config flag
     const configFlagIndex = args.findIndex(arg => arg === '-c' || arg === '--config');
     if (configFlagIndex !== -1 && args[configFlagIndex + 1]) {
       const configPath = args[configFlagIndex + 1];
-      const rewritePrompt = args.includes('--rewrite-prompt');
-      await runNonInteractive(configPath, rewritePrompt);
+      await runNonInteractive(configPath, hasRewriteFlag);
       return;
     }
 
-    // Check if first argument is a task description (not a recognized command)
+    // Check if first operand is a task description (not a recognized command)
     const recognizedCommands = ['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'];
-    const nonFlagArgs = args.filter(arg => !arg.startsWith('--'));
-    const hasRewriteFlag = args.includes('--rewrite-prompt');
 
-    if (nonFlagArgs.length > 0 && !recognizedCommands.includes(nonFlagArgs[0])) {
-      // Treat the first non-flag argument as a task description
-      const taskDescription = nonFlagArgs[0];
+    if (operands.length > 0 && !recognizedCommands.includes(operands[0])) {
+      // Treat the first operand as a task description
+      const taskDescription = operands[0];
 
       // Create a NonInteractiveConfig with the task
       const config: NonInteractiveConfig = {
@@ -628,7 +630,7 @@ async function main() {
       return;
     }
 
-    if (nonFlagArgs.length === 0) {
+    if (operands.length === 0) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
