@@ -43,7 +43,7 @@ export class ConfigManager {
       fs.writeFileSync(this.dbPath, '');
       console.log(chalk.green('✅ Database created'));
     }
-    
+
     const dbManager = new DatabaseManager();
     try {
       await dbManager.runMigrations();
@@ -126,7 +126,9 @@ export class ConfigManager {
       ]);
 
       if (!continueWithoutGh) {
-        console.log(chalk.red('Setup cancelled. Please install gh and try again.'));
+        console.log(
+          chalk.red('Setup cancelled. Please install gh and try again.')
+        );
         process.exit(0);
       }
 
@@ -153,14 +155,20 @@ export class ConfigManager {
       ]);
 
       if (!readyToContinue) {
-        console.log(chalk.red('Setup cancelled. Please authenticate with gh and try again.'));
+        console.log(
+          chalk.red(
+            'Setup cancelled. Please authenticate with gh and try again.'
+          )
+        );
         process.exit(0);
       }
 
       // Verify authentication after user claims to have done it
       if (!this.isGhAuthenticated()) {
         console.log(chalk.red('❌ GitHub CLI is still not authenticated.'));
-        console.log(chalk.yellow('Please run "gh auth login" and then run "ivan" again.'));
+        console.log(
+          chalk.yellow('Please run "gh auth login" and then run "ivan" again.')
+        );
         process.exit(1);
       }
 
@@ -283,7 +291,8 @@ export class ConfigManager {
 
     const config: Config = {
       openaiApiKey: answers.openaiApiKey.trim(),
-      anthropicApiKey: executorType === 'sdk' ? answers.anthropicApiKey.trim() : '',
+      anthropicApiKey:
+        executorType === 'sdk' ? answers.anthropicApiKey.trim() : '',
       version: '1.0.0',
       executorType: executorType,
       githubAuthType: githubAuthType,
@@ -339,7 +348,10 @@ export class ConfigManager {
     await this.saveConfig(config);
   }
 
-  async setRepoInstructions(repoPath: string, instructions: string): Promise<void> {
+  async setRepoInstructions(
+    repoPath: string,
+    instructions: string
+  ): Promise<void> {
     const config = this.getConfig();
     if (!config) {
       throw new Error('Configuration not found');
@@ -353,39 +365,48 @@ export class ConfigManager {
     await this.saveConfig(config);
   }
 
-  async promptForMissingConfig(configKey: 'openaiApiKey' | 'anthropicApiKey'): Promise<string> {
-    console.log(chalk.yellow(`⚠️  ${configKey === 'openaiApiKey' ? 'OpenAI' : 'Anthropic'} API key is missing or invalid.`));
+  async promptForMissingConfig(
+    configKey: 'openaiApiKey' | 'anthropicApiKey'
+  ): Promise<string> {
+    console.log(
+      chalk.yellow(
+        `⚠️  ${configKey === 'openaiApiKey' ? 'OpenAI' : 'Anthropic'} API key is missing or invalid.`
+      )
+    );
     console.log('');
 
-    const promptConfig = configKey === 'openaiApiKey' ? {
-      type: 'password' as const,
-      name: 'apiKey',
-      message: 'Enter your OpenAI API key:',
-      validate: (input: string) => {
-        if (!input || input.trim().length === 0) {
-          return 'OpenAI API key is required';
-        }
-        if (!input.startsWith('sk-')) {
-          return 'OpenAI API key should start with "sk-"';
-        }
-        return true;
-      },
-      mask: '*'
-    } : {
-      type: 'password' as const,
-      name: 'apiKey',
-      message: 'Enter your Anthropic API key:',
-      validate: (input: string) => {
-        if (!input || input.trim().length === 0) {
-          return 'Anthropic API key is required';
-        }
-        if (!input.startsWith('sk-ant-')) {
-          return 'Anthropic API key should start with "sk-ant-"';
-        }
-        return true;
-      },
-      mask: '*'
-    };
+    const promptConfig =
+      configKey === 'openaiApiKey'
+        ? {
+            type: 'password' as const,
+            name: 'apiKey',
+            message: 'Enter your OpenAI API key:',
+            validate: (input: string) => {
+              if (!input || input.trim().length === 0) {
+                return 'OpenAI API key is required';
+              }
+              if (!input.startsWith('sk-')) {
+                return 'OpenAI API key should start with "sk-"';
+              }
+              return true;
+            },
+            mask: '*'
+          }
+        : {
+            type: 'password' as const,
+            name: 'apiKey',
+            message: 'Enter your Anthropic API key:',
+            validate: (input: string) => {
+              if (!input || input.trim().length === 0) {
+                return 'Anthropic API key is required';
+              }
+              if (!input.startsWith('sk-ant-')) {
+                return 'Anthropic API key should start with "sk-ant-"';
+              }
+              return true;
+            },
+            mask: '*'
+          };
 
     const answers = await inquirer.prompt([promptConfig]);
     const apiKey = answers.apiKey.trim();
@@ -403,7 +424,11 @@ export class ConfigManager {
     config[configKey] = apiKey;
     await this.saveConfig(config);
 
-    console.log(chalk.green(`✅ ${configKey === 'openaiApiKey' ? 'OpenAI' : 'Anthropic'} API key saved successfully!`));
+    console.log(
+      chalk.green(
+        `✅ ${configKey === 'openaiApiKey' ? 'OpenAI' : 'Anthropic'} API key saved successfully!`
+      )
+    );
     console.log('');
 
     return apiKey;
@@ -417,7 +442,10 @@ export class ConfigManager {
     return config.repoAllowedTools[repoPath];
   }
 
-  async setRepoAllowedTools(repoPath: string, allowedTools: string[]): Promise<void> {
+  async setRepoAllowedTools(
+    repoPath: string,
+    allowedTools: string[]
+  ): Promise<void> {
     const config = this.getConfig();
     if (!config) {
       throw new Error('Configuration not found');
@@ -439,7 +467,10 @@ export class ConfigManager {
     return config.repoBlockedTools[repoPath];
   }
 
-  async setRepoBlockedTools(repoPath: string, blockedTools: string[]): Promise<void> {
+  async setRepoBlockedTools(
+    repoPath: string,
+    blockedTools: string[]
+  ): Promise<void> {
     const config = this.getConfig();
     if (!config) {
       throw new Error('Configuration not found');
@@ -457,16 +488,26 @@ export class ConfigManager {
     console.log(chalk.blue.bold('📝 Repository-Specific Instructions'));
     console.log(chalk.gray(`Repository: ${repoPath}`));
     console.log('');
-    console.log(chalk.yellow('You can set repository-specific instructions that will be appended to every task.'));
-    console.log(chalk.gray('Examples: coding style guidelines, frameworks to use, patterns to follow, etc.'));
+    console.log(
+      chalk.yellow(
+        'You can set repository-specific instructions that will be appended to every task.'
+      )
+    );
+    console.log(
+      chalk.gray(
+        'Examples: coding style guidelines, frameworks to use, patterns to follow, etc.'
+      )
+    );
     console.log('');
 
     const answers = await inquirer.prompt([
       {
         type: 'editor',
         name: 'instructions',
-        message: 'Enter repository-specific instructions (press Enter to open editor):',
-        default: '# Repository-specific instructions\n# These will be appended to every task in this repository\n# Examples:\n# - Use TypeScript for all new files\n# - Follow existing patterns for error handling\n# - Add comprehensive tests for new features\n',
+        message:
+          'Enter repository-specific instructions (press Enter to open editor):',
+        default:
+          '# Repository-specific instructions\n# These will be appended to every task in this repository\n# Examples:\n# - Use TypeScript for all new files\n# - Follow existing patterns for error handling\n# - Add comprehensive tests for new features\n',
         validate: (input: string) => {
           const cleanedInput = input.replace(/^#.*$/gm, '').trim();
           if (cleanedInput.length === 0) {
@@ -495,9 +536,17 @@ export class ConfigManager {
     console.log(chalk.blue.bold('🔧 Repository-Specific Tool Configuration'));
     console.log(chalk.gray(`Repository: ${repoPath}`));
     console.log('');
-    console.log(chalk.yellow('Configure which tools Claude Code can use in this repository.'));
+    console.log(
+      chalk.yellow(
+        'Configure which tools Claude Code can use in this repository.'
+      )
+    );
     console.log(chalk.gray('Default: All tools allowed (["*"])'));
-    console.log(chalk.gray('Examples: ["Bash", "Read", "Write", "Edit"] or ["*"] for all tools'));
+    console.log(
+      chalk.gray(
+        'Examples: ["Bash", "Read", "Write", "Edit"] or ["*"] for all tools'
+      )
+    );
     console.log('');
 
     const answers = await inquirer.prompt([
@@ -518,7 +567,10 @@ export class ConfigManager {
           if (trimmed === '*') {
             return ['*'];
           }
-          return trimmed.split(',').map(tool => tool.trim()).filter(tool => tool.length > 0);
+          return trimmed
+            .split(',')
+            .map((tool) => tool.trim())
+            .filter((tool) => tool.length > 0);
         }
       }
     ]);
@@ -534,12 +586,24 @@ export class ConfigManager {
   }
 
   async promptForRepoBlockedTools(repoPath: string): Promise<string[]> {
-    console.log(chalk.blue.bold('🚫 Repository-Specific Blocked Tools Configuration'));
+    console.log(
+      chalk.blue.bold('🚫 Repository-Specific Blocked Tools Configuration')
+    );
     console.log(chalk.gray(`Repository: ${repoPath}`));
     console.log('');
-    console.log(chalk.yellow('Configure which tools Claude Code CANNOT use in this repository.'));
-    console.log(chalk.gray('These tools will be blocked even if allowed by allowedTools'));
-    console.log(chalk.gray('Available tools: Task, Bash, Read, Write, Edit, EnterPlanMode, ExitPlanMode, etc.'));
+    console.log(
+      chalk.yellow(
+        'Configure which tools Claude Code CANNOT use in this repository.'
+      )
+    );
+    console.log(
+      chalk.gray('These tools will be blocked even if allowed by allowedTools')
+    );
+    console.log(
+      chalk.gray(
+        'Available tools: Task, Bash, Read, Write, Edit, EnterPlanMode, ExitPlanMode, etc.'
+      )
+    );
     console.log('');
 
     // Show current blocked tools if any
@@ -554,14 +618,18 @@ export class ConfigManager {
       {
         type: 'input',
         name: 'blockedTools',
-        message: 'Enter blocked tools (comma-separated, or leave empty for none):',
+        message:
+          'Enter blocked tools (comma-separated, or leave empty for none):',
         default: currentBlockedTools ? currentBlockedTools.join(', ') : '',
         filter: (input: string) => {
           const trimmed = input.trim();
           if (trimmed.length === 0) {
             return [];
           }
-          return trimmed.split(',').map(tool => tool.trim()).filter(tool => tool.length > 0);
+          return trimmed
+            .split(',')
+            .map((tool) => tool.trim())
+            .filter((tool) => tool.length > 0);
         }
       }
     ]);
@@ -571,7 +639,9 @@ export class ConfigManager {
     await this.setRepoBlockedTools(repoPath, blockedTools);
 
     if (blockedTools.length > 0) {
-      console.log(chalk.green(`✅ Blocked tools configured: ${blockedTools.join(', ')}`));
+      console.log(
+        chalk.green(`✅ Blocked tools configured: ${blockedTools.join(', ')}`)
+      );
     } else {
       console.log(chalk.green('✅ No tools blocked (cleared)'));
     }
@@ -582,7 +652,9 @@ export class ConfigManager {
   async promptForModel(): Promise<void> {
     console.log(chalk.blue.bold('🤖 Choose Claude Model'));
     console.log('');
-    console.log(chalk.yellow('Select which Claude model to use for code tasks'));
+    console.log(
+      chalk.yellow('Select which Claude model to use for code tasks')
+    );
     console.log('');
 
     const models = [
@@ -621,9 +693,11 @@ export class ConfigManager {
     config.claudeModel = answers.model;
     await this.saveConfig(config);
 
-    const selectedModel = models.find(m => m.value === answers.model);
+    const selectedModel = models.find((m) => m.value === answers.model);
     console.log('');
-    console.log(chalk.green(`✅ Model set to: ${selectedModel?.short || answers.model}`));
+    console.log(
+      chalk.green(`✅ Model set to: ${selectedModel?.short || answers.model}`)
+    );
   }
 
   getClaudeModel(): string {
@@ -668,9 +742,15 @@ export class ConfigManager {
     config.executorType = answers.executorType;
     await this.saveConfig(config);
 
-    const selectedExecutor = executors.find(e => e.value === answers.executorType);
+    const selectedExecutor = executors.find(
+      (e) => e.value === answers.executorType
+    );
     console.log('');
-    console.log(chalk.green(`✅ Executor set to: ${selectedExecutor?.short || answers.executorType}`));
+    console.log(
+      chalk.green(
+        `✅ Executor set to: ${selectedExecutor?.short || answers.executorType}`
+      )
+    );
   }
 
   getExecutorType(): 'sdk' | 'cli' {
@@ -706,8 +786,14 @@ export class ConfigManager {
   async promptForReviewAgent(): Promise<void> {
     console.log(chalk.blue.bold('🤖 Configure Review Agent'));
     console.log('');
-    console.log(chalk.yellow('Set the coding agent to tag in PR review request comments'));
-    console.log(chalk.gray('This is the bot that will be mentioned to review your changes (e.g., @codex, @copilot)'));
+    console.log(
+      chalk.yellow('Set the coding agent to tag in PR review request comments')
+    );
+    console.log(
+      chalk.gray(
+        'This is the bot that will be mentioned to review your changes (e.g., @codex, @copilot)'
+      )
+    );
     console.log('');
 
     const currentAgent = this.getReviewAgent();
@@ -829,8 +915,12 @@ export class ConfigManager {
 
     await this.saveConfig(config);
 
-    const selectedAuth = authTypes.find(a => a.value === answers.authType);
+    const selectedAuth = authTypes.find((a) => a.value === answers.authType);
     console.log('');
-    console.log(chalk.green(`✅ GitHub authentication set to: ${selectedAuth?.short || answers.authType}`));
+    console.log(
+      chalk.green(
+        `✅ GitHub authentication set to: ${selectedAuth?.short || answers.authType}`
+      )
+    );
   }
 }
