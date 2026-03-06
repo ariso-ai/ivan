@@ -28,4 +28,12 @@ export interface NonInteractiveConfig {
    * Defaults to current working directory
    */
   workingDir?: string;
+
+  /**
+   * Whether to rewrite verbose prompts using a 3-step pipeline before execution.
+   * Step 1: Extract research questions from ticket
+   * Step 2: Objective codebase research (without the ticket, preventing intent leakage)
+   * Step 3: Rewrite prompt using ticket + research
+   */
+  rewritePrompt?: boolean;
 }

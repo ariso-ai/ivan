@@ -132,15 +132,17 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         args.push('--resume', sessionId);
       }
 
-      // Add the task description as the last argument (after all options)
-      args.push(taskDescription);
-
       return new Promise((resolve, reject) => {
-        // Spawn the Claude CLI process with inherited stdio for real-time output
+        // Spawn the Claude CLI process, passing prompt via stdin to avoid
+        // arg-parsing conflicts with multi-value flags like --disallowed-tools
         const claudeProcess = spawn('claude', args, {
           cwd: workingDir,
-          stdio: ['ignore', 'pipe', 'pipe']
+          stdio: ['pipe', 'pipe', 'pipe']
         });
+
+        // Write the prompt to stdin and close it
+        claudeProcess.stdin.write(taskDescription);
+        claudeProcess.stdin.end();
 
         let fullOutput = '';
         let stderr = '';
