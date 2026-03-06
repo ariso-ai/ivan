@@ -30,10 +30,9 @@ export interface NonInteractiveConfig {
   workingDir?: string;
 
   /**
-   * Whether to rewrite verbose prompts using a 3-step pipeline before execution.
-   * Step 1: Extract research questions from ticket
-   * Step 2: Objective codebase research (without the ticket, preventing intent leakage)
-   * Step 3: Rewrite prompt using ticket + research
+   * Whether to rewrite verbose prompts before execution.
+   * Uses GPT-4o-mini to strip noise (Slack metadata, assignee directives, boilerplate)
+   * and reformat the ticket as a structured Task/Acceptance Criteria prompt for Claude Code.
    */
   rewritePrompt?: boolean;
 }

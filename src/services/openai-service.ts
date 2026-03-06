@@ -150,59 +150,6 @@ Output ONLY the rewritten prompt. No preamble, no explanation.`;
     }
   }
 
-  /**
-   * Step 1 of 3-step pipeline: Extract objective research questions from a ticket.
-   * This is the ONLY step that sees the original ticket.
-   */
-  async extractResearchQuestions(ticket: string): Promise<string[]> {
-    await this.ensureInitialized();
-
-    const systemPrompt = `You are a research question extractor. Given a development ticket, output a list of objective questions about the codebase that would need to be answered before implementing this ticket.
-
-RULES:
-- Output ONLY questions, one per line
-- Questions should be about WHAT EXISTS in the codebase, not HOW to implement
-- Do NOT include implementation suggestions
-- Do NOT include opinions or recommendations
-- Focus on: file locations, function signatures, data flow, dependencies, test patterns
-- Strip all metadata (who requested it, Slack channels, assignees)
-- Output 5-10 questions
-
-Example good questions:
-- "Where is the magic link route handler defined?"
-- "What session management library/pattern is currently used?"
-- "How does the existing authentication flow handle multiple accounts?"
-
-Example BAD questions (these are implementation, not research):
-- "Should we use middleware to clear sessions?"
-- "What's the best way to handle account switching?"`;
-
-    try {
-      if (!this.openai) throw new Error('OpenAI client not initialized');
-
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: ticket }
-        ],
-        max_tokens: 1000,
-        temperature: 0.3
-      });
-
-      const content = response.choices[0]?.message?.content?.trim();
-      if (!content) return ['What are the main source files in this project?'];
-
-      return content
-        .split('\n')
-        .map(q => q.replace(/^[-*\d.)\s]+/, '').trim())
-        .filter(q => q.length > 10);
-    } catch (error) {
-      console.error('Failed to extract research questions:', error);
-      return ['What are the main source files in this project?'];
-    }
-  }
-
   async generatePullRequestDescription(taskDescription: string, diff: string, changedFiles: string[]): Promise<{ title: string; body: string }> {
     await this.ensureInitialized();
 
