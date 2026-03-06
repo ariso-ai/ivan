@@ -247,8 +247,7 @@ export class JobManager {
       comment_id: null,
       commit_sha: null,
       repository_id: repositoryId,
-      original_description: null,
-      rewritten_description: null
+      original_description: null
     }));
 
     const db = this.dbManager.getKysely();
@@ -334,8 +333,7 @@ export class JobManager {
       comment_id: commentId || null,
       commit_sha: null,
       repository_id: repositoryId,
-      original_description: null,
-      rewritten_description: null
+      original_description: null
     };
 
     const db = this.dbManager.getKysely();
@@ -344,14 +342,11 @@ export class JobManager {
     return task.uuid;
   }
 
-  async updateTaskRewriteData(taskUuid: string, originalDescription: string, rewrittenDescription: string | null): Promise<void> {
+  async updateTaskOriginalDescription(taskUuid: string, originalDescription: string): Promise<void> {
     const db = this.dbManager.getKysely();
     await db
       .updateTable('tasks')
-      .set({
-        original_description: originalDescription,
-        rewritten_description: rewrittenDescription
-      })
+      .set({ original_description: originalDescription })
       .where('uuid', '=', taskUuid)
       .execute();
   }
