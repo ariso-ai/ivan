@@ -105,15 +105,12 @@ OUTPUT FORMAT (use this exact structure):
 ## Expected Behavior
 [What should happen after implementation]
 
-## Relevant Files
-[File paths and function names explicitly mentioned in the ticket. If none mentioned, omit this section.]
-
 ## Acceptance Criteria
 - [ ] Criterion 1
 - [ ] Criterion 2
 
 ## Constraints
-[Technical constraints or patterns to follow. Omit if none.]
+[Only if explicitly stated in the ticket — technical constraints, patterns, or requirements to follow. Omit if none.]
 
 NOISE TO REMOVE:
 - Slack metadata (channel IDs, "Reported by:", "Requested by:", usernames)
@@ -126,8 +123,7 @@ NOISE TO REMOVE:
 INFORMATION TO PRESERVE:
 - The actual problem or feature description
 - Acceptance criteria (reformat as checkboxes)
-- Technical constraints
-- File paths and function names explicitly mentioned
+- Explicitly stated technical constraints
 - Specific behavior descriptions (current vs expected)
 
 Output ONLY the rewritten prompt. No preamble, no explanation.`;
