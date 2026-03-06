@@ -91,8 +91,8 @@ Return only the commit message, nothing else.`;
   }
 
   /**
-   * Rewrite a verbose development ticket into a structured prompt optimized for coding agents.
-   */
+  * Rewrite a verbose development ticket into a structured prompt optimized for coding agents.
+  */
   async rewritePrompt(ticket: string): Promise<string> {
     const systemPrompt = `You rewrite noisy software-development tickets into execution-ready markdown prompts for an autonomous coding agent.
 
@@ -284,9 +284,9 @@ ${truncatedDiff}
 Generate:
 1. A concise PR title (MUST be under 250 characters to fit GitHub's 256 character limit)
 2. A concise PR description (MUST be under 10000 characters) with:
-   - Brief summary of changes (2-3 sentences)
-   - List of main changes (bullet points)
-   - Any important notes
+  - Brief summary of changes (2-3 sentences)
+  - List of main changes (bullet points)
+  - Any important notes
 
 Keep the description focused and concise. Do NOT include the full diff in the description.`;
 

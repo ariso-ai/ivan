@@ -63,8 +63,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Make a REST API request to GitHub
-   */
+  * Make a REST API request to GitHub
+  */
   private async makeRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
@@ -101,8 +101,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Make a GraphQL query to GitHub
-   */
+  * Make a GraphQL query to GitHub
+  */
   async graphql<T>(query: string): Promise<T> {
     const response = await this.makeRequest<{ data: T }>('/graphql', 'POST', {
       query
@@ -112,8 +112,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Get repository information from remote URL
-   */
+  * Get repository information from remote URL
+  */
   static getRepoInfoFromRemote(workingDir: string): {
     owner: string;
     repo: string;
@@ -160,8 +160,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Get repository details including default branch
-   */
+  * Get repository details including default branch
+  */
   async getRepository(owner: string, repo: string): Promise<GitHubRepo> {
     const query = `
       query {
@@ -182,8 +182,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Create a pull request
-   */
+  * Create a pull request
+  */
   async createPullRequest(
     owner: string,
     repo: string,
@@ -217,8 +217,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Add a comment to a pull request
-   */
+  * Add a comment to a pull request
+  */
   async addPRComment(
     owner: string,
     repo: string,
@@ -235,8 +235,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Get a specific pull request
-   */
+  * Get a specific pull request
+  */
   async getPR(
     owner: string,
     repo: string,
@@ -262,8 +262,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * List pull requests
-   */
+  * List pull requests
+  */
   async listPRs(
     owner: string,
     repo: string,
@@ -310,8 +310,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Get PR checks/status
-   */
+  * Get PR checks/status
+  */
   async getPRChecks(
     owner: string,
     repo: string,
@@ -347,8 +347,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Get review threads for a PR using GraphQL
-   */
+  * Get review threads for a PR using GraphQL
+  */
   async getReviewThreads(
     owner: string,
     repo: string,
@@ -395,8 +395,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Get workflow run logs (for failed actions)
-   */
+  * Get workflow run logs (for failed actions)
+  */
   async getWorkflowRunLogs(
     owner: string,
     repo: string,
@@ -436,8 +436,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Update a pull request (e.g., to assign reviewers)
-   */
+  * Update a pull request (e.g., to assign reviewers)
+  */
   async updatePR(
     owner: string,
     repo: string,
@@ -480,8 +480,8 @@ export class GitHubAPIClient {
   }
 
   /**
-   * Add a reply to a review thread
-   */
+  * Add a reply to a review thread
+  */
   async addReviewThreadReply(
     owner: string,
     repo: string,

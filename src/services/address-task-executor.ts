@@ -1114,7 +1114,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
       const openaiService = this.getOpenAIService();
       const client = await openaiService.getClient();
 
-      const prompt = `You are reviewing code changes that were made to address PR review comments. 
+      const prompt = `You are reviewing code changes that were made to address PR review comments.
 Based on the following diff and changed files, generate a concise, specific review request that tells the reviewer what to focus on.
 
 Changed files:
