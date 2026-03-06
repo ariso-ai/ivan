@@ -91,8 +91,8 @@ Return only the commit message, nothing else.`;
   }
 
   /**
-  * Rewrite a verbose development ticket into a structured prompt optimized for coding agents.
-  */
+   * Rewrite a verbose development ticket into a structured prompt optimized for coding agents.
+   */
   async rewritePrompt(ticket: string): Promise<string> {
     const systemPrompt = `You rewrite noisy software-development tickets into execution-ready markdown prompts for an autonomous coding agent.
 
