@@ -140,8 +140,8 @@ Return only the commit message, nothing else.`;
 
     5. Optimize for autonomous execution
     - Do not write follow-up questions to the user.
-    - When information is missing or ambiguous, record it as an unresolved detail in Open Questions.
-    - Phrase Open Questions as statements, not as direct questions.
+    - When information is missing or ambiguous, record it as an unresolved detail in Open Questions for Research.
+    - Phrase Open Questions for Research as statements, not as direct questions.
     - Prefer wording that tells the coding agent what is known, what is unknown, and what must be resolved by inspecting the codebase.
 
     6. Scope control
@@ -161,7 +161,7 @@ Return only the commit message, nothing else.`;
     - Task
     - Expected Behavior
     - Acceptance Criteria
-    - Open Questions
+    - Open Questions for Research
 
     Include these sections only when the ticket supports them:
     - Current Behavior
@@ -202,7 +202,7 @@ Return only the commit message, nothing else.`;
     Only assumptions explicitly stated in the ticket.
     Do not create new assumptions.
 
-    ## Open Questions
+    ## Open Questions for Research
     List unresolved details as short statements for codebase investigation.
     Do not phrase them as questions to the user.
     Use this section for ambiguity, missing scope boundaries, or missing expected behavior that cannot be safely inferred.
@@ -213,7 +213,7 @@ Return only the commit message, nothing else.`;
     - Do not include preamble or explanation.
     - Do not include empty bullets.
     - For required sections that truly cannot be populated, write: Not specified in ticket.
-    - For Open Questions, write: None. when no unresolved details remain.`;
+    - For Open Questions for Research, write: None. when no unresolved details remain.`;
 
     const MAX_TICKET_LENGTH = 24000;
     let normalizedTicket = ticket;
