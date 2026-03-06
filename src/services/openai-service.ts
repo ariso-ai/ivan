@@ -91,8 +91,6 @@ Return only the commit message, nothing else.`;
    * Rewrite a verbose development ticket into a structured prompt optimized for coding agents.
    */
   async rewritePrompt(ticket: string): Promise<string> {
-    await this.ensureInitialized();
-
     const systemPrompt = `You are a prompt optimizer for coding agents. Transform noisy development tickets into concise, execution-ready prompts in markdown.
 
 STRICT RULES:
@@ -157,6 +155,12 @@ FORMAT REQUIREMENTS:
     }
 
     try {
+      const config = this.configManager.getConfig();
+      if (!config?.openaiApiKey) {
+        throw new Error('OpenAI API key is required when prompt rewriting is enabled');
+      }
+
+      await this.ensureInitialized();
       if (!this.openai) throw new Error('OpenAI client not initialized');
 
       const response = await this.openai.chat.completions.create({
