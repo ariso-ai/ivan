@@ -148,7 +148,7 @@ export class TaskExecutor {
               console.log(chalk.blue(`🔄 Rewriting prompt for: ${task.description.substring(0, 60)}...`));
               const rewriter = new PromptRewriter(this.getOpenAIService());
               const result = await rewriter.rewrite(task.description);
-              await this.jobManager.updateTaskRewriteData(task.uuid, result.original, result.rewritten);
+              await this.jobManager.updateTaskOriginalDescription(task.uuid, result.original);
               task.description = result.rewritten;
             } catch (error) {
               console.warn(chalk.yellow('⚠️  Prompt rewriting failed, using original:'), error);
@@ -745,8 +745,6 @@ export class TaskExecutor {
 
       for (const taskDescription of finalTasks) {
         let description = taskDescription;
-        let originalDescription: string | null = null;
-        let rewrittenDescription: string | null = null;
 
         if (shouldRewrite) {
           try {
@@ -754,8 +752,6 @@ export class TaskExecutor {
             const rewriter = new PromptRewriter(this.getOpenAIService(), true);
             const result = await rewriter.rewrite(taskDescription);
             description = result.rewritten;
-            originalDescription = result.original;
-            rewrittenDescription = result.rewritten;
             console.log(chalk.green('✅ Prompt rewritten'));
           } catch (error) {
             console.warn(chalk.yellow('⚠️  Prompt rewriting failed, using original:'), error);
@@ -764,9 +760,9 @@ export class TaskExecutor {
 
         const taskUuid = await this.jobManager.createTask(jobUuid, description, repository.id, 'build');
 
-        // Store original and rewritten descriptions if rewriting was performed
-        if (originalDescription) {
-          await this.jobManager.updateTaskRewriteData(taskUuid, originalDescription, rewrittenDescription);
+        // Store the original ticket text if rewriting changed the description
+        if (description !== taskDescription) {
+          await this.jobManager.updateTaskOriginalDescription(taskUuid, taskDescription);
         }
 
         const task = await this.jobManager.getTask(taskUuid);
