@@ -26,21 +26,25 @@ export class WebServer {
     // API Routes
     this.app.get('/api/jobs', this.getJobs.bind(this));
     this.app.get('/api/jobs/:jobId/tasks', this.getJobTasks.bind(this));
-    
+
     // Serve the main HTML page for all non-API routes
     this.app.get('/', (req, res) => {
       res.send(this.getMainHTML());
     });
   }
 
-  private async getJobs(req: express.Request, res: express.Response): Promise<void> {
+  private async getJobs(
+    req: express.Request,
+    res: express.Response
+  ): Promise<void> {
     try {
       const db = this.dbManager.getKysely();
-      const jobs = await db.selectFrom('jobs')
+      const jobs = await db
+        .selectFrom('jobs')
         .selectAll()
         .orderBy('created_at', 'desc')
         .execute();
-      
+
       res.json(jobs);
     } catch (error) {
       console.error('Error fetching jobs:', error);
@@ -48,26 +52,31 @@ export class WebServer {
     }
   }
 
-  private async getJobTasks(req: express.Request, res: express.Response): Promise<void> {
+  private async getJobTasks(
+    req: express.Request,
+    res: express.Response
+  ): Promise<void> {
     try {
       const { jobId } = req.params;
       const db = this.dbManager.getKysely();
-      
-      const job = await db.selectFrom('jobs')
+
+      const job = await db
+        .selectFrom('jobs')
         .selectAll()
         .where('uuid', '=', jobId)
         .executeTakeFirst();
-        
+
       if (!job) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
 
-      const tasks = await db.selectFrom('tasks')
+      const tasks = await db
+        .selectFrom('tasks')
         .selectAll()
         .where('job_uuid', '=', jobId)
         .execute();
-      
+
       res.json({ job, tasks });
     } catch (error) {
       console.error('Error fetching job tasks:', error);
@@ -306,11 +315,11 @@ export class WebServer {
                 flex-direction: column;
                 height: auto;
             }
-            
+
             .job-detail-content {
                 flex-direction: column;
             }
-            
+
             .tasks-sidebar {
                 width: 100%;
                 max-height: 300px;
@@ -370,14 +379,14 @@ export class WebServer {
                 renderJobs();
             } catch (error) {
                 console.error('Failed to load jobs:', error);
-                document.getElementById('jobs-container').innerHTML = 
+                document.getElementById('jobs-container').innerHTML =
                     '<div class="empty-state"><h3>Failed to load jobs</h3><p>Please refresh the page</p></div>';
             }
         }
 
         function renderJobs() {
             const container = document.getElementById('jobs-container');
-            
+
             if (jobs.length === 0) {
                 container.innerHTML = '<div class="empty-state"><h3>No jobs found</h3><p>Create some tasks with Ivan CLI to see them here.</p></div>';
                 return;
@@ -405,22 +414,22 @@ export class WebServer {
             try {
                 const response = await fetch(\`/api/jobs/\${jobId}/tasks\`);
                 const data = await response.json();
-                
+
                 currentJob = data.job;
                 currentTasks = data.tasks;
-                
+
                 document.getElementById('job-detail-title').textContent = \`\${data.job.description}\`;
                 document.getElementById('job-detail').style.display = 'block';
-                
+
                 renderTasks();
-                
+
                 // Clear task detail
-                document.getElementById('task-detail-container').innerHTML = 
+                document.getElementById('task-detail-container').innerHTML =
                     '<div class="empty-state"><h3>Select a task to view details</h3><p>Choose a task from the sidebar to see its execution log and details.</p></div>';
-                
+
                 // Scroll to top of page
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-                    
+
             } catch (error) {
                 console.error('Failed to load job tasks:', error);
             }
@@ -428,7 +437,7 @@ export class WebServer {
 
         function renderTasks() {
             const container = document.getElementById('tasks-container');
-            
+
             if (currentTasks.length === 0) {
                 container.innerHTML = '<div class="empty-state"><h3>No tasks found</h3></div>';
                 return;
@@ -451,7 +460,7 @@ export class WebServer {
             if (!task) return;
 
             const container = document.getElementById('task-detail-container');
-            
+
             container.innerHTML = \`
                 <div class="task-detail-header">
                     <div class="task-detail-title">\${task.description}</div>
@@ -472,7 +481,9 @@ export class WebServer {
   public start(): Promise<void> {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.port, () => {
-        console.log(`🌐 Ivan web server running at http://localhost:${this.port}`);
+        console.log(
+          `🌐 Ivan web server running at http://localhost:${this.port}`
+        );
         resolve();
       });
     });

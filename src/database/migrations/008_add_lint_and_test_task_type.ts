@@ -18,7 +18,7 @@ export const migration008: Migration = {
       FOREIGN KEY (job_uuid) REFERENCES jobs(uuid)
     )`,
     `INSERT INTO tasks_new (uuid, job_uuid, description, status, pr_link, execution_log, branch, type, comment_url, commit_sha)
-     SELECT uuid, job_uuid, description, status, pr_link, execution_log, branch, type, NULL as comment_url, commit_sha FROM tasks`,
+    SELECT uuid, job_uuid, description, status, pr_link, execution_log, branch, type, NULL as comment_url, commit_sha FROM tasks`,
     `DROP TABLE tasks`,
     `ALTER TABLE tasks_new RENAME TO tasks`
   ],
@@ -41,4 +41,3 @@ export const migration008: Migration = {
     `ALTER TABLE tasks_new RENAME TO tasks`
   ]
 };
-

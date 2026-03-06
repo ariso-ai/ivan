@@ -1,5 +1,9 @@
 import { ConfigManager } from '../config.js';
-import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
+import {
+  IGitManager,
+  IPRService,
+  IRepositoryManager
+} from './git-interfaces.js';
 import { GitManagerCLI } from './git-manager-cli.js';
 import { GitManagerPAT } from './git-manager-pat.js';
 import { PRServiceCLI } from './pr-service-cli.js';
@@ -26,7 +30,9 @@ export class ServiceFactory {
     if (authType === 'pat') {
       const pat = this.configManager.getGithubPat();
       if (!pat) {
-        throw new Error('GitHub PAT is not configured. Please run "ivan configure" and set your PAT.');
+        throw new Error(
+          'GitHub PAT is not configured. Please run "ivan configure" and set your PAT.'
+        );
       }
       return new GitManagerPAT(workingDir, pat);
     } else {
@@ -44,7 +50,9 @@ export class ServiceFactory {
     if (authType === 'pat') {
       const pat = this.configManager.getGithubPat();
       if (!pat) {
-        throw new Error('GitHub PAT is not configured. Please run "ivan configure" and set your PAT.');
+        throw new Error(
+          'GitHub PAT is not configured. Please run "ivan configure" and set your PAT.'
+        );
       }
       return new PRServicePAT(workingDir, pat);
     } else {
