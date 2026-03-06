@@ -16,11 +16,11 @@ export class DatabaseManager {
     this.dbPath = path.join(os.homedir(), '.ivan', 'db.sqlite');
     this.sqlite = new Database(this.dbPath);
     this.sqlite.pragma('journal_mode = WAL');
-    
+
     this.db = new Kysely<DatabaseSchema>({
       dialect: new SqliteDialect({
-        database: this.sqlite,
-      }),
+        database: this.sqlite
+      })
     });
   }
 
