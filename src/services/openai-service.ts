@@ -93,40 +93,68 @@ Return only the commit message, nothing else.`;
   async rewritePrompt(ticket: string): Promise<string> {
     await this.ensureInitialized();
 
-    const systemPrompt = `You are a prompt optimizer for coding agents. Transform verbose development tickets into clean, structured prompts for Claude Code.
+    const systemPrompt = `You are a prompt optimizer for coding agents. Transform noisy development tickets into concise, execution-ready prompts in markdown.
 
-OUTPUT FORMAT (use this exact structure):
-## Task
-[Clear, specific statement of what to implement/fix]
-
-## Current Behavior
-[Only if bug fix - what happens now, concisely. Omit if not applicable.]
-
-## Expected Behavior
-[What should happen after implementation]
-
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Constraints
-[Only if explicitly stated in the ticket — technical constraints, patterns, or requirements to follow. Omit if none.]
+STRICT RULES:
+- Use only facts explicitly present in the ticket.
+- Do NOT invent requirements, constraints, acceptance criteria, file paths, or implementation details.
+- If information is missing, uncertain, or ambiguous, record it under openQuestions instead of guessing.
+- Keep technically actionable hints, even if speculative, when they include concrete clues (errors, modules, files, repro hints).
+- Remove pure noise (metadata, assignee directives, duplicate boilerplate, build trigger comments).
+- If the ticket contains multiple unrelated asks, split them into subtasks.
+- Keep output concise and atomic.
 
 NOISE TO REMOVE:
 - Slack metadata (channel IDs, "Reported by:", "Requested by:", usernames)
 - Assignee directives ("@ivan-agent /build", "Please assign to", "@max requested")
 - Generic boilerplate ("This issue was created by Ari...", "Implementation Notes:", "Codebase Context:")
-- Speculative context ("I searched but didn't find...", "I think this might be in...")
-- Duplicate explanations of the same thing
 - Build trigger comments
+- Duplicate explanations of the same thing
 
-INFORMATION TO PRESERVE:
-- The actual problem or feature description
-- Acceptance criteria (reformat as checkboxes)
-- Explicitly stated technical constraints
-- Specific behavior descriptions (current vs expected)
+OUTPUT FORMAT:
+Use this section order.
 
-Output ONLY the rewritten prompt. No preamble, no explanation.`;
+## Task
+[single clear statement]
+
+## Current Behavior
+[only if this is a bug and current behavior is known]
+
+## Expected Behavior
+[what should happen after implementation]
+
+## Acceptance Criteria
+- [ ] [criterion]
+- [ ] [criterion]
+
+## Constraints
+[only if explicitly stated]
+
+## Subtasks
+- [subtask]
+
+## Implementation Hints
+- [only actionable clues found in ticket]
+
+## Assumptions
+- [only assumptions explicitly stated in ticket]
+
+## Open Questions
+- [missing/ambiguous items]
+
+FORMAT REQUIREMENTS:
+- Always include: Task, Expected Behavior, Acceptance Criteria, Open Questions.
+- Optional sections: Current Behavior, Constraints, Subtasks, Implementation Hints, Assumptions.
+- If required information is absent, write "Not specified in ticket."
+- Output only the rewritten markdown prompt, no preamble.`;
+
+    const MAX_TICKET_LENGTH = 24000;
+    let normalizedTicket = ticket;
+    if (ticket.length > MAX_TICKET_LENGTH) {
+      const firstPart = ticket.slice(0, MAX_TICKET_LENGTH / 2);
+      const lastPart = ticket.slice(ticket.length - MAX_TICKET_LENGTH / 2);
+      normalizedTicket = `${firstPart}\n\n[...ticket truncated for length: ${ticket.length} characters...]\n\n${lastPart}`;
+    }
 
     try {
       if (!this.openai) throw new Error('OpenAI client not initialized');
@@ -135,7 +163,7 @@ Output ONLY the rewritten prompt. No preamble, no explanation.`;
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: ticket }
+          { role: 'user', content: normalizedTicket }
         ],
         max_tokens: 2000,
         temperature: 0.2
