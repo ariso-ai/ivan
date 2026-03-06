@@ -110,11 +110,12 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       let lastMessage = '';
       const currentSessionId = sessionId || '';
 
-      // Build Claude CLI arguments - options must come before the prompt
+      // Build Claude CLI arguments - pass prompt as value of -p so it can't be
+      // consumed by greedy multi-value flags like --disallowed-tools
       const args: string[] = [
-        '--print', // Non-interactive mode
+        '-p', taskDescription,
         '--model', model,
-        '--permission-mode', 'bypassPermissions' // Skip permission prompts
+        '--permission-mode', 'bypassPermissions'
       ];
 
       // Add allowed tools if specified
@@ -131,9 +132,6 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       if (sessionId) {
         args.push('--resume', sessionId);
       }
-
-      // Add the task description as the last argument (after all options)
-      args.push(taskDescription);
 
       return new Promise((resolve, reject) => {
         // Spawn the Claude CLI process with inherited stdio for real-time output
