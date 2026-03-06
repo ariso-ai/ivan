@@ -8,7 +8,14 @@ import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 import { NonInteractiveConfig } from './types/non-interactive-config.js';
-import { readFileSync, existsSync, mkdirSync, copyFileSync, writeFileSync, unlinkSync } from 'fs';
+import {
+  readFileSync,
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  writeFileSync,
+  unlinkSync
+} from 'fs';
 import { execSync } from 'child_process';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
@@ -69,7 +76,9 @@ program
 
 program
   .command('configure-review-agent')
-  .description('Configure which bot to tag for PR review requests (default: @codex)')
+  .description(
+    'Configure which bot to tag for PR review requests (default: @codex)'
+  )
   .action(async () => {
     await configManager.promptForReviewAgent();
   });
@@ -147,28 +156,30 @@ program
   .option('-p, --port <port>', 'Port number for web server', '3000')
   .action(async (options) => {
     await runMigrations();
-    
+
     const port = parseInt(options.port);
     const webServer = new WebServer(port);
-    
+
     // Store PID for stop command
     const fs = await import('fs');
     const path = await import('path');
     const os = await import('os');
-    
+
     const pidFile = path.join(os.tmpdir(), `ivan-web-server-${port}.pid`);
     fs.writeFileSync(pidFile, process.pid.toString());
-    
+
     console.log(chalk.blue('🚀 Starting Ivan web server...'));
     console.log('');
-    
+
     await webServer.start();
     console.log(chalk.green('✅ Web server started successfully!'));
     console.log(chalk.cyan(`📱 Open http://localhost:${port} in your browser`));
     console.log(chalk.gray(`📝 Server PID: ${process.pid}`));
     console.log('');
-    console.log(chalk.gray('Press Ctrl+C or run "ivan web-stop" to stop the server'));
-    
+    console.log(
+      chalk.gray('Press Ctrl+C or run "ivan web-stop" to stop the server')
+    );
+
     // Handle graceful shutdown
     const cleanup = async () => {
       console.log('');
@@ -181,7 +192,7 @@ program
       await webServer.close();
       process.exit(0);
     };
-    
+
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
   });
@@ -192,23 +203,30 @@ program
   .argument('[pr-number]', 'Optional PR number to address')
   .option('--from-user <username>', 'Filter PRs by author GitHub username')
   .option('--yes', 'Skip interactive prompts and process all PRs')
-  .action(async (prNumber?: string, options?: { fromUser?: string; yes?: boolean }) => {
-    const wasConfigured = await checkConfiguration();
-    if (wasConfigured) {
-      console.log('');
-      console.log(chalk.cyan('Run "ivan address" again to address PR issues.'));
-      return;
+  .action(
+    async (
+      prNumber?: string,
+      options?: { fromUser?: string; yes?: boolean }
+    ) => {
+      const wasConfigured = await checkConfiguration();
+      if (wasConfigured) {
+        console.log('');
+        console.log(
+          chalk.cyan('Run "ivan address" again to address PR issues.')
+        );
+        return;
+      }
+
+      await runMigrations();
+
+      const addressExecutor = new AddressExecutor();
+      await addressExecutor.executeWorkflow(
+        prNumber ? parseInt(prNumber) : undefined,
+        options?.fromUser,
+        options?.yes
+      );
     }
-
-    await runMigrations();
-
-    const addressExecutor = new AddressExecutor();
-    await addressExecutor.executeWorkflow(
-      prNumber ? parseInt(prNumber) : undefined,
-      options?.fromUser,
-      options?.yes
-    );
-  });
+  );
 
 program
   .command('web-stop')
@@ -224,26 +242,32 @@ program
 
     try {
       if (!fs.existsSync(pidFile)) {
-        console.log(chalk.yellow(`⚠️  No web server found running on port ${port}`));
+        console.log(
+          chalk.yellow(`⚠️  No web server found running on port ${port}`)
+        );
         return;
       }
 
       const pidStr = fs.readFileSync(pidFile, 'utf8').trim();
       const pid = parseInt(pidStr);
 
-      console.log(chalk.blue(`🛑 Stopping web server on port ${port} (PID: ${pid})...`));
+      console.log(
+        chalk.blue(`🛑 Stopping web server on port ${port} (PID: ${pid})...`)
+      );
 
       // Try to kill the process
       try {
         process.kill(pid, 'SIGTERM');
 
         // Wait a moment for graceful shutdown
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Check if process still exists
         try {
           process.kill(pid, 0); // Signal 0 just checks if process exists
-          console.log(chalk.yellow('Process still running, sending SIGKILL...'));
+          console.log(
+            chalk.yellow('Process still running, sending SIGKILL...')
+          );
           process.kill(pid, 'SIGKILL');
         } catch (e) {
           // Process already terminated
@@ -253,22 +277,21 @@ program
         fs.unlinkSync(pidFile);
 
         console.log(chalk.green('✅ Web server stopped successfully!'));
-
       } catch (error: any) {
         if (error.code === 'ESRCH') {
-          console.log(chalk.yellow('⚠️  Process no longer exists, cleaning up...'));
+          console.log(
+            chalk.yellow('⚠️  Process no longer exists, cleaning up...')
+          );
           fs.unlinkSync(pidFile);
         } else {
           throw error;
         }
       }
-
     } catch (error) {
       console.error(chalk.red('❌ Failed to stop web server:'), error);
       process.exit(1);
     }
   });
-
 
 async function checkConfiguration(): Promise<boolean> {
   if (!configManager.isConfigured()) {
@@ -310,7 +333,11 @@ async function addIvanAction(): Promise<void> {
 
     // Check if workflow already exists
     if (existsSync(workflowPath)) {
-      console.log(chalk.yellow('⚠️  Ivan Agent workflow already exists at .github/workflows/ivanagent.yml'));
+      console.log(
+        chalk.yellow(
+          '⚠️  Ivan Agent workflow already exists at .github/workflows/ivanagent.yml'
+        )
+      );
       console.log(chalk.gray('Skipping workflow creation'));
       return;
     }
@@ -327,10 +354,13 @@ async function addIvanAction(): Promise<void> {
     // Stash any current changes
     console.log(chalk.blue('📦 Stashing current changes...'));
     try {
-      const stashResult = execSync('git stash push -m "Stashing changes before adding Ivan Action"', {
-        encoding: 'utf-8',
-        stdio: 'pipe'
-      });
+      const stashResult = execSync(
+        'git stash push -m "Stashing changes before adding Ivan Action"',
+        {
+          encoding: 'utf-8',
+          stdio: 'pipe'
+        }
+      );
       const hasStashed = !stashResult.includes('No local changes to save');
       if (hasStashed) {
         console.log(chalk.green('✓ Changes stashed'));
@@ -338,13 +368,17 @@ async function addIvanAction(): Promise<void> {
         console.log(chalk.gray('No changes to stash'));
       }
     } catch (error) {
-      console.log(chalk.yellow('⚠️  Could not stash changes, continuing anyway'));
+      console.log(
+        chalk.yellow('⚠️  Could not stash changes, continuing anyway')
+      );
     }
 
     // Checkout main branch
     console.log(chalk.blue('🔄 Checking out main branch...'));
     try {
-      const currentBranch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+      const currentBranch = execSync('git branch --show-current', {
+        encoding: 'utf-8'
+      }).trim();
       if (currentBranch !== 'main') {
         execSync('git checkout main', { stdio: 'pipe' });
         console.log(chalk.green('✓ Checked out main'));
@@ -363,7 +397,11 @@ async function addIvanAction(): Promise<void> {
       // Check if branch already exists
       try {
         execSync(`git rev-parse --verify ${branchName}`, { stdio: 'pipe' });
-        console.log(chalk.yellow(`⚠️  Branch ${branchName} already exists, switching to it`));
+        console.log(
+          chalk.yellow(
+            `⚠️  Branch ${branchName} already exists, switching to it`
+          )
+        );
         execSync(`git checkout ${branchName}`, { stdio: 'pipe' });
       } catch {
         // Branch doesn't exist, create it
@@ -385,7 +423,13 @@ async function addIvanAction(): Promise<void> {
     // Get the path to the workflow file in the package
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const packageWorkflowPath = join(__dirname, '..', '.github', 'workflows', 'ivanagent.yml');
+    const packageWorkflowPath = join(
+      __dirname,
+      '..',
+      '.github',
+      'workflows',
+      'ivanagent.yml'
+    );
 
     // Copy the workflow file
     console.log(chalk.blue('📋 Adding workflow file...'));
@@ -399,7 +443,9 @@ async function addIvanAction(): Promise<void> {
 
     // Commit the changes
     console.log(chalk.blue('💾 Committing changes...'));
-    execSync('git commit -m "Add Ivan Agent GitHub Action workflow"', { stdio: 'pipe' });
+    execSync('git commit -m "Add Ivan Agent GitHub Action workflow"', {
+      stdio: 'pipe'
+    });
     console.log(chalk.green('✓ Changes committed'));
 
     // Push the branch
@@ -415,13 +461,20 @@ async function addIvanAction(): Promise<void> {
     // Get org and repo from git remote
     let orgAndRepo = 'your-org/your-repo';
     try {
-      const remoteUrl = execSync('git config --get remote.origin.url', { encoding: 'utf-8', stdio: 'pipe' }).trim();
-      const match = remoteUrl.match(/github\.com[:/](.+?)\.git$/) || remoteUrl.match(/github\.com[:/](.+?)$/);
+      const remoteUrl = execSync('git config --get remote.origin.url', {
+        encoding: 'utf-8',
+        stdio: 'pipe'
+      }).trim();
+      const match =
+        remoteUrl.match(/github\.com[:/](.+?)\.git$/) ||
+        remoteUrl.match(/github\.com[:/](.+?)$/);
       if (match) {
         orgAndRepo = match[1];
       }
     } catch {
-      console.log(chalk.yellow('⚠️  Could not determine org/repo from git remote'));
+      console.log(
+        chalk.yellow('⚠️  Could not determine org/repo from git remote')
+      );
     }
 
     // Create PR
@@ -488,29 +541,75 @@ Once the PR is merged and secrets are configured, you can comment \`@ivan-agent 
       console.log('');
       console.log(chalk.yellow.bold('📋 Setup Instructions'));
       console.log('');
-      console.log(chalk.white('After merging this PR, follow these steps to configure the Ivan Agent:'));
+      console.log(
+        chalk.white(
+          'After merging this PR, follow these steps to configure the Ivan Agent:'
+        )
+      );
       console.log('');
       console.log(chalk.cyan.bold('1. Create GitHub Environment'));
-      console.log(chalk.white(`   Add a new environment in your GitHub repo called ${chalk.bold('ivan')} by visiting:`));
-      console.log(chalk.blue(`   https://github.com/${orgAndRepo}/settings/environments/new`));
+      console.log(
+        chalk.white(
+          `   Add a new environment in your GitHub repo called ${chalk.bold('ivan')} by visiting:`
+        )
+      );
+      console.log(
+        chalk.blue(
+          `   https://github.com/${orgAndRepo}/settings/environments/new`
+        )
+      );
       console.log('');
-      console.log(chalk.cyan.bold('2. Create Fine-Grained Personal Access Token'));
-      console.log(chalk.white('   Create a new fine-grained personal access token for the user who will open PRs'));
-      console.log(chalk.white('   on Ivan\'s behalf. It should have the following scopes:'));
-      console.log(chalk.white(`     • ${chalk.bold('Contents')}: Read and write`));
-      console.log(chalk.white(`     • ${chalk.bold('Pull requests')}: Read and write`));
+      console.log(
+        chalk.cyan.bold('2. Create Fine-Grained Personal Access Token')
+      );
+      console.log(
+        chalk.white(
+          '   Create a new fine-grained personal access token for the user who will open PRs'
+        )
+      );
+      console.log(
+        chalk.white("   on Ivan's behalf. It should have the following scopes:")
+      );
+      console.log(
+        chalk.white(`     • ${chalk.bold('Contents')}: Read and write`)
+      );
+      console.log(
+        chalk.white(`     • ${chalk.bold('Pull requests')}: Read and write`)
+      );
       console.log(chalk.white('   You can create it at:'));
-      console.log(chalk.blue('   https://github.com/settings/personal-access-tokens/new'));
+      console.log(
+        chalk.blue('   https://github.com/settings/personal-access-tokens/new')
+      );
       console.log('');
       console.log(chalk.cyan.bold('3. Add Environment Secrets'));
-      console.log(chalk.white(`   Add the environment variables to the ${chalk.bold('ivan')} environment:`));
-      console.log(chalk.white(`     • ${chalk.bold('ANTHROPIC_KEY')}: Your Anthropic API key`));
-      console.log(chalk.white(`     • ${chalk.bold('OPEN_AI_KEY')}: Your OpenAI API key`));
-      console.log(chalk.white(`     • ${chalk.bold('PAT')}: The fine-grained personal access token from step 2`));
+      console.log(
+        chalk.white(
+          `   Add the environment variables to the ${chalk.bold('ivan')} environment:`
+        )
+      );
+      console.log(
+        chalk.white(
+          `     • ${chalk.bold('ANTHROPIC_KEY')}: Your Anthropic API key`
+        )
+      );
+      console.log(
+        chalk.white(`     • ${chalk.bold('OPEN_AI_KEY')}: Your OpenAI API key`)
+      );
+      console.log(
+        chalk.white(
+          `     • ${chalk.bold('PAT')}: The fine-grained personal access token from step 2`
+        )
+      );
       console.log('');
       console.log(chalk.cyan.bold('4. Start Using Ivan'));
-      console.log(chalk.white(`   Once the PR is merged, you can comment ${chalk.bold('@ivan-agent /build')} on any issue`));
-      console.log(chalk.white('   in GitHub and it will automatically be worked on!'));
+      console.log(
+        chalk.white(
+          `   Once the PR is merged, you can comment ${chalk.bold('@ivan-agent /build')} on any issue`
+        )
+      );
+      console.log(
+        chalk.white('   in GitHub and it will automatically be worked on!')
+      );
       console.log('');
     } catch (error) {
       // Clean up temp file on error
@@ -518,10 +617,11 @@ Once the PR is merged and secrets are configured, you can comment \`@ivan-agent 
         unlinkSync(tempFile);
       } catch {}
       console.log(chalk.red('❌ Failed to create pull request'));
-      console.log(chalk.yellow('You can create it manually from the branch:', branchName));
+      console.log(
+        chalk.yellow('You can create it manually from the branch:', branchName)
+      );
       throw error;
     }
-
   } catch (error) {
     console.error(chalk.red('❌ Error adding Ivan Action:'), error);
     process.exit(1);
@@ -545,8 +645,14 @@ async function runNonInteractive(configInput: string): Promise<void> {
     }
 
     // Validate config
-    if (!config.tasks || !Array.isArray(config.tasks) || config.tasks.length === 0) {
-      throw new Error('Config must have a "tasks" array with at least one task');
+    if (
+      !config.tasks ||
+      !Array.isArray(config.tasks) ||
+      config.tasks.length === 0
+    ) {
+      throw new Error(
+        'Config must have a "tasks" array with at least one task'
+      );
     }
 
     console.log(chalk.blue.bold('🤖 Running in non-interactive mode'));
@@ -556,7 +662,9 @@ async function runNonInteractive(configInput: string): Promise<void> {
     // Check configuration
     const wasConfigured = await checkConfiguration();
     if (wasConfigured) {
-      throw new Error('Ivan needs to be configured. Please run "ivan reconfigure" first.');
+      throw new Error(
+        'Ivan needs to be configured. Please run "ivan reconfigure" first.'
+      );
     }
 
     await runMigrations();
@@ -571,9 +679,14 @@ async function runNonInteractive(configInput: string): Promise<void> {
     await taskExecutor.executeNonInteractiveWorkflow(config);
 
     console.log('');
-    console.log(chalk.green.bold('✅ Non-interactive execution completed successfully!'));
+    console.log(
+      chalk.green.bold('✅ Non-interactive execution completed successfully!')
+    );
   } catch (error) {
-    console.error(chalk.red.bold('❌ Non-interactive execution failed:'), error);
+    console.error(
+      chalk.red.bold('❌ Non-interactive execution failed:'),
+      error
+    );
     throw error;
   }
 }
@@ -583,7 +696,9 @@ async function main() {
     const args = process.argv.slice(2);
 
     // Check for -c/--config flag
-    const configFlagIndex = args.findIndex(arg => arg === '-c' || arg === '--config');
+    const configFlagIndex = args.findIndex(
+      (arg) => arg === '-c' || arg === '--config'
+    );
     if (configFlagIndex !== -1 && args[configFlagIndex + 1]) {
       const configPath = args[configFlagIndex + 1];
       await runNonInteractive(configPath);
@@ -591,7 +706,24 @@ async function main() {
     }
 
     // Check if first argument is a task description (not a recognized command)
-    const recognizedCommands = ['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'];
+    const recognizedCommands = [
+      'reconfigure',
+      'config-tools',
+      'config-blocked-tools',
+      'edit-repo-instructions',
+      'show-config',
+      'choose-model',
+      'configure-executor',
+      'configure-review-agent',
+      'add-action',
+      'web',
+      'web-stop',
+      'address',
+      '--help',
+      '-h',
+      '--version',
+      '-V'
+    ];
     if (args.length > 0 && !recognizedCommands.includes(args[0])) {
       // Treat the first argument as a task description
       const taskDescription = args[0];
@@ -604,7 +736,9 @@ async function main() {
       // Check configuration before running
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
-        throw new Error('Ivan needs to be configured. Please run "ivan reconfigure" first.');
+        throw new Error(
+          'Ivan needs to be configured. Please run "ivan reconfigure" first.'
+        );
       }
 
       await runMigrations();

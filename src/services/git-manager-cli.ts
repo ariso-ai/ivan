@@ -49,10 +49,12 @@ export class GitManagerCLI implements IGitManager {
 
   validateGitHubCliInstallation(): void {
     if (!this.isGitHubCliInstalled()) {
-      throw new Error('GitHub CLI (gh) is not installed or not in PATH. Please install it first:\n' +
-        '  macOS: brew install gh\n' +
-        '  Ubuntu/Debian: sudo apt install gh\n' +
-        '  Or visit: https://cli.github.com/');
+      throw new Error(
+        'GitHub CLI (gh) is not installed or not in PATH. Please install it first:\n' +
+          '  macOS: brew install gh\n' +
+          '  Ubuntu/Debian: sudo apt install gh\n' +
+          '  Or visit: https://cli.github.com/'
+      );
     }
   }
 
@@ -60,7 +62,9 @@ export class GitManagerCLI implements IGitManager {
     try {
       execSync('gh auth status', { stdio: 'ignore' });
     } catch {
-      throw new Error('GitHub CLI is not authenticated. Please run "gh auth login" first.');
+      throw new Error(
+        'GitHub CLI is not authenticated. Please run "gh auth login" first.'
+      );
     }
   }
 
@@ -73,7 +77,9 @@ export class GitManagerCLI implements IGitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      console.log(chalk.green(`✅ Created and switched to branch: ${branchName}`));
+      console.log(
+        chalk.green(`✅ Created and switched to branch: ${branchName}`)
+      );
     } catch (error) {
       throw new Error(`Failed to create branch ${branchName}: ${error}`);
     }
@@ -98,11 +104,11 @@ export class GitManagerCLI implements IGitManager {
       });
       // Escape all shell special characters including backticks, quotes, and dollar signs
       const escapedMessage = message
-        .replace(/\\/g, '\\\\')  // Escape backslashes first
-        .replace(/"/g, '\\"')    // Escape double quotes
-        .replace(/`/g, '\\`')    // Escape backticks
-        .replace(/\$/g, '\\$')   // Escape dollar signs
-        .replace(/!/g, '\\!');   // Escape exclamation marks
+        .replace(/\\/g, '\\\\') // Escape backslashes first
+        .replace(/"/g, '\\"') // Escape double quotes
+        .replace(/`/g, '\\`') // Escape backticks
+        .replace(/\$/g, '\\$') // Escape dollar signs
+        .replace(/!/g, '\\!'); // Escape exclamation marks
       const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
       execSync(`git commit -m "${commitMessage}"`, {
         cwd: this.workingDir,
@@ -120,11 +126,11 @@ export class GitManagerCLI implements IGitManager {
     try {
       // Escape all shell special characters including backticks, quotes, and dollar signs
       const escapedMessage = message
-        .replace(/\\/g, '\\\\')  // Escape backslashes first
-        .replace(/"/g, '\\"')    // Escape double quotes
-        .replace(/`/g, '\\`')    // Escape backticks
-        .replace(/\$/g, '\\$')   // Escape dollar signs
-        .replace(/!/g, '\\!');   // Escape exclamation marks
+        .replace(/\\/g, '\\\\') // Escape backslashes first
+        .replace(/"/g, '\\"') // Escape double quotes
+        .replace(/`/g, '\\`') // Escape backticks
+        .replace(/\$/g, '\\$') // Escape dollar signs
+        .replace(/!/g, '\\!'); // Escape exclamation marks
       const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
       execSync(`git commit --allow-empty -m "${commitMessage}"`, {
         cwd: this.workingDir,
@@ -176,9 +182,14 @@ export class GitManagerCLI implements IGitManager {
     if (finalBody.length > MAX_BODY_LENGTH) {
       // Truncate the original body to fit within the limit, accounting for the attribution
       const attributionText = '\n\n---\n*Co-authored with @ivan-agent*';
-      const truncationText = '\n\n... (description truncated to fit GitHub limits)';
-      const maxOriginalBodyLength = MAX_BODY_LENGTH - attributionText.length - truncationText.length;
-      finalBody = body.substring(0, maxOriginalBodyLength) + truncationText + attributionText;
+      const truncationText =
+        '\n\n... (description truncated to fit GitHub limits)';
+      const maxOriginalBodyLength =
+        MAX_BODY_LENGTH - attributionText.length - truncationText.length;
+      finalBody =
+        body.substring(0, maxOriginalBodyLength) +
+        truncationText +
+        attributionText;
     }
 
     // Write PR body to a temporary file to avoid shell escaping issues
@@ -187,14 +198,21 @@ export class GitManagerCLI implements IGitManager {
     writeFileSync(tmpFile, finalBody, 'utf8');
 
     try {
-      const escapedTitle = title.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+      const escapedTitle = title
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/`/g, '\\`')
+        .replace(/\$/g, '\\$');
 
       // Create PR and optionally assign to ivan-agent (will fail silently if user doesn't have permissions)
-      const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}" --assignee ivan-agent`, {
-        cwd: this.workingDir,
-        encoding: 'utf8',
-        stdio: 'pipe'
-      });
+      const result = execSync(
+        `gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}" --assignee ivan-agent`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf8',
+          stdio: 'pipe'
+        }
+      );
 
       const prUrl = result.trim();
       console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
@@ -213,12 +231,19 @@ export class GitManagerCLI implements IGitManager {
     } catch {
       // If assignee fails, try without it
       try {
-        const escapedTitle = title.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-        const result = execSync(`gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}"`, {
-          cwd: this.workingDir,
-          encoding: 'utf8',
-          stdio: 'pipe'
-        });
+        const escapedTitle = title
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/`/g, '\\`')
+          .replace(/\$/g, '\\$');
+        const result = execSync(
+          `gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}"`,
+          {
+            cwd: this.workingDir,
+            encoding: 'utf8',
+            stdio: 'pipe'
+          }
+        );
 
         const prUrl = result.trim();
         console.log(chalk.green(`✅ Created pull request: ${prUrl}`));
@@ -250,14 +275,14 @@ export class GitManagerCLI implements IGitManager {
           cwd: this.workingDir,
           encoding: 'utf8'
         });
-        return files.split('\n').filter(line => line.trim());
+        return files.split('\n').filter((line) => line.trim());
       } else if (from) {
         // Get files changed from a specific ref to current
         const files = execSync(`git diff --name-only ${from}`, {
           cwd: this.workingDir,
           encoding: 'utf8'
         });
-        return files.split('\n').filter(line => line.trim());
+        return files.split('\n').filter((line) => line.trim());
       } else {
         // Default: Check both staged and unstaged changes, plus untracked files
         const status = execSync('git status --porcelain', {
@@ -270,10 +295,14 @@ export class GitManagerCLI implements IGitManager {
         }
 
         // Parse git status output to get file names
-        const files = status.trim().split('\n').map(line => {
-          // Remove status codes and get the file path
-          return line.substring(3).trim();
-        }).filter(Boolean);
+        const files = status
+          .trim()
+          .split('\n')
+          .map((line) => {
+            // Remove status codes and get the file path
+            return line.substring(3).trim();
+          })
+          .filter(Boolean);
 
         return files;
       }
@@ -445,10 +474,13 @@ export class GitManagerCLI implements IGitManager {
 
   async getPRInfo(prNumber: number): Promise<PRInfo> {
     try {
-      const prJson = execSync(`gh pr view ${prNumber} --json headRefName,number,title,url`, {
-        cwd: this.workingDir,
-        encoding: 'utf8'
-      });
+      const prJson = execSync(
+        `gh pr view ${prNumber} --json headRefName,number,title,url`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        }
+      );
       return JSON.parse(prJson);
     } catch (error) {
       throw new Error(`Failed to get PR info for #${prNumber}: ${error}`);
@@ -469,13 +501,22 @@ export class GitManagerCLI implements IGitManager {
       });
 
       // Get list of changed files between main and current branch
-      const changedFiles = execSync(`git diff --name-only ${mainBranch}...${currentBranch}`, {
-        cwd: this.workingDir,
-        encoding: 'utf8'
-      }).trim().split('\n').filter(f => f.trim());
+      const changedFiles = execSync(
+        `git diff --name-only ${mainBranch}...${currentBranch}`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf8'
+        }
+      )
+        .trim()
+        .split('\n')
+        .filter((f) => f.trim());
 
       // Generate specific review instructions using OpenAI
-      const reviewInstructions = await this.generateReviewInstructions(diff, changedFiles);
+      const reviewInstructions = await this.generateReviewInstructions(
+        diff,
+        changedFiles
+      );
 
       // Get configured review agent
       const reviewAgent = this.configManager.getReviewAgent();
@@ -483,31 +524,50 @@ export class GitManagerCLI implements IGitManager {
       // Add the review comment
       const reviewComment = `${reviewAgent} ${reviewInstructions}`;
 
-      execSync(`gh pr comment ${prUrl} --body "${reviewComment.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`, {
-        cwd: this.workingDir,
-        stdio: 'pipe'
-      });
-      console.log(chalk.green(`✅ Added specific review request for ${reviewAgent}`));
+      execSync(
+        `gh pr comment ${prUrl} --body "${reviewComment.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$')}"`,
+        {
+          cwd: this.workingDir,
+          stdio: 'pipe'
+        }
+      );
+      console.log(
+        chalk.green(`✅ Added specific review request for ${reviewAgent}`)
+      );
     } catch (error) {
       console.log(chalk.yellow(`⚠️ Could not add review comment: ${error}`));
       // Fallback to generic review request
       try {
         const reviewAgent = this.configManager.getReviewAgent();
-        execSync(`gh pr comment ${prUrl} --body "${reviewAgent} please review the changes and verify the implementation meets requirements"`, {
-          cwd: this.workingDir,
-          stdio: 'pipe'
-        });
+        execSync(
+          `gh pr comment ${prUrl} --body "${reviewAgent} please review the changes and verify the implementation meets requirements"`,
+          {
+            cwd: this.workingDir,
+            stdio: 'pipe'
+          }
+        );
       } catch (fallbackError) {
-        console.log(chalk.yellow(`⚠️ Could not add fallback review comment: ${fallbackError}`));
+        console.log(
+          chalk.yellow(
+            `⚠️ Could not add fallback review comment: ${fallbackError}`
+          )
+        );
       }
     }
   }
 
-  private async generateReviewInstructions(diff: string, changedFiles: string[]): Promise<string> {
+  private async generateReviewInstructions(
+    diff: string,
+    changedFiles: string[]
+  ): Promise<string> {
     try {
       // Check if we have actual diff content
       if (!diff || diff.trim().length === 0) {
-        console.log(chalk.yellow('⚠️ No diff found between branches for review instructions'));
+        console.log(
+          chalk.yellow(
+            '⚠️ No diff found between branches for review instructions'
+          )
+        );
         return 'please review the changes in this PR and verify the implementation meets requirements';
       }
 
@@ -536,7 +596,8 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful assistant that generates specific code review requests for new pull requests.'
+            content:
+              'You are a helpful assistant that generates specific code review requests for new pull requests.'
           },
           {
             role: 'user',
@@ -568,7 +629,10 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       // Create worktree directory inside the repo's parent directory
       // This ensures it has the same permissions as the main repo
       const repoName = path.basename(this.originalWorkingDir);
-      const worktreeBasePath = path.join(path.dirname(this.originalWorkingDir), `.${repoName}-ivan-worktrees`);
+      const worktreeBasePath = path.join(
+        path.dirname(this.originalWorkingDir),
+        `.${repoName}-ivan-worktrees`
+      );
       const worktreePath = path.join(worktreeBasePath, branchName);
 
       // Ensure the parent directory exists with proper permissions
@@ -611,7 +675,9 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
       // Always fetch to get the latest remote state
       try {
-        console.log(chalk.gray(`Fetching latest changes for branch: ${branchName}`));
+        console.log(
+          chalk.gray(`Fetching latest changes for branch: ${branchName}`)
+        );
         execSync(`git fetch origin "${escapedBranchName}"`, {
           cwd: this.originalWorkingDir,
           stdio: 'pipe'
@@ -628,7 +694,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           branchExistsOnRemote = false;
         }
       } catch {
-        console.log(chalk.gray('Branch doesn\'t exist on remote yet'));
+        console.log(chalk.gray("Branch doesn't exist on remote yet"));
         branchExistsOnRemote = false;
       }
 
@@ -636,14 +702,21 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       if (branchExistsOnRemote) {
         try {
           // Update or create the local branch to match the remote
-          execSync(`git branch -f "${escapedBranchName}" origin/"${escapedBranchName}"`, {
-            cwd: this.originalWorkingDir,
-            stdio: 'pipe'
-          });
+          execSync(
+            `git branch -f "${escapedBranchName}" origin/"${escapedBranchName}"`,
+            {
+              cwd: this.originalWorkingDir,
+              stdio: 'pipe'
+            }
+          );
           branchExists = true;
-          console.log(chalk.green('✅ Updated local branch with latest remote changes'));
+          console.log(
+            chalk.green('✅ Updated local branch with latest remote changes')
+          );
         } catch (updateError) {
-          console.log(chalk.yellow(`⚠️  Could not update local branch: ${updateError}`));
+          console.log(
+            chalk.yellow(`⚠️  Could not update local branch: ${updateError}`)
+          );
         }
       }
 
@@ -651,35 +724,59 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       try {
         if (branchExists) {
           // Branch exists, create worktree from it
-          console.log(chalk.gray(`Creating worktree from existing branch: ${branchName}`));
+          console.log(
+            chalk.gray(`Creating worktree from existing branch: ${branchName}`)
+          );
           execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
             cwd: this.originalWorkingDir,
             stdio: 'pipe'
           });
         } else {
           // Branch doesn't exist, create new branch in worktree
-          console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
-          execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
-            cwd: this.originalWorkingDir,
-            stdio: 'pipe'
-          });
+          console.log(
+            chalk.gray(`Creating new branch in worktree: ${branchName}`)
+          );
+          execSync(
+            `git worktree add -b "${escapedBranchName}" "${escapedPath}"`,
+            {
+              cwd: this.originalWorkingDir,
+              stdio: 'pipe'
+            }
+          );
         }
       } catch (worktreeError: unknown) {
-        const errorMessage = worktreeError instanceof Error ? worktreeError.message : String(worktreeError);
+        const errorMessage =
+          worktreeError instanceof Error
+            ? worktreeError.message
+            : String(worktreeError);
 
         // Handle "already used by worktree" error - branch is checked out elsewhere
-        if (errorMessage.includes('is already used by worktree') || errorMessage.includes('is already checked out')) {
-          console.log(chalk.yellow(`⚠️  Branch ${branchName} is already checked out elsewhere. Creating worktree with --force...`));
+        if (
+          errorMessage.includes('is already used by worktree') ||
+          errorMessage.includes('is already checked out')
+        ) {
+          console.log(
+            chalk.yellow(
+              `⚠️  Branch ${branchName} is already checked out elsewhere. Creating worktree with --force...`
+            )
+          );
 
           // Use --force to allow checking out a branch that's already checked out
-          execSync(`git worktree add --force "${escapedPath}" "${escapedBranchName}"`, {
-            cwd: this.originalWorkingDir,
-            stdio: 'pipe'
-          });
+          execSync(
+            `git worktree add --force "${escapedPath}" "${escapedBranchName}"`,
+            {
+              cwd: this.originalWorkingDir,
+              stdio: 'pipe'
+            }
+          );
         }
         // Handle "already exists" error - worktree path already exists
         else if (errorMessage.includes('already exists')) {
-          console.log(chalk.yellow('⚠️  Worktree already exists. Removing and recreating...'));
+          console.log(
+            chalk.yellow(
+              '⚠️  Worktree already exists. Removing and recreating...'
+            )
+          );
 
           // Force remove the existing worktree
           try {
@@ -699,31 +796,52 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
           // Retry creating the worktree (with --force if branch exists)
           if (branchExists) {
-            console.log(chalk.gray(`Recreating worktree from existing branch: ${branchName}`));
+            console.log(
+              chalk.gray(
+                `Recreating worktree from existing branch: ${branchName}`
+              )
+            );
             // Try with --force first in case the branch is checked out elsewhere
             try {
-              execSync(`git worktree add --force "${escapedPath}" "${escapedBranchName}"`, {
-                cwd: this.originalWorkingDir,
-                stdio: 'pipe'
-              });
-            } catch (retryError: unknown) {
-              const retryErrorMessage = retryError instanceof Error ? retryError.message : String(retryError);
-              // If --force fails, it might be due to a different issue, so try without it
-              if (!retryErrorMessage.includes('is already used by worktree') && !retryErrorMessage.includes('is already checked out')) {
-                execSync(`git worktree add "${escapedPath}" "${escapedBranchName}"`, {
+              execSync(
+                `git worktree add --force "${escapedPath}" "${escapedBranchName}"`,
+                {
                   cwd: this.originalWorkingDir,
                   stdio: 'pipe'
-                });
+                }
+              );
+            } catch (retryError: unknown) {
+              const retryErrorMessage =
+                retryError instanceof Error
+                  ? retryError.message
+                  : String(retryError);
+              // If --force fails, it might be due to a different issue, so try without it
+              if (
+                !retryErrorMessage.includes('is already used by worktree') &&
+                !retryErrorMessage.includes('is already checked out')
+              ) {
+                execSync(
+                  `git worktree add "${escapedPath}" "${escapedBranchName}"`,
+                  {
+                    cwd: this.originalWorkingDir,
+                    stdio: 'pipe'
+                  }
+                );
               } else {
                 throw retryError;
               }
             }
           } else {
-            console.log(chalk.gray(`Creating new branch in worktree: ${branchName}`));
-            execSync(`git worktree add -b "${escapedBranchName}" "${escapedPath}"`, {
-              cwd: this.originalWorkingDir,
-              stdio: 'pipe'
-            });
+            console.log(
+              chalk.gray(`Creating new branch in worktree: ${branchName}`)
+            );
+            execSync(
+              `git worktree add -b "${escapedBranchName}" "${escapedPath}"`,
+              {
+                cwd: this.originalWorkingDir,
+                stdio: 'pipe'
+              }
+            );
           }
         } else {
           throw worktreeError;
@@ -734,7 +852,9 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       try {
         await fs.access(worktreePath);
       } catch {
-        throw new Error(`Worktree was not created successfully at ${worktreePath}`);
+        throw new Error(
+          `Worktree was not created successfully at ${worktreePath}`
+        );
       }
 
       // Set proper permissions - make sure the current user owns all files
@@ -754,7 +874,11 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             stdio: 'ignore'
           });
         } catch (permError) {
-          console.log(chalk.yellow(`⚠️ Could not set optimal permissions on worktree: ${permError}`));
+          console.log(
+            chalk.yellow(
+              `⚠️ Could not set optimal permissions on worktree: ${permError}`
+            )
+          );
           // Try simpler chmod as fallback
           try {
             execSync(`chmod -R 755 "${escapedPath}"`, {
@@ -790,7 +914,11 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           });
         }
       } catch (configError) {
-        console.log(chalk.yellow(`⚠️ Could not copy git config to worktree: ${configError}`));
+        console.log(
+          chalk.yellow(
+            `⚠️ Could not copy git config to worktree: ${configError}`
+          )
+        );
       }
 
       // Check if package.json exists and run npm install if it does
@@ -798,7 +926,9 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         const packageJsonPath = path.join(worktreePath, 'package.json');
         await fs.access(packageJsonPath);
 
-        console.log(chalk.cyan('📦 Found package.json, installing dependencies...'));
+        console.log(
+          chalk.cyan('📦 Found package.json, installing dependencies...')
+        );
         execSync('npm install', {
           cwd: worktreePath,
           stdio: 'inherit'
@@ -806,21 +936,32 @@ Return ONLY the review request text, without any prefix like "Please review" sin
         console.log(chalk.green('✅ Dependencies installed successfully'));
       } catch {
         // No package.json or npm install failed, continue without error
-        console.log(chalk.gray('ℹ️  No package.json found or npm install not needed'));
+        console.log(
+          chalk.gray('ℹ️  No package.json found or npm install not needed')
+        );
       }
 
       console.log(chalk.green(`✅ Created worktree at: ${worktreePath}`));
-      console.log(chalk.gray('You can continue working in your main repository while Ivan works here'));
+      console.log(
+        chalk.gray(
+          'You can continue working in your main repository while Ivan works here'
+        )
+      );
       return worktreePath;
     } catch (error) {
-      throw new Error(`Failed to create worktree for branch ${branchName}: ${error}`);
+      throw new Error(
+        `Failed to create worktree for branch ${branchName}: ${error}`
+      );
     }
   }
 
   async removeWorktree(branchName: string): Promise<void> {
     try {
       const repoName = path.basename(this.originalWorkingDir);
-      const worktreeBasePath = path.join(path.dirname(this.originalWorkingDir), `.${repoName}-ivan-worktrees`);
+      const worktreeBasePath = path.join(
+        path.dirname(this.originalWorkingDir),
+        `.${repoName}-ivan-worktrees`
+      );
       const worktreePath = path.join(worktreeBasePath, branchName);
       const escapedPath = worktreePath.replace(/"/g, '\\"');
 
@@ -862,6 +1003,10 @@ Return ONLY the review request text, without any prefix like "Please review" sin
 
   getWorktreePath(branchName: string): string {
     const repoName = path.basename(this.originalWorkingDir);
-    return path.join(path.dirname(this.originalWorkingDir), `.${repoName}-ivan-worktrees`, branchName);
+    return path.join(
+      path.dirname(this.originalWorkingDir),
+      `.${repoName}-ivan-worktrees`,
+      branchName
+    );
   }
 }

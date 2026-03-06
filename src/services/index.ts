@@ -6,7 +6,11 @@ export { OpenAIService } from './openai-service.js';
 export { TaskExecutor } from './task-executor.js';
 
 // Export interfaces
-export type { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
+export type {
+  IGitManager,
+  IPRService,
+  IRepositoryManager
+} from './git-interfaces.js';
 
 // Export CLI implementations
 export { GitManagerCLI } from './git-manager-cli.js';
@@ -19,7 +23,12 @@ export { PRServicePAT } from './pr-service-pat.js';
 export { RepositoryManagerPAT } from './repository-manager-pat.js';
 
 // Export factory functions
-export { ServiceFactory, createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
+export {
+  ServiceFactory,
+  createGitManager,
+  createPRService,
+  createRepositoryManager
+} from './service-factory.js';
 
 // Export GitHub API client
 export { GitHubAPIClient } from './github-api-client.js';

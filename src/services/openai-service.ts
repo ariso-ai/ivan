@@ -37,14 +37,17 @@ export class OpenAIService {
     return this.openai;
   }
 
-  async generateCommitMessage(diff: string, changedFiles: string[]): Promise<string> {
+  async generateCommitMessage(
+    diff: string,
+    changedFiles: string[]
+  ): Promise<string> {
     await this.ensureInitialized();
 
     const prompt = `
 Generate a concise git commit message for the following changes.
 
 Changed files:
-${changedFiles.map(file => `- ${file}`).join('\n')}
+${changedFiles.map((file) => `- ${file}`).join('\n')}
 
 Git diff:
 \`\`\`
@@ -87,7 +90,11 @@ Return only the commit message, nothing else.`;
     }
   }
 
-  async generatePullRequestDescription(taskDescription: string, diff: string, changedFiles: string[]): Promise<{ title: string; body: string }> {
+  async generatePullRequestDescription(
+    taskDescription: string,
+    diff: string,
+    changedFiles: string[]
+  ): Promise<{ title: string; body: string }> {
     await this.ensureInitialized();
 
     // Truncate diff if it's too large (keep under 30K characters for the prompt)
@@ -110,7 +117,7 @@ Generate a pull request title and description for the following task and changes
 Task: ${taskDescription}
 
 Changed files:
-${changedFiles.map(file => `- ${file}`).join('\n')}
+${changedFiles.map((file) => `- ${file}`).join('\n')}
 
 Git diff${diffWasTruncated ? ' (truncated for brevity)' : ''}:
 \`\`\`
@@ -180,10 +187,14 @@ Keep the description focused and concise. Do NOT include the full diff in the de
       // Ensure the PR body doesn't exceed GitHub's limit (65536 characters)
       // Leave some room for the attribution footer that GitManager will add
       const MAX_BODY_LENGTH = 65000;
-      let body = parsed.body || `Implemented: ${taskDescription}\n\n🤖 Generated with Ivan`;
+      let body =
+        parsed.body ||
+        `Implemented: ${taskDescription}\n\n🤖 Generated with Ivan`;
 
       if (body.length > MAX_BODY_LENGTH) {
-        body = body.substring(0, MAX_BODY_LENGTH) + '\n\n... (description truncated)';
+        body =
+          body.substring(0, MAX_BODY_LENGTH) +
+          '\n\n... (description truncated)';
       }
 
       return {
@@ -199,7 +210,7 @@ Keep the description focused and concise. Do NOT include the full diff in the de
       }
       return {
         title: fallbackTitle,
-        body: `Implemented: ${taskDescription}\n\nChanged files:\n${changedFiles.map(file => `- ${file}`).join('\n')}\n\n🤖 Generated with Ivan`
+        body: `Implemented: ${taskDescription}\n\nChanged files:\n${changedFiles.map((file) => `- ${file}`).join('\n')}\n\n🤖 Generated with Ivan`
       };
     }
   }
