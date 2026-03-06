@@ -28,4 +28,11 @@ export interface NonInteractiveConfig {
    * Defaults to current working directory
    */
   workingDir?: string;
+
+  /**
+   * Whether to rewrite verbose prompts before execution.
+   * Uses GPT-4o-mini to strip noise (Slack metadata, assignee directives, boilerplate)
+   * and reformat the ticket as a structured Task/Acceptance Criteria prompt for Claude Code.
+   */
+  rewritePrompt?: boolean;
 }

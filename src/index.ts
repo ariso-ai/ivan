@@ -20,7 +20,8 @@ const configManager = new ConfigManager();
 program
   .name('ivan')
   .description('Ivan - A coding orchestration agent CLI')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('--rewrite-prompt', 'Rewrite verbose task descriptions before execution using GPT-4o-mini');
 
 program
   .command('reconfigure')
@@ -533,16 +534,18 @@ async function runNonInteractive(configInput: string): Promise<void> {
     let config: NonInteractiveConfig;
     let configSource: string;
 
-    // Try to parse as JSON first (inline JSON)
     try {
       config = JSON.parse(configInput);
       configSource = 'inline JSON';
     } catch {
-      // If parsing fails, treat as file path
       const configContent = readFileSync(configInput, 'utf-8');
       config = JSON.parse(configContent);
       configSource = configInput;
     }
+
+    // Apply --rewrite-prompt flag if passed on CLI
+    const { rewritePrompt } = program.opts<{ rewritePrompt: boolean }>();
+    if (rewritePrompt) config.rewritePrompt = true;
 
     // Validate config
     if (!config.tasks || !Array.isArray(config.tasks) || config.tasks.length === 0) {
@@ -582,23 +585,28 @@ async function main() {
   try {
     const args = process.argv.slice(2);
 
+    // Parse known options early; operands are everything left after stripping flags
+    const { operands } = program.parseOptions(args);
+    const { rewritePrompt: hasRewriteFlag } = program.opts<{ rewritePrompt: boolean }>();
+
     // Check for -c/--config flag
     const configFlagIndex = args.findIndex(arg => arg === '-c' || arg === '--config');
     if (configFlagIndex !== -1 && args[configFlagIndex + 1]) {
-      const configPath = args[configFlagIndex + 1];
-      await runNonInteractive(configPath);
+      await runNonInteractive(args[configFlagIndex + 1]);
       return;
     }
 
-    // Check if first argument is a task description (not a recognized command)
+    // Check if first operand is a task description (not a recognized command)
     const recognizedCommands = ['reconfigure', 'config-tools', 'config-blocked-tools', 'edit-repo-instructions', 'show-config', 'choose-model', 'configure-executor', 'configure-review-agent', 'add-action', 'web', 'web-stop', 'address', '--help', '-h', '--version', '-V'];
-    if (args.length > 0 && !recognizedCommands.includes(args[0])) {
-      // Treat the first argument as a task description
-      const taskDescription = args[0];
+
+    if (operands.length > 0 && !recognizedCommands.includes(operands[0])) {
+      // Treat the first operand as a task description
+      const taskDescription = operands[0];
 
       // Create a NonInteractiveConfig with the task
       const config: NonInteractiveConfig = {
-        tasks: [taskDescription]
+        tasks: [taskDescription],
+        rewritePrompt: hasRewriteFlag
       };
 
       // Check configuration before running
@@ -618,7 +626,7 @@ async function main() {
       return;
     }
 
-    if (args.length === 0) {
+    if (operands.length === 0) {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
@@ -629,7 +637,7 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow();
+      await taskExecutor.executeWorkflow(hasRewriteFlag);
       return;
     }
 

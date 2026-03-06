@@ -29,13 +29,14 @@ export interface Task {
   comment_id: string | null;
   commit_sha: string | null;
   repository_id: number;
+  original_description: string | null;
 }
 
 export interface Migration {
   id: number;
   name: string;
   up: string | string[];
-  down: string | string[];
+  down?: string | string[]; // optional — we never roll back schema changes
 }
 
 export interface Database {
