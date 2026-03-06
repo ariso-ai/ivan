@@ -10,7 +10,7 @@ import { migration008 as addLintAndTestTaskType } from './008_add_lint_and_test_
 import { migration as createRepositoryTable } from './009_create_repository_table.js';
 import { migration as addRepositoryIdToJobsAndTasks } from './010_add_repository_id_to_jobs_and_tasks.js';
 import { migration as addCommentIdToTasks } from './013_add_comment_id_to_tasks.js';
-import { migration as addPromptRewritingColumns } from './014_add_prompt_rewriting_columns.js';
+import { migration as addOriginalDescriptionColumn } from './014_add_original_description_column.js';
 
 export const migrations: Migration[] = [
   createJobsTable,
@@ -24,5 +24,5 @@ export const migrations: Migration[] = [
   createRepositoryTable,
   addRepositoryIdToJobsAndTasks,
   addCommentIdToTasks,
-  addPromptRewritingColumns
+  addOriginalDescriptionColumn
 ];
