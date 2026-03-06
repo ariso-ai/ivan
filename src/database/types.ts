@@ -36,7 +36,7 @@ export interface Migration {
   id: number;
   name: string;
   up: string | string[];
-  down: string | string[];
+  down?: string | string[]; // optional — we never roll back schema changes
 }
 
 export interface Database {

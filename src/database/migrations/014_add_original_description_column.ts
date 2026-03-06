@@ -6,4 +6,5 @@ export const migration: Migration = {
   up: [
     'ALTER TABLE tasks ADD COLUMN original_description TEXT'
   ]
+  // No down migration — we never roll back schema changes
 };
