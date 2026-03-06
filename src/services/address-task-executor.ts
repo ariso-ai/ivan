@@ -439,34 +439,34 @@ export class AddressTaskExecutor {
 
                   // Use GitHub API client if available, otherwise fall back to gh command
                   if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
-                  await this.githubClient.addReviewThreadReply(
-                    this.repoOwner,
-                    this.repoName,
-                    parseInt(prNumber),
-                    comment.id,
-                    replyBody
-                  );
-                  if (spinner) spinner.succeed('Reply added to comment');
-                } else {
-                  // Fallback to gh command
-                  const { writeFileSync, unlinkSync } = await import('fs');
-                  const { join } = await import('path');
-                  const { tmpdir } = await import('os');
-                  const tempFile = join(tmpdir(), `ivan-comment-${Date.now()}.txt`);
-
-                  writeFileSync(tempFile, replyBody);
-
-                  try {
-                    const repoInfo = execSync(
-                      'gh repo view --json owner,name',
-                      {
-                        cwd: worktreePath || this.workingDir,
-                        encoding: 'utf-8'
-                      }
+                    await this.githubClient.addReviewThreadReply(
+                      this.repoOwner,
+                      this.repoName,
+                      parseInt(prNumber),
+                      comment.id,
+                      replyBody
                     );
-                    const { owner, name: repoName } = JSON.parse(repoInfo);
+                    if (spinner) spinner.succeed('Reply added to comment');
+                  } else {
+                  // Fallback to gh command
+                    const { writeFileSync, unlinkSync } = await import('fs');
+                    const { join } = await import('path');
+                    const { tmpdir } = await import('os');
+                    const tempFile = join(tmpdir(), `ivan-comment-${Date.now()}.txt`);
 
-                    const threadQuery = `
+                    writeFileSync(tempFile, replyBody);
+
+                    try {
+                      const repoInfo = execSync(
+                        'gh repo view --json owner,name',
+                        {
+                          cwd: worktreePath || this.workingDir,
+                          encoding: 'utf-8'
+                        }
+                      );
+                      const { owner, name: repoName } = JSON.parse(repoInfo);
+
+                      const threadQuery = `
                       query {
                         repository(owner: "${owner.login}", name: "${repoName}") {
                           pullRequest(number: ${prNumber}) {
@@ -485,31 +485,31 @@ export class AddressTaskExecutor {
                       }
                     `;
 
-                    const threadResult = execSync(
-                      `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
-                      {
-                        cwd: worktreePath || this.workingDir,
-                        encoding: 'utf-8'
+                      const threadResult = execSync(
+                        `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
+                        {
+                          cwd: worktreePath || this.workingDir,
+                          encoding: 'utf-8'
+                        }
+                      );
+
+                      const threadData = JSON.parse(threadResult);
+                      const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+
+                      let threadId = null;
+                      for (const thread of threads) {
+                        const comments = thread.comments?.nodes || [];
+                        if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
+                          threadId = thread.id;
+                          break;
+                        }
                       }
-                    );
 
-                    const threadData = JSON.parse(threadResult);
-                    const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
-
-                    let threadId = null;
-                    for (const thread of threads) {
-                      const comments = thread.comments?.nodes || [];
-                      if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
-                        threadId = thread.id;
-                        break;
+                      if (!threadId) {
+                        throw new Error('Could not find review thread for comment');
                       }
-                    }
 
-                    if (!threadId) {
-                      throw new Error('Could not find review thread for comment');
-                    }
-
-                    const mutation = `
+                      const mutation = `
                       mutation {
                         addPullRequestReviewThreadReply(input: {
                           pullRequestReviewThreadId: "${threadId}"
@@ -522,18 +522,18 @@ export class AddressTaskExecutor {
                       }
                     `;
 
-                    execSync(
-                      `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
-                      {
-                        cwd: worktreePath || this.workingDir,
-                        stdio: 'pipe'
-                      }
-                    );
-                    if (spinner) spinner.succeed('Reply added to comment');
-                  } finally {
-                    unlinkSync(tempFile);
+                      execSync(
+                        `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
+                        {
+                          cwd: worktreePath || this.workingDir,
+                          stdio: 'pipe'
+                        }
+                      );
+                      if (spinner) spinner.succeed('Reply added to comment');
+                    } finally {
+                      unlinkSync(tempFile);
+                    }
                   }
-                }
                 } catch (error) {
                   if (spinner) spinner.fail('Failed to reply to comment');
                   if (!quiet) console.error(error);
@@ -613,26 +613,26 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
 
                 // Use GitHub API client if available, otherwise fall back to gh command
                 if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
-                await this.githubClient.addReviewThreadReply(
-                  this.repoOwner,
-                  this.repoName,
-                  parseInt(prNumber),
-                  comment.id,
-                  replyBody
-                );
-                if (spinner) spinner.succeed('Reply added to comment');
-              } else {
+                  await this.githubClient.addReviewThreadReply(
+                    this.repoOwner,
+                    this.repoName,
+                    parseInt(prNumber),
+                    comment.id,
+                    replyBody
+                  );
+                  if (spinner) spinner.succeed('Reply added to comment');
+                } else {
                 // Fallback to gh command
-                const repoInfo = execSync(
-                  'gh repo view --json owner,name',
-                  {
-                    cwd: worktreePath || this.workingDir,
-                    encoding: 'utf-8'
-                  }
-                );
-                const { owner, name: repoName } = JSON.parse(repoInfo);
+                  const repoInfo = execSync(
+                    'gh repo view --json owner,name',
+                    {
+                      cwd: worktreePath || this.workingDir,
+                      encoding: 'utf-8'
+                    }
+                  );
+                  const { owner, name: repoName } = JSON.parse(repoInfo);
 
-                const threadQuery = `
+                  const threadQuery = `
                   query {
                     repository(owner: "${owner.login}", name: "${repoName}") {
                       pullRequest(number: ${prNumber}) {
@@ -651,31 +651,31 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
                   }
                 `;
 
-                const threadResult = execSync(
-                  `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
-                  {
-                    cwd: worktreePath || this.workingDir,
-                    encoding: 'utf-8'
+                  const threadResult = execSync(
+                    `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
+                    {
+                      cwd: worktreePath || this.workingDir,
+                      encoding: 'utf-8'
+                    }
+                  );
+
+                  const threadData = JSON.parse(threadResult);
+                  const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+
+                  let threadId = null;
+                  for (const thread of threads) {
+                    const comments = thread.comments?.nodes || [];
+                    if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
+                      threadId = thread.id;
+                      break;
+                    }
                   }
-                );
 
-                const threadData = JSON.parse(threadResult);
-                const threads = threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
-
-                let threadId = null;
-                for (const thread of threads) {
-                  const comments = thread.comments?.nodes || [];
-                  if (comments.some((c: { databaseId?: number }) => c.databaseId?.toString() === comment.id)) {
-                    threadId = thread.id;
-                    break;
+                  if (!threadId) {
+                    throw new Error('Could not find review thread for comment');
                   }
-                }
 
-                if (!threadId) {
-                  throw new Error('Could not find review thread for comment');
-                }
-
-                const mutation = `
+                  const mutation = `
                   mutation {
                     addPullRequestReviewThreadReply(input: {
                       pullRequestReviewThreadId: "${threadId}"
@@ -688,15 +688,15 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
                   }
                 `;
 
-                execSync(
-                  `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
-                  {
-                    cwd: worktreePath || this.workingDir,
-                    stdio: 'pipe'
-                  }
-                );
-                if (spinner) spinner.succeed('Reply added to comment');
-              }
+                  execSync(
+                    `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
+                    {
+                      cwd: worktreePath || this.workingDir,
+                      stdio: 'pipe'
+                    }
+                  );
+                  if (spinner) spinner.succeed('Reply added to comment');
+                }
               } catch (error) {
                 if (spinner) spinner.fail('Failed to reply to comment');
                 if (!quiet) console.error(error);
