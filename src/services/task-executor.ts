@@ -9,6 +9,7 @@ import { AddressTaskExecutor } from './address-task-executor.js';
 import { NonInteractiveConfig } from '../types/non-interactive-config.js';
 import { IGitManager, IPRService, IRepositoryManager } from './git-interfaces.js';
 import { createGitManager, createPRService, createRepositoryManager } from './service-factory.js';
+import { PromptRewriter } from './prompt-rewriter.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -42,7 +43,7 @@ export class TaskExecutor {
     return this.openaiService;
   }
 
-  async executeWorkflow(): Promise<void> {
+  async executeWorkflow(rewritePrompt: boolean = false): Promise<void> {
     try {
       console.log(chalk.blue.bold('🚀 Starting Ivan workflow'));
       console.log('');
@@ -139,6 +140,21 @@ export class TaskExecutor {
           }
         ]);
         shouldWaitForComments = waitForComments;
+
+        // Optionally rewrite prompts before execution
+        if (rewritePrompt) {
+          for (const task of buildTasks) {
+            try {
+              console.log(chalk.blue(`🔄 Rewriting prompt for: ${task.description.substring(0, 60)}...`));
+              const rewriter = new PromptRewriter(this.getOpenAIService());
+              const result = await rewriter.rewrite(task.description);
+              await this.jobManager.updateTaskOriginalDescription(task.uuid, result.original);
+              task.description = result.rewritten;
+            } catch (error) {
+              console.warn(chalk.yellow('⚠️  Prompt rewriting failed, using original:'), error);
+            }
+          }
+        }
 
         console.log(chalk.blue.bold('📋 Executing tasks...'));
 
@@ -724,8 +740,31 @@ export class TaskExecutor {
       const jobUuid = await this.jobManager.createJob(jobDescription, this.workingDir, repository.id);
       const tasks: Task[] = [];
 
+      // Optionally rewrite prompts using 3-step pipeline
+      const shouldRewrite = config.rewritePrompt || false;
+
       for (const taskDescription of finalTasks) {
-        const taskUuid = await this.jobManager.createTask(jobUuid, taskDescription, repository.id, 'build');
+        let description = taskDescription;
+
+        if (shouldRewrite) {
+          try {
+            console.log(chalk.blue('🔄 Rewriting prompt...'));
+            const rewriter = new PromptRewriter(this.getOpenAIService(), true);
+            const result = await rewriter.rewrite(taskDescription);
+            description = result.rewritten;
+            console.log(chalk.green('✅ Prompt rewritten'));
+          } catch (error) {
+            console.warn(chalk.yellow('⚠️  Prompt rewriting failed, using original:'), error);
+          }
+        }
+
+        const taskUuid = await this.jobManager.createTask(jobUuid, description, repository.id, 'build');
+
+        // Store the original ticket text if rewriting changed the description
+        if (description !== taskDescription) {
+          await this.jobManager.updateTaskOriginalDescription(taskUuid, taskDescription);
+        }
+
         const task = await this.jobManager.getTask(taskUuid);
         if (task) {
           tasks.push(task);
