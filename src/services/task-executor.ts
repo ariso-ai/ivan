@@ -735,8 +735,8 @@ export class TaskExecutor {
 
         if (shouldRewrite) {
           try {
-            console.log(chalk.blue('🔄 Rewriting prompt (3-step pipeline)...'));
-            const rewriter = new PromptRewriter(this.getOpenAIService(), this.getClaudeExecutor(), this.workingDir, true);
+            console.log(chalk.blue('🔄 Rewriting prompt...'));
+            const rewriter = new PromptRewriter(this.getOpenAIService(), true);
             const result = await rewriter.rewrite(taskDescription);
             description = result.rewritten;
             originalDescription = result.original;
