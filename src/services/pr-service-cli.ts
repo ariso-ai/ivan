@@ -12,16 +12,21 @@ export class PRServiceCLI implements IPRService {
   async getSpecificPRWithIssues(prNumber: number): Promise<PullRequest[]> {
     try {
       // Get specific PR
-      const prJson = execSync(`gh pr view ${prNumber} --json number,title,headRefName,url,state`, {
-        cwd: this.workingDir,
-        encoding: 'utf-8'
-      });
+      const prJson = execSync(
+        `gh pr view ${prNumber} --json number,title,headRefName,url,state`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf-8'
+        }
+      );
 
       const pr = JSON.parse(prJson);
 
       // Check if PR is open
       if (pr.state !== 'OPEN') {
-        console.log(chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${pr.state})`));
+        console.log(
+          chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${pr.state})`)
+        );
         return [];
       }
 
@@ -46,7 +51,9 @@ export class PRServiceCLI implements IPRService {
       }
 
       // Check for failing checks
-      const { allFailures, testOrLintFailures } = await this.getFailingChecks(pr.number);
+      const { allFailures, testOrLintFailures } = await this.getFailingChecks(
+        pr.number
+      );
       if (allFailures.length > 0) {
         pullRequest.hasFailingChecks = true;
         pullRequest.failingChecks = allFailures;
@@ -63,7 +70,8 @@ export class PRServiceCLI implements IPRService {
 
       return [];
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('no pull requests found')) {
         console.error(chalk.red(`❌ PR #${prNumber} not found`));
       } else {
@@ -76,7 +84,8 @@ export class PRServiceCLI implements IPRService {
   async getOpenPRsWithIssues(fromUser?: string): Promise<PullRequest[]> {
     try {
       // Get all open PRs, optionally filtered by author
-      let command = 'gh pr list --state open --json number,title,headRefName,url,author';
+      let command =
+        'gh pr list --state open --json number,title,headRefName,url,author';
       if (fromUser) {
         command += ` --author ${fromUser}`;
       }
@@ -111,7 +120,9 @@ export class PRServiceCLI implements IPRService {
         }
 
         // Check for failing checks
-        const { allFailures, testOrLintFailures } = await this.getFailingChecks(pr.number);
+        const { allFailures, testOrLintFailures } = await this.getFailingChecks(
+          pr.number
+        );
         if (allFailures.length > 0) {
           pullRequest.hasFailingChecks = true;
           pullRequest.failingChecks = allFailures;
@@ -122,7 +133,10 @@ export class PRServiceCLI implements IPRService {
         }
 
         // Only include PRs that have issues
-        if (pullRequest.hasUnaddressedComments || pullRequest.hasFailingChecks) {
+        if (
+          pullRequest.hasUnaddressedComments ||
+          pullRequest.hasFailingChecks
+        ) {
           pullRequests.push(pullRequest);
         }
       }
@@ -137,13 +151,10 @@ export class PRServiceCLI implements IPRService {
   async getUnaddressedComments(prNumber: number): Promise<PRComment[]> {
     try {
       // Get PR owner and repo name
-      const repoInfo = execSync(
-        'gh repo view --json owner,name',
-        {
-          cwd: this.workingDir,
-          encoding: 'utf-8'
-        }
-      );
+      const repoInfo = execSync('gh repo view --json owner,name', {
+        cwd: this.workingDir,
+        encoding: 'utf-8'
+      });
       const { owner, name: repoName } = JSON.parse(repoInfo);
 
       // Use GraphQL to get review threads with resolved status
@@ -183,7 +194,8 @@ export class PRServiceCLI implements IPRService {
       );
 
       const result = JSON.parse(graphqlResult);
-      const threads = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+      const threads =
+        result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
       const unaddressedComments: PRComment[] = [];
 
       // Process each thread
@@ -207,7 +219,9 @@ export class PRServiceCLI implements IPRService {
         if (!hasReplies && firstComment.path) {
           // Only include if it's an inline code comment (has a path) and has no replies
           unaddressedComments.push({
-            id: firstComment.databaseId ? firstComment.databaseId.toString() : firstComment.id,
+            id: firstComment.databaseId
+              ? firstComment.databaseId.toString()
+              : firstComment.id,
             author: firstComment.author.login,
             body: firstComment.body,
             createdAt: firstComment.createdAt,
@@ -224,7 +238,9 @@ export class PRServiceCLI implements IPRService {
     }
   }
 
-  private async getFailingChecks(prNumber: number): Promise<{ allFailures: string[], testOrLintFailures: string[] }> {
+  private async getFailingChecks(
+    prNumber: number
+  ): Promise<{ allFailures: string[]; testOrLintFailures: string[] }> {
     try {
       const checksJson = execSync(
         `gh pr checks ${prNumber} --json name,state`,
@@ -304,14 +320,11 @@ export class PRServiceCLI implements IPRService {
 
             try {
               // Get the failed logs for this run
-              const logs = execSync(
-                `gh run view ${runId} --log-failed`,
-                {
-                  cwd: this.workingDir,
-                  encoding: 'utf-8',
-                  maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large logs
-                }
-              );
+              const logs = execSync(`gh run view ${runId} --log-failed`, {
+                cwd: this.workingDir,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large logs
+              });
 
               if (logs) {
                 failingLogs += `\n\n=== Failed logs for ${check.name} ===\n`;
@@ -338,4 +351,3 @@ export class PRServiceCLI implements IPRService {
     }
   }
 }
-
