@@ -1,0 +1,5 @@
+2:I[5613,[],""]
+3:I[1778,[],""]
+0:["iFARTPkEZ-lVig4Kpk8T4",[[["",{"children":["__PAGE__",{}]},"$undefined","$undefined",true],["",{"children":["__PAGE__",{},["$L1",["$","div",null,{"children":"Not found"}],null]]},[null,["$","html",null,{"lang":"en","children":["$","body",null,{"children":["$","$L2",null,{"parallelRouterKey":"children","segmentPath":["children"],"loading":"$undefined","loadingStyles":"$undefined","loadingScripts":"$undefined","hasLoading":false,"error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L3",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":["$","div",null,{"children":"Not found"}],"notFoundStyles":[],"styles":null}]}]}],null]],[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/css/05fdec1b5c0aa661.css","precedence":"next","crossOrigin":""}]],"$L4"]]]]
+4:[["$","meta","0",{"name":"viewport","content":"width=device-width, initial-scale=1"}],["$","meta","1",{"charSet":"utf-8"}],["$","title","2",{"children":"Ari ↔ Ivan | SciSummary Live"}],["$","meta","3",{"name":"description","content":"The Ari and Ivan collaboration loop — live."}]]
+1:null
