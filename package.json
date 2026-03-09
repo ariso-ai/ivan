@@ -16,7 +16,8 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test dist/__tests__/**/*.test.js",
+    "test:watch": "node --test --watch dist/__tests__/**/*.test.js",
     "prepare": "npm run build"
   },
   "author": "Ariso AI",
