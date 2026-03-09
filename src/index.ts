@@ -766,6 +766,8 @@ async function main() {
     }
 
     if (operands.length === 0) {
+      await program.parseAsync();
+
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
