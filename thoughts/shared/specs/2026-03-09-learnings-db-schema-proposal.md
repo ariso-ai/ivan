@@ -1,62 +1,257 @@
-# Learnings DB Schema Proposal
+# Learnings Storage Proposal
 
 ## Purpose
 
-This is the clean-room launch schema for `learnings.db`.
+This is the clean-room launch storage design for the MVP.
 
-It assumes:
+It replaces the earlier assumption that `learnings.db` is the canonical store.
 
-- one committed repo-local SQLite database at repo root
-- `repository_id` exists from day one
-- prompt-time retrieval reads local knowledge only
-- runtime jobs/orchestration stay in memory
-- learning extraction is primarily from:
-  - GitHub PR evidence
-  - prior Claude Code / Codex session outputs
+The new rule is:
 
-This proposal intentionally does **not** include:
+- committed text records under `learnings/` are the source of truth
+- `learnings.db` is a derived SQLite read model built from those records
+- prompt-time retrieval reads only the local derived DB
 
-- tombstones
-- persisted jobs
-- audit tables
-- persisted query history
-- persisted capability proposals
+This follows the research conclusion that Option C is the right MVP path:
+
+- merge-friendly canonical records
+- deterministic local/CI rebuild into SQLite
+- no binary database merges in normal branch workflows
+
+## What Is Canonical vs Derived
+
+Canonical:
+
+- repo-committed text records under `learnings/`
+
+Derived:
+
+- `learnings.db`
+- FTS indexes
+- vector indexes / embeddings
+
+This means:
+
+- Git reviews and merges happen on text files
+- SQLite is an implementation detail for fast local retrieval
+- the DB can be deleted and rebuilt at any time
 
 ## Design Principles
 
-- Keep the raw input unit as `evidence`, not `artifact`
+- Keep the raw input unit as `evidence`
 - Keep `learnings` as distilled reusable statements
-- Preserve traceability from learning back to source evidence
-- Make retrieval/indexing data rebuildable where possible
+- Preserve traceability from each learning back to supporting evidence
 - Add `repository_id` now, even if the first deployment is repo-local
+- Keep runtime job/orchestration/query state out of persistence for now
 
-## Core Tables
+## Source-of-Truth Layout
 
-### 1. `repositories`
+```text
+learnings/
+  repositories/
+    repo_ivan.yaml
+  evidence/
+    repo_ivan/
+      ev_01JNX9M7M6T0A5KJ4A1B9Z2Q1P.md
+      ev_01JNX9N2H7S6R4E8C3D0F5G6H1.md
+  lessons/
+    repo_ivan/
+      lrn_01JNXA4TK7A2X9KQ6R3M1N8P5V.md
+      lrn_01JNXA7QF1Z3C8R5B6T2K4M9D0.md
+```
+
+## Canonical Record Types
+
+### 1. Repository record
+
+Path:
+
+```text
+learnings/repositories/<repository_id>.yaml
+```
+
+Example:
+
+```yaml
+id: repo_ivan
+slug: ivan
+name: Ivan
+local_path: /Users/michaelgeiger/Developer/repos/ivan
+remote_url: git@github.com:ariso-ai/ivan.git
+is_active: true
+created_at: 2026-03-09T00:00:00Z
+updated_at: 2026-03-09T00:00:00Z
+```
+
+### 2. Evidence record
+
+Path:
+
+```text
+learnings/evidence/<repository_id>/<evidence_id>.md
+```
+
+Format:
+
+- YAML frontmatter for structured fields
+- Markdown body for the evidence text
+
+Example:
+
+```md
+---
+id: ev_01JNX9M7M6T0A5KJ4A1B9Z2Q1P
+repository_id: repo_ivan
+source_system: github
+source_type: pr_review_comment
+external_id: 1234567890
+parent_external_id: 1234567880
+url: https://github.com/org/repo/pull/15#discussion_r1234567890
+pr_number: 15
+review_id: 99887766
+thread_id: PRT_kwDO...
+comment_id: PRRC_kwDO...
+author_type: human
+author_name: alice
+author_role: reviewer
+file_path: src/auth.ts
+line_start: 84
+line_end: 84
+review_state: CHANGES_REQUESTED
+resolution_state: resolved
+occurred_at: 2026-03-09T12:15:00Z
+base_weight: 3
+final_weight: 11
+boosts:
+  - author_acknowledgement
+  - addressed_change
+penalties: []
+created_at: 2026-03-09T12:20:00Z
+updated_at: 2026-03-09T12:20:00Z
+---
+This lock is held across an await. That can deadlock under load.
+Prefer copying the data and releasing the lock before the async call.
+```
+
+### 3. Learning record
+
+Path:
+
+```text
+learnings/lessons/<repository_id>/<learning_id>.md
+```
+
+Format:
+
+- YAML frontmatter for identity, classification, and evidence linkage
+- Markdown body with small fixed sections
+
+Example:
+
+```md
+---
+id: lrn_01JNXA4TK7A2X9KQ6R3M1N8P5V
+repository_id: repo_ivan
+kind: engineering_lesson
+status: active
+confidence: 0.86
+source_type: github_pr_discourse
+evidence_ids:
+  - ev_01JNX9M7M6T0A5KJ4A1B9Z2Q1P
+  - ev_01JNX9N2H7S6R4E8C3D0F5G6H1
+tags:
+  - concurrency
+  - async
+  - locking
+created_at: 2026-03-09T12:30:00Z
+updated_at: 2026-03-09T12:30:00Z
+---
+## Statement
+Avoid holding locks across awaits or other blocking operations.
+
+## Rationale
+It increases deadlock risk and makes contention harder to reason about under load.
+
+## Applicability
+Use this in async handlers, queue processors, and background jobs that mix shared state and I/O.
+```
+
+## Canonical Format Rules
+
+- One record per file
+- Stable string IDs from day one
+- Repository-scoped paths
+- UTF-8 text only
+- No in-place mutation requirement at the storage level, but records should remain small and reviewable
+- The builder must tolerate record ordering differences and produce the same SQLite output for the same logical inputs
+
+## Why Markdown + Frontmatter
+
+For this product, Markdown + frontmatter is the right first format because:
+
+- it is reviewable in GitHub
+- it supports narrative text well
+- it is easier for humans to edit than raw JSON
+- it still gives a deterministic machine-readable header
+
+If this becomes too loose later, evidence records can move to JSON without changing the overall Option C architecture.
+
+## Builder Contract
+
+The builder is responsible for:
+
+1. reading all repository, evidence, and learning records
+2. validating IDs and references
+3. materializing a clean `learnings.db`
+4. rebuilding FTS and vector indexes
+5. failing fast on invalid canonical inputs
+
+The builder should be deterministic:
+
+- same input tree
+- same ordering policy
+- same SQLite contents
+
+## Derived SQLite Read Model
+
+The SQLite DB exists only to support:
+
+- prompt-time recall
+- evidence inspection
+- fast lexical search
+- fast vector search over learnings
+
+The read model should contain:
+
+- `repositories`
+- `evidence`
+- `learnings`
+- `learning_evidence`
+- `learning_tags`
+- derived FTS tables
+- derived vector table for learnings
+
+## Mapping: Canonical Files -> SQLite
+
+| Canonical source | Derived table |
+| --- | --- |
+| `learnings/repositories/*.yaml` | `repositories` |
+| `learnings/evidence/<repo>/*.md` | `evidence` |
+| `learnings/lessons/<repo>/*.md` | `learnings` |
+| `evidence_ids` on learning frontmatter | `learning_evidence` |
+| `tags` on learning frontmatter | `learning_tags` |
+
+## Minimal Business Entities
+
+### `repositories`
 
 Purpose:
-Identify the repository scope for all stored knowledge.
+Repository scope and identity.
 
-Suggested fields:
-
-- `id` INTEGER PRIMARY KEY
-- `slug` TEXT NOT NULL UNIQUE
-- `name` TEXT NOT NULL
-- `local_path` TEXT
-- `remote_url` TEXT
-- `is_active` INTEGER NOT NULL DEFAULT 1
-- `created_at` TEXT NOT NULL
-- `updated_at` TEXT NOT NULL
-
-Notes:
-
-- `slug` should be stable and human-readable.
-- `local_path` and `remote_url` are optional but useful for ingestion and debugging.
-
-### 2. `evidence`
+### `evidence`
 
 Purpose:
-Store raw or lightly normalized source material from which learnings are extracted.
+Raw or lightly normalized source material.
 
 Examples:
 
@@ -66,192 +261,41 @@ Examples:
 - PR body
 - Claude/Codex session-derived note
 
-Suggested fields:
-
-- `id` INTEGER PRIMARY KEY
-- `repository_id` INTEGER NOT NULL
-- `source_system` TEXT NOT NULL
-- `source_type` TEXT NOT NULL
-- `external_id` TEXT
-- `parent_external_id` TEXT
-- `author_type` TEXT
-- `author_name` TEXT
-- `title` TEXT
-- `content` TEXT NOT NULL
-- `summary` TEXT
-- `url` TEXT
-- `pr_number` INTEGER
-- `file_path` TEXT
-- `line_start` INTEGER
-- `line_end` INTEGER
-- `review_state` TEXT
-- `resolution_state` TEXT
-- `occurred_at` TEXT
-- `created_at` TEXT NOT NULL
-- `updated_at` TEXT NOT NULL
-
-Foreign keys:
-
-- `repository_id` -> `repositories.id`
-
-Notes:
-
-- `source_system` examples: `github`, `claude_code`, `codex`
-- `source_type` examples: `pr_review_comment`, `pr_comment`, `pr_review_summary`, `pr_body`, `session_note`
-- `parent_external_id` supports threads/replies without modeling a full comment graph yet.
-- `summary` is optional normalized text if later ingestion wants a lightweight distilled version alongside raw content.
-
-### 3. `learnings`
+### `learnings`
 
 Purpose:
-Store distilled reusable lessons derived from evidence.
+Distilled reusable statements retrieved during prompt-time recall.
 
-Suggested fields:
-
-- `id` INTEGER PRIMARY KEY
-- `repository_id` INTEGER NOT NULL
-- `kind` TEXT NOT NULL
-- `title` TEXT
-- `statement` TEXT NOT NULL
-- `rationale` TEXT
-- `applicability` TEXT
-- `confidence` REAL
-- `status` TEXT NOT NULL DEFAULT 'active'
-- `created_at` TEXT NOT NULL
-- `updated_at` TEXT NOT NULL
-
-Foreign keys:
-
-- `repository_id` -> `repositories.id`
-
-Notes:
-
-- `kind` examples:
-  - `engineering_lesson`
-  - `repo_convention`
-  - `review_heuristic`
-  - `agent_workflow_pattern`
-- `statement` is the retrieval-first field. It should stand alone when injected into prompt context.
-- `status` can stay simple at launch: `active`, `suppressed`, `draft`.
-
-### 4. `learning_evidence`
+### `learning_evidence`
 
 Purpose:
-Link learnings back to the evidence that supports them.
+Proof links from a learning back to the evidence that supports it.
 
-Suggested fields:
-
-- `learning_id` INTEGER NOT NULL
-- `evidence_id` INTEGER NOT NULL
-- `relationship_type` TEXT NOT NULL DEFAULT 'supports'
-- `weight` REAL
-- `note` TEXT
-- `created_at` TEXT NOT NULL
-
-Primary key:
-
-- (`learning_id`, `evidence_id`)
-
-Foreign keys:
-
-- `learning_id` -> `learnings.id`
-- `evidence_id` -> `evidence.id`
-
-Notes:
-
-- This table is the core anti-handwaving mechanism.
-- It allows later weighting without forcing that policy into the `learnings` table itself.
-
-### 5. `learning_tags`
+### `learning_tags`
 
 Purpose:
-Support retrieval filtering and lightweight classification.
-
-Suggested fields:
-
-- `learning_id` INTEGER NOT NULL
-- `tag` TEXT NOT NULL
-- `source` TEXT NOT NULL DEFAULT 'inferred'
-- `weight` REAL
-- `created_at` TEXT NOT NULL
-
-Primary key:
-
-- (`learning_id`, `tag`)
-
-Foreign keys:
-
-- `learning_id` -> `learnings.id`
-
-Notes:
-
-- `source` examples: `inferred`, `manual`, `imported`
-- Keep tags flat at launch. No tag ontology yet.
-
-## Derived / Rebuildable Indexes
-
-These are part of the DB design, but they are not primary business entities.
-
-### 6. `evidence_fts`
-
-Purpose:
-Full-text search over evidence content.
-
-Indexed fields:
-
-- `title`
-- `content`
-- `summary`
-
-### 7. `learnings_fts`
-
-Purpose:
-Full-text search over learning text.
-
-Indexed fields:
-
-- `title`
-- `statement`
-- `rationale`
-- `applicability`
-
-### 8. `learning_embeddings`
-
-Purpose:
-Vector search support for learnings.
-
-Suggested fields:
-
-- vector column / virtual table row
-- `learning_id`
-- optional normalized text used for embedding
-- optional model identifier
-
-Notes:
-
-- This can be implemented with `sqlite-vec`.
-- Embed the retrieval text, not raw evidence.
-- If model/version tracking is not needed on day one, it can be added later.
+Simple retrieval filters and lightweight classification.
 
 ## Minimal Invariants
 
-- Every `evidence` row belongs to one repository.
-- Every `learning` row belongs to one repository.
-- Every learning should link to at least one supporting evidence row.
-- `statement` in `learnings` must be non-empty.
-- `source_system` + `source_type` should be from a controlled vocabulary, even if enforced in application code first.
-- Prompt-time retrieval should default to `learnings`, not `evidence`.
+- Every canonical record must have a stable `id`
+- Every evidence record belongs to one repository
+- Every learning belongs to one repository
+- Every learning links to at least one evidence record
+- `statement` must be non-empty
+- prompt-time retrieval targets learnings, not raw evidence
+- `repository_id` is required from day one
 
 ## Controlled Vocabulary Suggestions
 
-### `evidence.source_system`
+### `source_system`
 
 - `github`
 - `claude_code`
 - `codex`
 - `manual`
 
-### `evidence.source_type`
+### `source_type`
 
 - `pr_body`
 - `pr_review_summary`
@@ -260,67 +304,40 @@ Notes:
 - `session_note`
 - `session_summary`
 
-### `learnings.kind`
+### `kind`
 
 - `engineering_lesson`
 - `repo_convention`
 - `review_heuristic`
 - `workflow_pattern`
 
-## Retrieval Model
-
-Default prompt-time retrieval path:
-
-1. Query `learnings`
-2. Rank by lexical and/or vector relevance
-3. Optionally filter by tags
-4. Inject the top small set into Claude Code context
-
-Evidence lookup path:
-
-1. Use `learning_evidence` to inspect support for a recalled learning
-2. Pull the highest-weight supporting evidence when explanation or provenance is needed
-
-This keeps prompt injection concise while preserving explainability.
-
-## What To Defer
+## What Is Explicitly Deferred
 
 Defer these until real usage proves the need:
 
-- thread graph tables for PR discussions
-- separate tables for review threads vs comments vs replies
-- tombstones / delete propagation model
+- tombstones / delete propagation
 - persisted jobs and schedulers
-- audit/event ledger
-- query history
-- proposal/publishing workflow persistence
-- complex dedupe tables
-- cross-repo federation features
+- audit/event tables
+- persisted query history
+- persisted capability proposals
+- thread graph tables beyond lightweight linkage fields
+- cross-repo federation logic
+- heavyweight semantic diff matching
 
-## Recommended First-Pass SQLite Shape
+## Git and Rebuild Rules
 
-If implementing this immediately, I would start with:
+Under Option C:
 
-- `repositories`
-- `evidence`
-- `learnings`
-- `learning_evidence`
-- `learning_tags`
-- `evidence_fts`
-- `learnings_fts`
-- `learning_embeddings`
+- commit canonical text records
+- do not commit `learnings.db`
+- add `learnings.db` and `learnings.db-*` to `.gitignore`
+- rebuild locally and in CI
+- treat rebuild success as a validation step
 
-That is enough to support:
+## Immediate Next Implementation Artifacts
 
-- ingesting PR and session evidence
-- extracting learnings
-- tracing a learning back to evidence
-- prompt-time recall
-- basic tag filtering
-
-## Open Questions
-
-- Whether `evidence.summary` is needed at launch or can be derived later
-- Whether `confidence` should be normalized to a float or a small enum first
-- Whether `learning_embeddings` needs model/version fields on day one
-- How aggressively to dedupe nearly-identical learnings at ingest time
+1. actual SQLite DDL for the derived DB
+2. parser/validator for canonical records
+3. deterministic builder command
+4. GitHub PR ingestion mapper into canonical evidence records
+5. prompt-time retrieval contract over the derived DB

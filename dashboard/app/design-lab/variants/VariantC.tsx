@@ -16,6 +16,11 @@ const STAGE_COLORS: Record<string, string> = {
   pr_opened: "#6c71c4", pr_merged: "#859900", released: "#859900",
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  signal: "SIGNAL", insight: "INSIGHT", engineering_task: "TASK",
+  pr_opened: "PR", pr_merged: "MERGED", released: "SHIPPED",
+};
+
 function ConsoleNavBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const tabs: { id: Tab; label: string }[] = [
     { id: "ari", label: "ari" },
@@ -24,18 +29,17 @@ function ConsoleNavBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) 
   ];
   return (
     <div className="flex items-center gap-6 px-4 py-2 border-b" style={{ backgroundColor: "#002b36", borderColor: "#586e75" }}>
-      <span className="font-mono-data text-xs" style={{ color: "#2aa198" }}>$ ari-ivan-dashboard</span>
+      <span className="font-mono-data text-xs" style={{ color: "#2aa198" }}>$ scisummary/ari-ivan</span>
       <span className="font-mono-data text-xs" style={{ color: "#586e75" }}>/</span>
       {tabs.map((t) => (
         <button key={t.id} onClick={() => setTab(t.id)}
           className="font-mono-data text-xs"
           style={{
             color: tab === t.id ? "#eee8d5" : "#586e75",
-            borderBottom: tab === t.id ? "1px solid #2aa198" : "1px solid transparent",
             background: "none", border: "none",
             borderBottomWidth: 1, borderBottomStyle: "solid",
             borderBottomColor: tab === t.id ? "#2aa198" : "transparent",
-            cursor: "pointer",
+            cursor: "pointer", paddingBottom: 1,
           }}>
           {tab === t.id ? `[${t.label}]` : t.label}
         </button>
@@ -46,18 +50,34 @@ function ConsoleNavBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) 
 }
 
 function ConsoleKpiBar({ tab }: { tab: Tab }) {
-  const kpis = tab === "ivan" ? ivanKpis : tab === "ari" ? ariKpis : [...ariKpis, ...ivanKpis];
   const sysStats = tab === "collab";
   return (
     <div className="flex items-center border-b overflow-x-auto" style={{ backgroundColor: "#073642", borderColor: "#586e75" }}>
+      {/* Business metrics — collab only */}
       {sysStats && (
         <div className="flex items-center gap-4 px-4 py-2 border-r flex-shrink-0" style={{ borderColor: "#586e75" }}>
-          <span className="font-mono-data text-xs uppercase tracking-widest" style={{ color: "#586e75" }}>sys</span>
-          <span className="font-mono-data text-sm" style={{ color: "#859900" }}>{summaryStats.storiesThisWeek} stories</span>
-          <span className="font-mono-data text-sm" style={{ color: "#2aa198" }}>{summaryStats.loopClosedPct}% closed</span>
-          <span className="font-mono-data text-sm" style={{ color: "#eee8d5" }}>{summaryStats.avgSignalToPr} avg</span>
+          <span className="font-mono-data text-xs uppercase tracking-widest" style={{ color: "#586e75" }}>biz</span>
+          <div className="flex items-baseline gap-1">
+            <span className="font-mono-data text-sm font-semibold" style={{ color: "#859900" }}>{summaryStats.mrrGrowth}</span>
+            <span className="font-mono-data text-xs" style={{ color: "#586e75" }}>mrr</span>
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-mono-data text-sm font-semibold" style={{ color: "#2aa198" }}>{summaryStats.activationRate}</span>
+            <span className="font-mono-data text-xs" style={{ color: "#586e75" }}>activation</span>
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-mono-data text-sm font-semibold" style={{ color: "#eee8d5" }}>{summaryStats.avgSignalToPr}</span>
+            <span className="font-mono-data text-xs" style={{ color: "#586e75" }}>sig→pr</span>
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="font-mono-data text-sm font-semibold" style={{ color: summaryStats.churnSignalsOpen > 0 ? "#cb4b16" : "#859900" }}>
+              {summaryStats.churnSignalsOpen}
+            </span>
+            <span className="font-mono-data text-xs" style={{ color: "#586e75" }}>churn open</span>
+          </div>
         </div>
       )}
+      {/* Ari KPIs */}
       {(tab === "ari" || tab === "collab") && (
         <div className="flex items-center gap-4 px-4 py-2 border-r flex-shrink-0" style={{ borderColor: "#586e75" }}>
           <span className="font-mono-data text-xs uppercase tracking-widest" style={{ color: "#2aa198" }}>ari</span>
@@ -69,6 +89,7 @@ function ConsoleKpiBar({ tab }: { tab: Tab }) {
           ))}
         </div>
       )}
+      {/* Ivan KPIs */}
       {(tab === "ivan" || tab === "collab") && (
         <div className="flex items-center gap-4 px-4 py-2 flex-shrink-0">
           <span className="font-mono-data text-xs uppercase tracking-widest" style={{ color: "#268bd2" }}>ivan</span>
@@ -88,7 +109,7 @@ function ConsoleKpiBar({ tab }: { tab: Tab }) {
   );
 }
 
-function SinglePanel({ actor, accent, label }: { actor: "ari" | "ivan"; accent: string; label: string }) {
+function SinglePanel({ actor, accent, label, subtitle }: { actor: "ari" | "ivan"; accent: string; label: string; subtitle: string }) {
   const events = liveEvents.filter((e) => e.actor === actor);
   const kpis = actor === "ari" ? ariKpis : ivanKpis;
   return (
@@ -96,7 +117,7 @@ function SinglePanel({ actor, accent, label }: { actor: "ari" | "ivan"; accent: 
       {/* Activity feed */}
       <div className="flex flex-col border-r" style={{ borderColor: "#586e75", backgroundColor: "#002b36", flex: 1, height: 740 }}>
         <div className="px-3 py-2 border-b font-mono-data text-xs" style={{ borderColor: "#586e75", color: accent }}>
-          ┌─ {label.toUpperCase()}:ACTIVITY ─────────────────
+          ┌─ {label.toUpperCase()}:ACTIVITY ──── <span style={{ color: "#586e75" }}>{subtitle}</span>
         </div>
         <div className="flex-1 overflow-y-auto dark-scroll" style={{ minHeight: 0 }}>
           {events.map((event) => (
@@ -104,25 +125,32 @@ function SinglePanel({ actor, accent, label }: { actor: "ari" | "ivan"; accent: 
               <div className="flex items-center gap-2 mb-0.5">
                 <span style={{ color: accent }}>▸</span>
                 <span style={{ color: "#586e75" }}>{event.time}</span>
-                <span className="uppercase" style={{ color: actor === "ari" ? "#b58900" : "#6c71c4" }}>[{event.type}]</span>
+                <span className="uppercase" style={{ color: STAGE_COLORS[event.type] || "#93a1a1" }}>
+                  [{TYPE_LABELS[event.type] || event.type}]
+                </span>
               </div>
               <div style={{ color: "#839496" }} className="pl-4 leading-relaxed">{event.text}</div>
             </div>
           ))}
         </div>
       </div>
-      {/* KPIs panel */}
+      {/* KPI panel */}
       <div className="flex flex-col" style={{ backgroundColor: "#073642", width: 280, height: 740 }}>
         <div className="px-3 py-2 border-b font-mono-data text-xs" style={{ borderColor: "#586e75", color: accent }}>
-          ┌─ {label.toUpperCase()}:KPIs ─────────────────────
+          ┌─ {label.toUpperCase()}:METRICS ──────────────────
         </div>
         <div className="px-3 py-3 font-mono-data text-xs" style={{ color: "#586e75" }}>
-          <div className="mb-2" style={{ color: accent }}>── KPIs (7d) ──</div>
+          <div className="mb-3" style={{ color: accent }}>── KPIs (7d) ──────────</div>
           {kpis.map((k) => (
-            <div key={k.label} className="flex justify-between mb-2">
-              <span>{k.label}</span>
+            <div key={k.label} className="flex justify-between mb-2.5">
+              <span style={{ color: "#93a1a1" }}>{k.label}</span>
               <span style={{ color: "#eee8d5" }}>
-                {k.value}{k.delta && <span style={{ color: "#859900" }}> {k.delta}</span>}
+                {k.value}
+                {k.delta && (
+                  <span style={{ color: k.deltaDir === "up" ? "#859900" : k.label === "Churn signals" ? "#859900" : "#dc322f" }}>
+                    {" "}{k.delta}
+                  </span>
+                )}
               </span>
             </div>
           ))}
@@ -137,7 +165,7 @@ function AriPanel() {
   return (
     <div className="flex flex-col border-r" style={{ borderColor: "#586e75", backgroundColor: "#002b36", height: 740 }}>
       <div className="px-3 py-2 border-b font-mono-data text-xs" style={{ borderColor: "#586e75", color: "#2aa198" }}>
-        ┌─ ARI:OPERATOR ─────────────────
+        ┌─ ARI:DEMAND ────────────────────
       </div>
       <div className="flex-1 overflow-y-auto dark-scroll" style={{ minHeight: 0 }}>
         {ariEvents.map((event) => (
@@ -145,7 +173,9 @@ function AriPanel() {
             <div className="flex items-center gap-2 mb-0.5">
               <span style={{ color: "#2aa198" }}>▸</span>
               <span style={{ color: "#586e75" }}>{event.time}</span>
-              <span className="uppercase" style={{ color: "#b58900" }}>[{event.type}]</span>
+              <span className="uppercase" style={{ color: STAGE_COLORS[event.type] || "#93a1a1" }}>
+                [{TYPE_LABELS[event.type] || event.type}]
+              </span>
             </div>
             <div style={{ color: "#839496" }} className="pl-4 leading-relaxed">{event.text}</div>
           </div>
@@ -153,9 +183,16 @@ function AriPanel() {
         <div className="px-3 py-3 font-mono-data text-xs" style={{ color: "#586e75" }}>
           <div className="mb-2" style={{ color: "#2aa198" }}>── KPIs (7d) ──</div>
           {ariKpis.map((k) => (
-            <div key={k.label} className="flex justify-between mb-1">
-              <span>{k.label}</span>
-              <span style={{ color: "#eee8d5" }}>{k.value}{k.delta && <span style={{ color: "#859900" }}> {k.delta}</span>}</span>
+            <div key={k.label} className="flex justify-between mb-1.5">
+              <span style={{ color: "#93a1a1" }}>{k.label}</span>
+              <span style={{ color: "#eee8d5" }}>
+                {k.value}
+                {k.delta && (
+                  <span style={{ color: k.deltaDir === "up" ? "#859900" : k.label === "Churn signals" ? "#859900" : "#dc322f" }}>
+                    {" "}{k.delta}
+                  </span>
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -175,7 +212,7 @@ function StoryConsoleList() {
           <div key={story.id} className="px-3 py-2.5 border-b font-mono-data" style={{ borderColor: "#586e75" }}>
             <div className="flex items-start gap-2 mb-1.5">
               <span style={{ color: STAGE_COLORS[story.status] || "#93a1a1" }}>{story.status === "released" ? "✓" : "▶"}</span>
-              <span className="text-xs" style={{ color: "#eee8d5" }}>{story.title}</span>
+              <span className="text-xs leading-snug" style={{ color: "#eee8d5" }}>{story.title}</span>
             </div>
             <div className="flex items-center gap-1 pl-4">
               {story.stages.map((stage, i) => {
@@ -191,7 +228,11 @@ function StoryConsoleList() {
               })}
             </div>
             <div className="pl-4 mt-1 text-xs" style={{ color: "#586e75" }}>
-              {story.primaryBusinessArea} · conf <span style={{ color: "#93a1a1" }}>{Math.round(story.confidenceScore * 100)}%</span> · {story.startedAt}
+              {story.primaryBusinessArea}
+              <span style={{ color: "#073642", margin: "0 4px" }}>·</span>
+              conf <span style={{ color: "#93a1a1" }}>{Math.round(story.confidenceScore * 100)}%</span>
+              <span style={{ color: "#073642", margin: "0 4px" }}>·</span>
+              {story.startedAt}
             </div>
           </div>
         ))}
@@ -205,7 +246,7 @@ function IvanPanel() {
   return (
     <div className="flex flex-col border-l" style={{ borderColor: "#586e75", backgroundColor: "#002b36", height: 740 }}>
       <div className="px-3 py-2 border-b font-mono-data text-xs" style={{ borderColor: "#586e75", color: "#268bd2" }}>
-        ┌─ IVAN:ENGINEER ─────────────────
+        ┌─ IVAN:BUILD ────────────────────
       </div>
       <div className="flex-1 overflow-y-auto dark-scroll" style={{ minHeight: 0 }}>
         {ivanEvents.map((event) => (
@@ -213,7 +254,9 @@ function IvanPanel() {
             <div className="flex items-center gap-2 mb-0.5">
               <span style={{ color: "#268bd2" }}>▸</span>
               <span style={{ color: "#586e75" }}>{event.time}</span>
-              <span className="uppercase" style={{ color: "#6c71c4" }}>[{event.type}]</span>
+              <span className="uppercase" style={{ color: STAGE_COLORS[event.type] || "#6c71c4" }}>
+                [{TYPE_LABELS[event.type] || event.type}]
+              </span>
             </div>
             <div style={{ color: "#839496" }} className="pl-4 leading-relaxed">{event.text}</div>
           </div>
@@ -221,9 +264,12 @@ function IvanPanel() {
         <div className="px-3 py-3 font-mono-data text-xs" style={{ color: "#586e75" }}>
           <div className="mb-2" style={{ color: "#268bd2" }}>── KPIs (7d) ──</div>
           {ivanKpis.map((k) => (
-            <div key={k.label} className="flex justify-between mb-1">
-              <span>{k.label}</span>
-              <span style={{ color: "#eee8d5" }}>{k.value}{k.delta && <span style={{ color: "#859900" }}> {k.delta}</span>}</span>
+            <div key={k.label} className="flex justify-between mb-1.5">
+              <span style={{ color: "#93a1a1" }}>{k.label}</span>
+              <span style={{ color: "#eee8d5" }}>
+                {k.value}
+                {k.delta && <span style={{ color: "#859900" }}>{" "}{k.delta}</span>}
+              </span>
             </div>
           ))}
         </div>
@@ -240,12 +286,10 @@ export function VariantC() {
       <ConsoleNavBar tab={tab} setTab={setTab} />
       <ConsoleKpiBar tab={tab} />
 
-      {/* Ari full-width panel */}
       {tab === "ari" && (
-        <SinglePanel actor="ari" accent="#2aa198" label="Ari" />
+        <SinglePanel actor="ari" accent="#2aa198" label="Ari" subtitle="demand intelligence" />
       )}
 
-      {/* 3-panel collab */}
       {tab === "collab" && (
         <div className="flex" style={{ height: 740 }}>
           <div className="w-80 flex-shrink-0 overflow-hidden"><AriPanel /></div>
@@ -254,9 +298,8 @@ export function VariantC() {
         </div>
       )}
 
-      {/* Ivan full-width panel */}
       {tab === "ivan" && (
-        <SinglePanel actor="ivan" accent="#268bd2" label="Ivan" />
+        <SinglePanel actor="ivan" accent="#268bd2" label="Ivan" subtitle="engineering output" />
       )}
     </div>
   );
