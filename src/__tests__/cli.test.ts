@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import { execSync, spawn } from 'node:child_process';
-import { writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert';
@@ -81,7 +81,7 @@ describe('CLI behavior', () => {
     let output = '';
     let hasStartedInteractive = false;
 
-    const timeout = setTimeout(() => {
+    const timeout = globalThis.setTimeout(() => {
       if (!child.killed) {
         child.kill('SIGTERM');
       }
@@ -111,7 +111,7 @@ describe('CLI behavior', () => {
     });
 
     child.on('close', () => {
-      clearTimeout(timeout);
+      globalThis.clearTimeout(timeout);
 
       try {
         // Either it started interactive mode OR it attempted to and we just killed it
