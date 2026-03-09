@@ -102,19 +102,30 @@ export class GitManagerCLI implements IGitManager {
         cwd: this.workingDir,
         stdio: 'pipe'
       });
-      // Escape all shell special characters including backticks, quotes, and dollar signs
-      const escapedMessage = message
-        .replace(/\\/g, '\\\\') // Escape backslashes first
-        .replace(/"/g, '\\"') // Escape double quotes
-        .replace(/`/g, '\\`') // Escape backticks
-        .replace(/\$/g, '\\$') // Escape dollar signs
-        .replace(/!/g, '\\!'); // Escape exclamation marks
-      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
-      execSync(`git commit -m "${commitMessage}"`, {
-        cwd: this.workingDir,
-        stdio: 'pipe'
-      });
-      console.log(chalk.green(`✅ Committed changes: ${message}`));
+
+      // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
+      const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+      const tmpDir = os.tmpdir();
+      const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
+      writeFileSync(tmpFile, commitMessage, 'utf8');
+
+      try {
+        // Use 'ignore' for stdio to avoid buffer issues with large commits
+        // git commit output isn't critical for success verification
+        execSync(`git commit -F "${tmpFile}"`, {
+          cwd: this.workingDir,
+          stdio: 'ignore',
+          maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
+        });
+        console.log(chalk.green(`✅ Committed changes: ${message}`));
+      } finally {
+        // Clean up temp file
+        try {
+          unlinkSync(tmpFile);
+        } catch {
+          // Ignore file deletion errors
+        }
+      }
     } catch (error) {
       throw new Error(`Failed to commit changes: ${error}`);
     }
@@ -124,19 +135,29 @@ export class GitManagerCLI implements IGitManager {
     this.ensureGitRepo();
 
     try {
-      // Escape all shell special characters including backticks, quotes, and dollar signs
-      const escapedMessage = message
-        .replace(/\\/g, '\\\\') // Escape backslashes first
-        .replace(/"/g, '\\"') // Escape double quotes
-        .replace(/`/g, '\\`') // Escape backticks
-        .replace(/\$/g, '\\$') // Escape dollar signs
-        .replace(/!/g, '\\!'); // Escape exclamation marks
-      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
-      execSync(`git commit --allow-empty -m "${commitMessage}"`, {
-        cwd: this.workingDir,
-        stdio: 'pipe'
-      });
-      console.log(chalk.green(`✅ Created empty commit: ${message}`));
+      // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
+      const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+      const tmpDir = os.tmpdir();
+      const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
+      writeFileSync(tmpFile, commitMessage, 'utf8');
+
+      try {
+        // Use 'ignore' for stdio to avoid buffer issues with large commits
+        // git commit output isn't critical for success verification
+        execSync(`git commit --allow-empty -F "${tmpFile}"`, {
+          cwd: this.workingDir,
+          stdio: 'ignore',
+          maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
+        });
+        console.log(chalk.green(`✅ Created empty commit: ${message}`));
+      } finally {
+        // Clean up temp file
+        try {
+          unlinkSync(tmpFile);
+        } catch {
+          // Ignore file deletion errors
+        }
+      }
     } catch (error) {
       throw new Error(`Failed to create empty commit: ${error}`);
     }
