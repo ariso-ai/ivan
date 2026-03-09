@@ -123,7 +123,7 @@ export default function DesignLabPage() {
                 style={{
                   minHeight: 600,
                   position: "relative",
-                  overflow: "hidden",
+                  overflow: "auto",
                 }}
               >
                 <Component />
