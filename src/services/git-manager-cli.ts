@@ -110,14 +110,17 @@ export class GitManagerCLI implements IGitManager {
       writeFileSync(tmpFile, commitMessage, 'utf8');
 
       try {
-        // Use 'ignore' for stdio to avoid buffer issues with large commits
-        // git commit output isn't critical for success verification
-        execSync(`git commit -F "${tmpFile}"`, {
+        // Capture stderr for error messages, but ignore stdout to avoid buffer issues
+        const result = execSync(`git commit -F "${tmpFile}" 2>&1`, {
           cwd: this.workingDir,
-          stdio: 'ignore',
+          encoding: 'utf8',
           maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
         });
         console.log(chalk.green(`✅ Committed changes: ${message}`));
+      } catch (commitError: any) {
+        // Include the git error output for debugging
+        const gitError = commitError.stderr || commitError.stdout || commitError.message || 'Unknown error';
+        throw new Error(`Git commit failed: ${gitError}`);
       } finally {
         // Clean up temp file
         try {
@@ -127,7 +130,7 @@ export class GitManagerCLI implements IGitManager {
         }
       }
     } catch (error) {
-      throw new Error(`Failed to commit changes: ${error}`);
+      throw error;
     }
   }
 
@@ -142,14 +145,17 @@ export class GitManagerCLI implements IGitManager {
       writeFileSync(tmpFile, commitMessage, 'utf8');
 
       try {
-        // Use 'ignore' for stdio to avoid buffer issues with large commits
-        // git commit output isn't critical for success verification
-        execSync(`git commit --allow-empty -F "${tmpFile}"`, {
+        // Capture stderr for error messages, but ignore stdout to avoid buffer issues
+        const result = execSync(`git commit --allow-empty -F "${tmpFile}" 2>&1`, {
           cwd: this.workingDir,
-          stdio: 'ignore',
+          encoding: 'utf8',
           maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
         });
         console.log(chalk.green(`✅ Created empty commit: ${message}`));
+      } catch (commitError: any) {
+        // Include the git error output for debugging
+        const gitError = commitError.stderr || commitError.stdout || commitError.message || 'Unknown error';
+        throw new Error(`Git commit failed: ${gitError}`);
       } finally {
         // Clean up temp file
         try {
@@ -159,7 +165,7 @@ export class GitManagerCLI implements IGitManager {
         }
       }
     } catch (error) {
-      throw new Error(`Failed to create empty commit: ${error}`);
+      throw error;
     }
   }
 
@@ -922,14 +928,22 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           encoding: 'utf8'
         }).trim();
 
+        if (!userName || !userEmail) {
+          console.log(
+            chalk.yellow(
+              `⚠️ Git user.name or user.email not configured in main repo. You may need to configure them manually.`
+            )
+          );
+        }
+
         if (userName) {
-          execSync(`git config user.name "${userName}"`, {
+          execSync(`git config user.name "${userName.replace(/"/g, '\\"')}"`, {
             cwd: worktreePath,
             stdio: 'pipe'
           });
         }
         if (userEmail) {
-          execSync(`git config user.email "${userEmail}"`, {
+          execSync(`git config user.email "${userEmail.replace(/"/g, '\\"')}"`, {
             cwd: worktreePath,
             stdio: 'pipe'
           });
