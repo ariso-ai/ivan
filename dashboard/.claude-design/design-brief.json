@@ -1,0 +1,67 @@
+{
+  "scope": "page",
+  "isRedesign": false,
+  "targetName": "AriIvanDashboard",
+  "targetDescription": "Public live dashboard showing Ari-Ivan collaboration loop for SciSummary",
+  "pages": ["Ari", "Ari<->Ivan (default)", "Ivan"],
+  "defaultPage": "Ari<->Ivan",
+  "painPoints": [
+    "No existing public artifact proving the collaboration loop",
+    "Ari and Ivan appear as separate systems without visible connection"
+  ],
+  "inspiration": {
+    "visual": ["Polsia live dashboard", "Solarized color system"],
+    "functional": ["Ambient live wallboard", "Ops room density"]
+  },
+  "brand": {
+    "adjectives": ["credible", "alive", "trustworthy", "technical"],
+    "density": "information-dense",
+    "darkMode": true,
+    "perPageTheme": {
+      "ari": "Solarized Light + editorial sans",
+      "collaboration": "Mixed Solarized + display+mono typography",
+      "ivan": "Solarized Dark + monospace/technical"
+    }
+  },
+  "colorPalette": "Solarized — same accent swatches (#b58900 #2aa198 #268bd2 #6c71c4 #859900 #cb4b16 #dc322f #d33682)",
+  "typography": {
+    "ariPage": "editorial sans (Inter)",
+    "ivanPage": "monospace (JetBrains Mono)",
+    "collaborationPage": "display + mono mixed"
+  },
+  "persona": {
+    "primary": "External viewer (investor, partner, social audience)",
+    "secondary": "Ariso internal team",
+    "context": "desktop-first (wallboard)",
+    "keyTasks": [
+      "Understand Ari-Ivan relationship at a glance",
+      "See the loop: signal → insight → PR → release",
+      "Share as viral proof artifact"
+    ]
+  },
+  "constraints": {
+    "mustKeep": [],
+    "technical": ["no raw PII", "public-safe redaction only", "SQLite backed"]
+  },
+  "framework": "nextjs-app",
+  "packageManager": "npm",
+  "stylingSystem": "tailwind",
+  "solarizedPalette": {
+    "base03": "#002b36",
+    "base02": "#073642",
+    "base01": "#586e75",
+    "base00": "#657b83",
+    "base0": "#839496",
+    "base1": "#93a1a1",
+    "base2": "#eee8d5",
+    "base3": "#fdf6e3",
+    "yellow": "#b58900",
+    "orange": "#cb4b16",
+    "red": "#dc322f",
+    "magenta": "#d33682",
+    "violet": "#6c71c4",
+    "blue": "#268bd2",
+    "cyan": "#2aa198",
+    "green": "#859900"
+  }
+}
