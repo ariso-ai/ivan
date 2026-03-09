@@ -88,84 +88,76 @@ export class GitManagerCLI implements IGitManager {
   async commitChanges(message: string): Promise<void> {
     this.ensureGitRepo();
 
+    const status = execSync('git status --porcelain', {
+      cwd: this.workingDir,
+      encoding: 'utf8'
+    });
+    if (!status.trim()) {
+      console.log(chalk.yellow('⚠️  No changes to commit'));
+      return;
+    }
+
+    execSync('git add --all', {
+      cwd: this.workingDir,
+      stdio: 'pipe'
+    });
+
+    // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
+    const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
+    writeFileSync(tmpFile, commitMessage, 'utf8');
+
     try {
-      const status = execSync('git status --porcelain', {
+      // Capture stderr for error messages, but ignore stdout to avoid buffer issues
+      execSync(`git commit -F "${tmpFile}" 2>&1`, {
         cwd: this.workingDir,
-        encoding: 'utf8'
+        encoding: 'utf8',
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
       });
-      if (!status.trim()) {
-        console.log(chalk.yellow('⚠️  No changes to commit'));
-        return;
-      }
-
-      execSync('git add --all', {
-        cwd: this.workingDir,
-        stdio: 'pipe'
-      });
-
-      // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
-      const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
-      const tmpDir = os.tmpdir();
-      const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
-      writeFileSync(tmpFile, commitMessage, 'utf8');
-
+      console.log(chalk.green(`✅ Committed changes: ${message}`));
+    } catch (commitError: unknown) {
+      // Include the git error output for debugging
+      const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+      throw new Error(`Git commit failed: ${errorMessage}`);
+    } finally {
+      // Clean up temp file
       try {
-        // Capture stderr for error messages, but ignore stdout to avoid buffer issues
-        const result = execSync(`git commit -F "${tmpFile}" 2>&1`, {
-          cwd: this.workingDir,
-          encoding: 'utf8',
-          maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
-        });
-        console.log(chalk.green(`✅ Committed changes: ${message}`));
-      } catch (commitError: any) {
-        // Include the git error output for debugging
-        const gitError = commitError.stderr || commitError.stdout || commitError.message || 'Unknown error';
-        throw new Error(`Git commit failed: ${gitError}`);
-      } finally {
-        // Clean up temp file
-        try {
-          unlinkSync(tmpFile);
-        } catch {
-          // Ignore file deletion errors
-        }
+        unlinkSync(tmpFile);
+      } catch {
+        // Ignore file deletion errors
       }
-    } catch (error) {
-      throw error;
     }
   }
 
   async createEmptyCommit(message: string): Promise<void> {
     this.ensureGitRepo();
 
-    try {
-      // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
-      const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
-      const tmpDir = os.tmpdir();
-      const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
-      writeFileSync(tmpFile, commitMessage, 'utf8');
+    // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
+    const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
+    writeFileSync(tmpFile, commitMessage, 'utf8');
 
+    try {
+      // Capture stderr for error messages, but ignore stdout to avoid buffer issues
+      execSync(`git commit --allow-empty -F "${tmpFile}" 2>&1`, {
+        cwd: this.workingDir,
+        encoding: 'utf8',
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
+      });
+      console.log(chalk.green(`✅ Created empty commit: ${message}`));
+    } catch (commitError: unknown) {
+      // Include the git error output for debugging
+      const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+      throw new Error(`Git commit failed: ${errorMessage}`);
+    } finally {
+      // Clean up temp file
       try {
-        // Capture stderr for error messages, but ignore stdout to avoid buffer issues
-        const result = execSync(`git commit --allow-empty -F "${tmpFile}" 2>&1`, {
-          cwd: this.workingDir,
-          encoding: 'utf8',
-          maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
-        });
-        console.log(chalk.green(`✅ Created empty commit: ${message}`));
-      } catch (commitError: any) {
-        // Include the git error output for debugging
-        const gitError = commitError.stderr || commitError.stdout || commitError.message || 'Unknown error';
-        throw new Error(`Git commit failed: ${gitError}`);
-      } finally {
-        // Clean up temp file
-        try {
-          unlinkSync(tmpFile);
-        } catch {
-          // Ignore file deletion errors
-        }
+        unlinkSync(tmpFile);
+      } catch {
+        // Ignore file deletion errors
       }
-    } catch (error) {
-      throw error;
     }
   }
 
