@@ -20,8 +20,12 @@ This plan maps that storage model onto the current Ivan CLI codebase without dis
   - Rationale: this is a new product surface, not a small extension of jobs/tasks tables.
 - **CLI boundary**: New `ivan learnings ...` command family with explicit verbs instead of passive background writes.
   - Rationale: the handoff explicitly called out the need to decide the builder shape and exact CLI boundary.
+- **Workflow scope**: Keep slice 1 workflow-native inside Ivan's CLI/query surfaces; treat public dashboards or hosted proof surfaces as downstream consumers, not launch scope.
+  - Rationale: the product-comparables prompt explicitly warns against dashboard-first scope creep, while the Ari/Ivan dashboard spec is a later consumer of Ivan/GitHub data rather than the learnings MVP itself.
 - **GitHub ingestion model**: Introduce a richer learnings-specific PR evidence model instead of widening the existing thin `PRComment` shape everywhere.
   - Rationale: current PR services are optimized for "address unresolved comments," not durable evidence extraction.
+- **Evidence-source focus**: Launch with GitHub PR evidence first; defer Claude/Codex session-derived evidence even though the broader product framing includes it.
+  - Rationale: PR evidence already has concrete March 9 research, clear weighting guidance, and partial service hooks in the current codebase.
 - **Vector indexing**: Treat embeddings as optional in slice 1; ship the FTS-backed builder first and add `sqlite-vec` only once runtime loading is proven.
   - Rationale: the schema proposal includes `learning_embeddings`, but the current repo has no extension-loading path yet.
 - **Testing strategy**: Add a real test harness and fixture-based tests before shipping parser/builder/weighting logic.
@@ -32,21 +36,29 @@ This plan maps that storage model onto the current Ivan CLI codebase without dis
 Ivan already has several reusable foundations:
 
 - Command registration is centralized in [`src/index.ts`](src/index.ts), with DB-backed workflows explicitly calling migrations before work.
+- PR #15 already established the current hybrid routing pattern around `program.parseOptions(args)` plus `operands`, which is the path new `ivan learnings ...` commands must extend rather than bypass.
 - SQLite persistence already exists via `better-sqlite3` + Kysely in [`src/database.ts`](src/database.ts) and [`src/database/migration.ts`](src/database/migration.ts).
 - Repository scoping is already modeled and persisted through [`src/services/repository-manager-cli.ts`](src/services/repository-manager-cli.ts) and [`src/services/repository-manager-pat.ts`](src/services/repository-manager-pat.ts).
 - GitHub PR access already exists in both CLI and PAT modes through [`src/services/pr-service-cli.ts`](src/services/pr-service-cli.ts), [`src/services/pr-service-pat.ts`](src/services/pr-service-pat.ts), and [`src/services/github-api-client.ts`](src/services/github-api-client.ts).
+- PR #16's auto-address loop, repo-instructions onboarding, per-branch worktree grouping, and formatting/tooling changes are now part of the baseline behavior this subsystem must not regress.
 
 The gaps are equally clear:
 
 - The existing persistent model only covers `repositories`, `jobs`, `tasks`, and `migrations` in [`src/database/types.ts`](src/database/types.ts).
 - The current PR evidence model is intentionally thin: `PRComment` only exposes `id`, `author`, `body`, `createdAt`, and optional path/line in [`src/services/git-interfaces.ts`](src/services/git-interfaces.ts).
 - The current unresolved-comment logic intentionally collapses review-thread detail into a narrow addressing workflow in [`src/services/pr-service-cli.ts`](src/services/pr-service-cli.ts) and [`src/services/pr-service-pat.ts`](src/services/pr-service-pat.ts).
+- PAT-mode check fetching is currently broken because `getPRChecks()` expects a head SHA that `getPR()` does not return, so the GitHub expansion work must include a correctness fix rather than only additive evidence fetches.
 - No canonical-record store exists today. Ivan persists configuration and its control-plane DB under `~/.ivan` in [`src/config.ts`](src/config.ts).
-- The worktree branch did not contain the prior `thoughts/` artifacts, so branch-local planning artifacts are being created here to preserve continuity.
+- PR #15 previously removed `thoughts/shared/plans` and `thoughts/shared/specs` from the branch, so continuity assumptions should remain explicit and branch-local going forward.
+- The repository still has no working automated test path: `npm test` is a placeholder, `.github/workflows/test.yml` is a stub, and `tsconfig.json` currently excludes non-`src` test coverage.
 
 ### Key Files
 
 - `package.json` - build/test/lint script surface and CLI packaging
+- `.github/workflows/ci.yml` - current CI verification surface
+- `.github/workflows/test.yml` - placeholder test workflow that must become real
+- `tsconfig.json` - current TypeScript scope, which excludes tests today
+- `.gitignore` - missing `learnings.db` ignore coverage
 - `src/index.ts` - top-level CLI command registration and recognized-command parsing
 - `src/config.ts` - `~/.ivan` configuration and control-plane DB bootstrap
 - `src/database.ts` - current SQLite/Kysely setup for Ivan's control-plane DB
@@ -62,6 +74,9 @@ The gaps are equally clear:
 - `src/services/task-executor.ts` - main task workflow where `repository.id` is already resolved
 - `src/services/address-executor.ts` - PR issue workflow where `repository.id` and `commentId` already exist
 - `src/web-server.ts` - example SQLite read-model consumer
+- `thoughts/shared/prs/15_description.md` - routing/history context for the current CLI baseline
+- `thoughts/shared/prs/16_description.md` - recent workflow changes that define the current baseline
+- `thoughts/shared/specs/2026-03-09-ari-ivan-dashboard.md` - downstream consumer context, not launch scope
 
 ## Tasks
 
@@ -71,6 +86,7 @@ Create the explicit code and CLI boundary for learnings.
 
 - [ ] Add a new `src/learnings/` module namespace for types, parser, builder, ingestion, extraction, and query logic
 - [ ] Add a new `ivan learnings` command family in `src/index.ts`
+- [ ] Preserve the current `program.parseOptions(args)` + `operands` routing pattern from PR #15 while adding the new command family
 - [ ] Update the manual `recognizedCommands` list in `src/index.ts` so new learnings verbs are not mis-routed as task descriptions
 - [ ] Decide and document the first command set:
   - `ivan learnings init --repo <path>`
@@ -152,6 +168,7 @@ Upgrade the current PR fetchers from an addressing workflow to a learnings-inges
   - review summaries with state and body
   - full review threads with thread IDs, resolution, outdatedness, and actor metadata
   - enough commit/patch context to score "addressed change"
+- [ ] Fix PAT-mode check fetching by returning or separately fetching the PR head SHA before `getPRChecks()` tries to inspect commit check-runs
 - [ ] Extend PAT mode in `src/services/github-api-client.ts` to fetch the missing thread and commit details
 - [ ] Extend CLI mode in `src/services/pr-service-cli.ts` with equivalent `gh`/GraphQL calls
 - [ ] Keep existing `address` behavior stable by layering new learnings-specific interfaces instead of breaking `PRComment`
@@ -206,9 +223,11 @@ Create the smallest useful learning loop on top of weighted evidence.
 Add the guardrails this repository currently lacks.
 
 - [ ] Add a working automated test setup for parser, builder, weighting, and GitHub-mapper fixtures
+- [ ] Add Jest configuration and any TypeScript test config needed so tests can live outside the current `src/**/*` compile scope
 - [ ] Add fixture repos and fixture PR payloads for deterministic end-to-end rebuild tests
 - [ ] Document target-repo layout, command usage, rebuild expectations, and deferred features
 - [ ] Verify current `ivan` and `ivan address` workflows remain unchanged
+- [ ] Replace the placeholder `.github/workflows/test.yml` path with a real `npm test` job once the harness exists
 - [ ] Add one smoke-test path that:
   - initializes a repo
   - ingests a PR fixture
@@ -227,6 +246,7 @@ Add the guardrails this repository currently lacks.
 - `tests/learnings/weighting.test.ts`
 - `tests/learnings/ingestion.test.ts`
 - `tests/fixtures/...`
+- `jest.config.*` or equivalent
 
 ## Success Criteria
 
@@ -254,6 +274,8 @@ Add the guardrails this repository currently lacks.
   - Mitigation: introduce an explicit `LearningsWorkspace` abstraction that always takes a target repo root and never falls back to `~/.ivan`.
 - **The current GitHub PR abstraction is too thin for weighting and traceability** (HIGH)
   - Mitigation: add new learnings-specific evidence types instead of overloading `PRComment`.
+- **PAT mode can silently lag CLI mode if the known `getPRChecks()` head-SHA bug is not fixed inside the GitHub expansion slice** (HIGH)
+  - Mitigation: fix the bug as part of Task 4 and add fixtures that exercise both CLI and PAT evidence/check paths.
 - **`sqlite-vec` runtime integration may fail on user machines** (HIGH)
   - Mitigation: ship FTS-first and keep embeddings optional until extension loading is verified.
 - **No existing test harness means parser/builder regressions will be easy to ship** (HIGH)
@@ -261,8 +283,8 @@ Add the guardrails this repository currently lacks.
 
 ### Elephants
 
-- **The prior research artifacts live in a sibling checkout, not this branch**
-  - Note: the implementation branch now needs its own `thoughts/` continuity trail so planning and execution do not depend on another checkout's filesystem state.
+- **The broader product framing includes session-derived learnings and downstream dashboard consumers**
+  - Note: keep slice 1 tightly focused on GitHub PR evidence plus local query, but design canonical records so later consumers can reuse them without reworking the storage model.
 - **The derived schema is leaner than the richer PR evidence model proposed by research**
   - Note: decide early whether to expand the DDL or intentionally drop fields so the builder/ingester contract stays coherent.
 
@@ -276,8 +298,9 @@ Add the guardrails this repository currently lacks.
 ## Out of Scope
 
 - Live `UserPromptSubmit` hook integration or Claude/Codex runtime wiring
+- Claude/Codex session-derived evidence ingestion, despite being part of the broader product framing
 - Cross-repo federation or multi-repo retrieval
 - Persisted background jobs, audit events, query history, or capability proposals
 - Bot comments as first-class learning evidence
 - Learned ranking, deep semantic diffing, or follow-up PR/revert linkage
-- A hosted dashboard or sync service beyond local repo-native artifacts
+- The Ari/Ivan public dashboard or any hosted proof surface beyond local repo-native artifacts

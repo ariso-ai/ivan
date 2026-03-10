@@ -243,6 +243,16 @@ ivan web [--port <port>]      # Start the web interface
 ivan web-stop [--port <port>] # Stop the web interface
 ```
 
+### Learnings MVP
+
+```bash
+ivan learnings init --repo /path/to/repo
+ivan learnings rebuild --repo /path/to/repo
+ivan learnings query --repo /path/to/repo --text "locks await"
+```
+
+This slice stores canonical learnings as committed text files under `learnings/` and rebuilds a derived local `learnings.db` for query-time retrieval. Queries read only the local derived database; they do not fetch live GitHub data.
+
 ### Address Command Options
 
 ```bash

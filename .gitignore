@@ -9,6 +9,8 @@ dist/
 .next/
 out/
 coverage/
+learnings.db
+learnings.db-*
 
 # TypeScript and tooling caches
 *.tsbuildinfo
@@ -35,3 +37,4 @@ pnpm-debug.log*
 *.swp
 *.swo
 *~
+.reference/

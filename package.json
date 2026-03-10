@@ -7,7 +7,7 @@
     "ivan": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node --input-type=module -e \"import fs from 'node:fs'; fs.mkdirSync('dist/learnings', { recursive: true }); fs.copyFileSync('src/learnings/schema.sql', 'dist/learnings/schema.sql');\"",
     "watch": "tsc --watch",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
@@ -16,8 +16,8 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "npm run build"
+    "test": "npm run build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --config jest.config.cjs",
+    "prepare": "effect-language-service patch && npm run build"
   },
   "author": "Ariso AI",
   "license": "MIT",
@@ -44,6 +44,7 @@
   ],
   "description": "AI-powered development assistant that automates complex workflows by breaking down tasks, implementing them with Claude, and creating PRs. Install with: npm i -g @ariso-ai/ivan",
   "devDependencies": {
+    "@effect/language-service": "^0.79.0",
     "@eslint/js": "^9.34.0",
     "@jest/globals": "^30.1.2",
     "@types/better-sqlite3": "^7.6.13",
@@ -62,11 +63,13 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.8",
+    "@effect/cli": "^0.73.2",
     "@types/express": "^5.0.3",
     "better-sqlite3": "^12.2.0",
     "chalk": "^5.6.0",
     "commander": "^14.0.0",
     "dotenv": "^17.2.1",
+    "effect": "^3.19.19",
     "express": "^5.1.0",
     "inquirer": "^12.9.4",
     "kysely": "^0.28.5",
