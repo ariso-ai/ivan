@@ -88,57 +88,76 @@ export class GitManagerCLI implements IGitManager {
   async commitChanges(message: string): Promise<void> {
     this.ensureGitRepo();
 
-    try {
-      const status = execSync('git status --porcelain', {
-        cwd: this.workingDir,
-        encoding: 'utf8'
-      });
-      if (!status.trim()) {
-        console.log(chalk.yellow('⚠️  No changes to commit'));
-        return;
-      }
+    const status = execSync('git status --porcelain', {
+      cwd: this.workingDir,
+      encoding: 'utf8'
+    });
+    if (!status.trim()) {
+      console.log(chalk.yellow('⚠️  No changes to commit'));
+      return;
+    }
 
-      execSync('git add --all', {
+    execSync('git add --all', {
+      cwd: this.workingDir,
+      stdio: 'pipe'
+    });
+
+    // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
+    const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
+    writeFileSync(tmpFile, commitMessage, 'utf8');
+
+    try {
+      // Capture stderr for error messages, but ignore stdout to avoid buffer issues
+      execSync(`git commit -F "${tmpFile}" 2>&1`, {
         cwd: this.workingDir,
-        stdio: 'pipe'
-      });
-      // Escape all shell special characters including backticks, quotes, and dollar signs
-      const escapedMessage = message
-        .replace(/\\/g, '\\\\') // Escape backslashes first
-        .replace(/"/g, '\\"') // Escape double quotes
-        .replace(/`/g, '\\`') // Escape backticks
-        .replace(/\$/g, '\\$') // Escape dollar signs
-        .replace(/!/g, '\\!'); // Escape exclamation marks
-      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
-      execSync(`git commit -m "${commitMessage}"`, {
-        cwd: this.workingDir,
-        stdio: 'pipe'
+        encoding: 'utf8',
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
       });
       console.log(chalk.green(`✅ Committed changes: ${message}`));
-    } catch (error) {
-      throw new Error(`Failed to commit changes: ${error}`);
+    } catch (commitError: unknown) {
+      // Include the git error output for debugging
+      const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+      throw new Error(`Git commit failed: ${errorMessage}`);
+    } finally {
+      // Clean up temp file
+      try {
+        unlinkSync(tmpFile);
+      } catch {
+        // Ignore file deletion errors
+      }
     }
   }
 
   async createEmptyCommit(message: string): Promise<void> {
     this.ensureGitRepo();
 
+    // Write commit message to a temporary file to avoid shell escaping issues and buffer limits
+    const commitMessage = `${message}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `commit-msg-${Date.now()}.txt`);
+    writeFileSync(tmpFile, commitMessage, 'utf8');
+
     try {
-      // Escape all shell special characters including backticks, quotes, and dollar signs
-      const escapedMessage = message
-        .replace(/\\/g, '\\\\') // Escape backslashes first
-        .replace(/"/g, '\\"') // Escape double quotes
-        .replace(/`/g, '\\`') // Escape backticks
-        .replace(/\$/g, '\\$') // Escape dollar signs
-        .replace(/!/g, '\\!'); // Escape exclamation marks
-      const commitMessage = `${escapedMessage}\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
-      execSync(`git commit --allow-empty -m "${commitMessage}"`, {
+      // Capture stderr for error messages, but ignore stdout to avoid buffer issues
+      execSync(`git commit --allow-empty -F "${tmpFile}" 2>&1`, {
         cwd: this.workingDir,
-        stdio: 'pipe'
+        encoding: 'utf8',
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large commits
       });
       console.log(chalk.green(`✅ Created empty commit: ${message}`));
-    } catch (error) {
-      throw new Error(`Failed to create empty commit: ${error}`);
+    } catch (commitError: unknown) {
+      // Include the git error output for debugging
+      const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+      throw new Error(`Git commit failed: ${errorMessage}`);
+    } finally {
+      // Clean up temp file
+      try {
+        unlinkSync(tmpFile);
+      } catch {
+        // Ignore file deletion errors
+      }
     }
   }
 
@@ -901,14 +920,22 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           encoding: 'utf8'
         }).trim();
 
+        if (!userName || !userEmail) {
+          console.log(
+            chalk.yellow(
+              `⚠️ Git user.name or user.email not configured in main repo. You may need to configure them manually.`
+            )
+          );
+        }
+
         if (userName) {
-          execSync(`git config user.name "${userName}"`, {
+          execSync(`git config user.name "${userName.replace(/"/g, '\\"')}"`, {
             cwd: worktreePath,
             stdio: 'pipe'
           });
         }
         if (userEmail) {
-          execSync(`git config user.email "${userEmail}"`, {
+          execSync(`git config user.email "${userEmail.replace(/"/g, '\\"')}"`, {
             cwd: worktreePath,
             stdio: 'pipe'
           });
