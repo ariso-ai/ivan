@@ -1,7 +1,7 @@
 import express from 'express';
 import { Server } from 'http';
 import { DatabaseManager } from './database.js';
-import type { Job, Task } from './database/types.js';
+import { Job, Task } from './database/types.js';
 
 export class WebServer {
   private app: express.Application;

@@ -1,4 +1,4 @@
-import type { Generated } from 'kysely';
+import { Generated } from 'kysely';
 
 export interface Repository {
   id: Generated<number>;

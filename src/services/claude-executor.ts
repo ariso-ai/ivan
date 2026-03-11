@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
 import { execSync } from 'child_process';
-import type { IClaudeExecutor } from './executor-factory.js';
+import { IClaudeExecutor } from './executor-factory.js';
 
 export class ClaudeExecutor implements IClaudeExecutor {
   public quietMode: boolean = false;

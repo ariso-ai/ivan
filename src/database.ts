@@ -2,10 +2,10 @@ import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
 import path from 'path';
 import os from 'os';
-import type { Database as DatabaseSchema } from './database/types.js';
+import { Database as DatabaseSchema } from './database/types.js';
 import { MigrationManager } from './database/migration.js';
 
-export type * from './database/types.js';
+export * from './database/types.js';
 
 export class DatabaseManager {
   private sqlite: Database.Database;

@@ -1,5 +1,5 @@
-import type { Selectable } from 'kysely';
-import type { Repository } from '../database.js';
+import { Selectable } from 'kysely';
+import { Repository } from '../database.js';
 
 // Common types shared across implementations
 export interface PullRequest {
