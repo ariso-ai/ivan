@@ -391,7 +391,7 @@ export class GitHubAPIClient {
     if (options.head) params.append('head', options.head);
     if (options.base) params.append('base', options.base);
 
-    let endpoint = `/repos/${owner}/${repo}/pulls?${params.toString()}`;
+    const endpoint = `/repos/${owner}/${repo}/pulls?${params.toString()}`;
     const prs = await this.makeRequest<
       Array<{
         number: number;
@@ -507,14 +507,6 @@ export class GitHubAPIClient {
     }>(query);
 
     return data.repository.pullRequest.reviewThreads.nodes;
-  }
-
-  async getDetailedReviewThreads(
-    owner: string,
-    repo: string,
-    prNumber: number
-  ): Promise<GitHubReviewThread[]> {
-    return this.getReviewThreads(owner, repo, prNumber);
   }
 
   /**

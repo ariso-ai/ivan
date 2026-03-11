@@ -63,10 +63,7 @@ Rules:
 Return only the commit message, nothing else.`;
 
     try {
-      if (!this.openai) {
-        throw new Error('OpenAI client not initialized');
-      }
-      const response = await this.openai.chat.completions.create({
+      const response = await this.openai!.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -278,10 +275,7 @@ Requirements:
 Return only the condensed output, nothing else.`;
 
     try {
-      if (!this.openai) {
-        throw new Error('OpenAI client not initialized');
-      }
-      const response = await this.openai.chat.completions.create({
+      const response = await this.openai!.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -355,10 +349,7 @@ Generate:
 Keep the description focused and concise. Do NOT include the full diff in the description.`;
 
     try {
-      if (!this.openai) {
-        throw new Error('OpenAI client not initialized');
-      }
-      const response = await this.openai.chat.completions.create({
+      const response = await this.openai!.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

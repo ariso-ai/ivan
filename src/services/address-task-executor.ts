@@ -873,8 +873,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
             // Generate specific review instructions using OpenAI
             const reviewInstructions = await this.generateReviewInstructions(
               commitDiff,
-              changedFiles,
-              parseInt(prNumber)
+              changedFiles
             );
 
             if (spinner) spinner.succeed('Review request generated');
@@ -931,28 +930,6 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
       if (!quiet)
         console.error(chalk.red.bold('❌ Address workflow failed:'), error);
       throw error;
-    }
-  }
-
-  private async getUnaddressedComments(prNumber: number): Promise<
-    Array<{
-      id: string;
-      author: string;
-      body: string;
-      createdAt: string;
-      path?: string;
-      line?: number;
-    }>
-  > {
-    if (!this.prService) {
-      throw new Error('PR service not initialized');
-    }
-
-    try {
-      return await this.prService.getUnaddressedComments(prNumber);
-    } catch (error) {
-      console.error('Error fetching comments:', error);
-      return [];
     }
   }
 
@@ -1108,8 +1085,7 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
 
   private async generateReviewInstructions(
     diff: string,
-    changedFiles: string[],
-    _prNumber: number
+    changedFiles: string[]
   ): Promise<string> {
     try {
       const openaiService = this.getOpenAIService();
