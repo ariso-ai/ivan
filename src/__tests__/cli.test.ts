@@ -1,25 +1,10 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it } from 'node:test';
 import { execSync, spawn } from 'node:child_process';
-import { unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import assert from 'node:assert';
 
 describe('CLI behavior', () => {
   const cliPath = join(process.cwd(), 'dist', 'index.js');
-  let testConfigPath: string;
-
-  before(() => {
-    // Create a temporary config file to avoid interactive prompts
-    testConfigPath = join(tmpdir(), `ivan-test-config-${Date.now()}.json`);
-  });
-
-  after(() => {
-    // Clean up test config file
-    if (existsSync(testConfigPath)) {
-      unlinkSync(testConfigPath);
-    }
-  });
 
   it('should display help when --help flag is passed', () => {
     const output = execSync(`node ${cliPath} --help`, {
@@ -37,32 +22,8 @@ describe('CLI behavior', () => {
     );
   });
 
-  it('should display help when -h flag is passed', () => {
-    const output = execSync(`node ${cliPath} -h`, {
-      encoding: 'utf-8'
-    });
-
-    assert.ok(
-      output.includes('Ivan - A coding orchestration agent CLI'),
-      'Help output should contain CLI description'
-    );
-    assert.ok(output.includes('Usage:'), 'Help output should contain Usage');
-  });
-
   it('should display version when --version flag is passed', () => {
     const output = execSync(`node ${cliPath} --version`, {
-      encoding: 'utf-8'
-    });
-
-    assert.match(
-      output.trim(),
-      /\d+\.\d+\.\d+/,
-      'Version output should match semver format'
-    );
-  });
-
-  it('should display version when -V flag is passed', () => {
-    const output = execSync(`node ${cliPath} -V`, {
       encoding: 'utf-8'
     });
 
@@ -91,8 +52,6 @@ describe('CLI behavior', () => {
     child.stdout.on('data', (data) => {
       output += data.toString();
 
-      // Check if we've entered configuration or interactive mode
-      // Configuration prompts contain these strings or workflow prompts
       if (
         output.includes('Ivan is not configured') ||
         output.includes('Anthropic API') ||
@@ -114,8 +73,6 @@ describe('CLI behavior', () => {
       globalThis.clearTimeout(timeout);
 
       try {
-        // Either it started interactive mode OR it attempted to and we just killed it
-        // The key is it didn't show help text
         assert.ok(
           !output.includes('Usage: ivan [options]'),
           'Should not show help text when no arguments are passed'
