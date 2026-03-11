@@ -247,6 +247,70 @@ Return only the commit message, nothing else.`;
     }
   }
 
+  async condenseBuildOutput(
+    buildOutput: string,
+    maxLength: number = 5000
+  ): Promise<string> {
+    // If output is already under the threshold, return as-is
+    if (buildOutput.length <= maxLength) {
+      return buildOutput;
+    }
+
+    await this.ensureInitialized();
+
+    const prompt = `Condense the following build/error output into a concise summary that preserves all critical information for debugging.
+
+Build output (${buildOutput.length} characters):
+\`\`\`
+${buildOutput}
+\`\`\`
+
+Requirements:
+- Extract and preserve all unique error messages
+- Keep file paths, line numbers, and error codes
+- Group similar errors together
+- Remove duplicate errors
+- Preserve the first and last few errors if there are many
+- Keep any actionable information
+- Maximum ${maxLength} characters in the condensed output
+- Format for readability with clear sections
+
+Return only the condensed output, nothing else.`;
+
+    try {
+      if (!this.openai) {
+        throw new Error('OpenAI client not initialized');
+      }
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: Math.floor(maxLength / 2), // Rough estimate: 1 token ~= 2 characters
+        temperature: 0.2
+      });
+
+      const condensed = response.choices[0]?.message?.content?.trim();
+      if (!condensed) {
+        throw new Error('No condensed output generated');
+      }
+
+      return `[Build output condensed from ${buildOutput.length} to ${condensed.length} characters]\n\n${condensed}`;
+    } catch (error) {
+      console.error('Failed to condense build output:', error);
+      // Fallback: truncate with first and last portions
+      const truncateLength = Math.floor(maxLength / 2);
+      const firstPart = buildOutput.substring(0, truncateLength);
+      const lastPart = buildOutput.substring(
+        buildOutput.length - truncateLength
+      );
+      return `[Build output truncated from ${buildOutput.length} characters]\n\n${firstPart}\n\n... (output truncated) ...\n\n${lastPart}`;
+    }
+  }
+
   async generatePullRequestDescription(
     taskDescription: string,
     diff: string,
