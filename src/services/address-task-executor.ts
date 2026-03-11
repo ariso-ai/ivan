@@ -1221,7 +1221,8 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             // This should capture the actual error while avoiding the full turbo output
             const maxLength = 2000;
             if (errorDetails.length > maxLength) {
-              errorDetails = '...(truncated)...\n' + errorDetails.slice(-maxLength);
+              errorDetails =
+                '...(truncated)...\n' + errorDetails.slice(-maxLength);
             }
           }
 

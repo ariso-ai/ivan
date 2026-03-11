@@ -120,9 +120,14 @@ export class GitManagerCLI implements IGitManager {
       // Include the git error output for debugging
       let errorMessage = '';
       if (commitError && typeof commitError === 'object') {
-        const error = commitError as { stderr?: string; stdout?: string; message?: string };
+        const error = commitError as {
+          stderr?: string;
+          stdout?: string;
+          message?: string;
+        };
         // execSync errors have stdout/stderr properties
-        errorMessage = error.stderr || error.stdout || error.message || String(commitError);
+        errorMessage =
+          error.stderr || error.stdout || error.message || String(commitError);
       } else {
         errorMessage = String(commitError);
       }
@@ -158,9 +163,14 @@ export class GitManagerCLI implements IGitManager {
       // Include the git error output for debugging
       let errorMessage = '';
       if (commitError && typeof commitError === 'object') {
-        const error = commitError as { stderr?: string; stdout?: string; message?: string };
+        const error = commitError as {
+          stderr?: string;
+          stdout?: string;
+          message?: string;
+        };
         // execSync errors have stdout/stderr properties
-        errorMessage = error.stderr || error.stdout || error.message || String(commitError);
+        errorMessage =
+          error.stderr || error.stdout || error.message || String(commitError);
       } else {
         errorMessage = String(commitError);
       }
@@ -949,10 +959,13 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           });
         }
         if (userEmail) {
-          execSync(`git config user.email "${userEmail.replace(/"/g, '\\"')}"`, {
-            cwd: worktreePath,
-            stdio: 'pipe'
-          });
+          execSync(
+            `git config user.email "${userEmail.replace(/"/g, '\\"')}"`,
+            {
+              cwd: worktreePath,
+              stdio: 'pipe'
+            }
+          );
         }
       } catch (configError) {
         console.log(
