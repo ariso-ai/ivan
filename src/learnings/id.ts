@@ -1,7 +1,5 @@
 import { createHash } from 'crypto';
 
-const GENERIC_ID_PATTERN = /^[a-z]{2,8}_[a-z0-9][a-z0-9_-]*$/;
-
 export function slugify(value: string): string {
   return value
     .trim()
@@ -35,10 +33,3 @@ export function createDeterministicId(
   return `${prefix}_${digest}`;
 }
 
-export function isStableRecordId(id: string, prefix?: string): boolean {
-  if (prefix) {
-    return new RegExp(`^${prefix}_[a-z0-9][a-z0-9_-]*$`).test(id);
-  }
-
-  return GENERIC_ID_PATTERN.test(id);
-}
