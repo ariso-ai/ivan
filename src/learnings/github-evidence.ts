@@ -333,12 +333,7 @@ async function fetchCliEvidence(
         url: comment.url
       }))
     })),
-    files: (pr.files ?? []).map((file) => ({
-      path: file.path,
-      additions: file.additions,
-      deletions: file.deletions,
-      changeType: file.changeType
-    })),
+    files: pr.files ?? [],
     checks: checks.map((check) => ({
       name: check.name,
       state: check.state,
