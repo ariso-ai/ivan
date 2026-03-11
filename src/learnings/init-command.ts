@@ -1,11 +1,17 @@
+import { Effect } from 'effect';
 import chalk from 'chalk';
-import type { InitResult } from './models.js';
-import { init } from './init-program.js';
+import { CanonicalStore } from './canonical-store.js';
+import type { InitResult, RepoPathRequest } from './models.js';
 import { runLearningsEffect } from './run-effect.js';
 
 interface InitCommandOptions {
   repo: string;
 }
+
+const init = Effect.fn('Learnings.init')(function* (request: RepoPathRequest) {
+  const store = yield* CanonicalStore;
+  return yield* store.init(request.repoPath);
+});
 
 export function initLearningsStore(repoPath: string): Promise<InitResult> {
   return runLearningsEffect(init({ repoPath }));

@@ -1,10 +1,10 @@
 import type { LearningsBuildResult } from './builder.js';
 import { rebuildLearningsDatabase } from './builder.js';
-import { createDeterministicId, slugify } from './id.js';
+import { createDeterministicId, slugify } from './ids.js';
 import { isLowSignalReviewText } from './heuristics.js';
 import { writeLearningRecords } from './learning-writer.js';
+import type { EvidenceRecord, LearningRecord } from './models.js';
 import { loadCanonicalRecords } from './parser.js';
-import type { EvidenceRecord, LearningRecord } from './record-types.js';
 import { initLearningsStore } from './init-command.js';
 
 export interface ExtractionResult {

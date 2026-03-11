@@ -1,5 +1,15 @@
 import { Schema } from 'effect';
 
+const CanonicalRecordFields = {
+  created_at: Schema.String,
+  updated_at: Schema.String,
+  sourcePath: Schema.String
+} as const;
+
+const RepoPathRequestFields = {
+  repoPath: Schema.String
+} as const;
+
 export const RepositoryRecordSchema = Schema.Struct({
   id: Schema.String,
   type: Schema.Literal('repository'),
@@ -8,9 +18,7 @@ export const RepositoryRecordSchema = Schema.Struct({
   local_path: Schema.optional(Schema.String),
   remote_url: Schema.optional(Schema.String),
   is_active: Schema.Boolean,
-  created_at: Schema.String,
-  updated_at: Schema.String,
-  sourcePath: Schema.String
+  ...CanonicalRecordFields
 });
 export type RepositoryRecord = typeof RepositoryRecordSchema.Type;
 
@@ -42,9 +50,7 @@ export const EvidenceRecordSchema = Schema.Struct({
   final_weight: Schema.optional(Schema.Number),
   boosts: Schema.Array(Schema.String),
   penalties: Schema.Array(Schema.String),
-  created_at: Schema.String,
-  updated_at: Schema.String,
-  sourcePath: Schema.String
+  ...CanonicalRecordFields
 });
 export type EvidenceRecord = typeof EvidenceRecordSchema.Type;
 
@@ -62,9 +68,7 @@ export const LearningRecordSchema = Schema.Struct({
   status: Schema.String,
   evidence_ids: Schema.Array(Schema.String),
   tags: Schema.Array(Schema.String),
-  created_at: Schema.String,
-  updated_at: Schema.String,
-  sourcePath: Schema.String
+  ...CanonicalRecordFields
 });
 export type LearningRecord = typeof LearningRecordSchema.Type;
 
@@ -86,10 +90,11 @@ export const LearningsRepositoryContextSchema = Schema.Struct({
 export type LearningsRepositoryContext =
   typeof LearningsRepositoryContextSchema.Type;
 
-export const InitRequestSchema = Schema.Struct({
-  repoPath: Schema.String
-});
-export type InitRequest = typeof InitRequestSchema.Type;
+export const RepoPathRequestSchema = Schema.Struct(RepoPathRequestFields);
+export type RepoPathRequest = typeof RepoPathRequestSchema.Type;
+
+export const InitRequestSchema = RepoPathRequestSchema;
+export type InitRequest = RepoPathRequest;
 
 export const InitResultSchema = Schema.Struct({
   repositoryId: Schema.String,
@@ -100,10 +105,8 @@ export const InitResultSchema = Schema.Struct({
 });
 export type InitResult = typeof InitResultSchema.Type;
 
-export const RebuildRequestSchema = Schema.Struct({
-  repoPath: Schema.String
-});
-export type RebuildRequest = typeof RebuildRequestSchema.Type;
+export const RebuildRequestSchema = RepoPathRequestSchema;
+export type RebuildRequest = RepoPathRequest;
 
 export const RebuildResultSchema = Schema.Struct({
   dbPath: Schema.String,

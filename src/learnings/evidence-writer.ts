@@ -1,11 +1,11 @@
 import { Effect } from 'effect';
-import { createDeterministicId } from './id.js';
-import type { EvidenceRecord } from './record-types.js';
+import { createDeterministicId } from './ids.js';
 import type {
   GitHubPullRequestEvidence,
   GitHubReviewThreadEvidence
 } from './github-evidence.js';
 import { CanonicalStore } from './canonical-store.js';
+import type { EvidenceRecord } from './models.js';
 import { runLearningsEffect } from './run-effect.js';
 import {
   inferAuthorFields,

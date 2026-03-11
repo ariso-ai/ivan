@@ -1,4 +1,4 @@
-import type { LearningRecord } from './record-types.js';
+import type { LearningRecord } from './models.js';
 
 const EMBEDDING_DIMENSIONS = 256;
 
