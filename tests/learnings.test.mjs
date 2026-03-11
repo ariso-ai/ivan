@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { rebuildLearningsDatabase } from '../dist/learnings/builder.js';
 import { buildEvidenceRecordsFromPullRequest } from '../dist/learnings/evidence-writer.js';
+import { extractLearningRecords } from '../dist/learnings/extractor.js';
 import { loadCanonicalRecords } from '../dist/learnings/parser.js';
 import { queryLearnings } from '../dist/learnings/query.js';
 
@@ -220,6 +221,94 @@ describe('learnings storage slice', () => {
       records.find((record) => record.source_type === 'pr_review_thread')
         ?.resolution_state
     ).toBe('unresolved');
+  });
+
+  test('extractor suppresses CodeRabbit evidence and normalizes PR summaries', () => {
+    const extracted = extractLearningRecords([
+      {
+        type: 'evidence',
+        sourcePath: 'learnings/evidence/repo_sample-repo.jsonl',
+        id: 'ev_pr_summary',
+        repository_id: 'repo_sample-repo',
+        source_system: 'github',
+        source_type: 'pull_request',
+        external_id: 'github:ariso-ai/ivan:pr:42',
+        title: 'Feature/prompt rewriting',
+        content: [
+          'PR #42: Feature/prompt rewriting',
+          '',
+          'Adds an optional --rewrite-prompt step that cleans up noisy tickets before sending them to Claude Code.',
+          '',
+          'Verify DB after any rewrite run: sqlite3 ~/.ivan/db.sqlite ...'
+        ].join('\n'),
+        author_type: 'human',
+        author_name: 'michaelgeiger',
+        boosts: ['pr_summary'],
+        penalties: [],
+        occurred_at: '2026-03-11T00:00:00Z',
+        created_at: '2026-03-11T00:00:00Z',
+        updated_at: '2026-03-11T00:00:00Z',
+        base_weight: 5,
+        final_weight: 5
+      },
+      {
+        type: 'evidence',
+        sourcePath: 'learnings/evidence/repo_sample-repo.jsonl',
+        id: 'ev_bot_review',
+        repository_id: 'repo_sample-repo',
+        source_system: 'github',
+        source_type: 'pr_review_thread',
+        external_id: 'github:ariso-ai/ivan:pr:42:thread:1',
+        author_type: 'bot',
+        author_name: 'coderabbitai',
+        title: 'Review thread on src/index.ts:10',
+        content: '**Minor: Question length filter may be too aggressive.**',
+        boosts: [],
+        penalties: [],
+        occurred_at: '2026-03-11T00:01:00Z',
+        created_at: '2026-03-11T00:01:00Z',
+        updated_at: '2026-03-11T00:01:00Z',
+        base_weight: 3,
+        final_weight: 3
+      }
+    ]);
+
+    expect(extracted).toHaveLength(1);
+    expect(extracted[0].statement).toBe(
+      'Adds an optional --rewrite-prompt step that cleans up noisy tickets before sending them to Claude Code'
+    );
+    expect(extracted[0].evidence_ids).toEqual(['ev_pr_summary']);
+  });
+
+  test('extractor rewrites weak first-person review comments into clearer lessons', () => {
+    const extracted = extractLearningRecords([
+      {
+        type: 'evidence',
+        sourcePath: 'learnings/evidence/repo_sample-repo.jsonl',
+        id: 'ev_human_review',
+        repository_id: 'repo_sample-repo',
+        source_system: 'github',
+        source_type: 'pr_review_thread',
+        external_id: 'github:ariso-ai/ivan:pr:42:thread:2',
+        author_type: 'human',
+        author_name: 'reviewer1',
+        title: 'Review thread on src/prompts.ts:12',
+        content:
+          'I think a centralized service for prompt templates would be nice as we add more prompts.',
+        boosts: [],
+        penalties: [],
+        occurred_at: '2026-03-11T00:02:00Z',
+        created_at: '2026-03-11T00:02:00Z',
+        updated_at: '2026-03-11T00:02:00Z',
+        base_weight: 3,
+        final_weight: 3
+      }
+    ]);
+
+    expect(extracted).toHaveLength(1);
+    expect(extracted[0].statement).toBe(
+      'Consider a centralized service for prompt templates as we add more prompts.'
+    );
   });
 });
 

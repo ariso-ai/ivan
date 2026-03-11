@@ -308,6 +308,9 @@ function toImperativeStatement(candidate: string): string | null {
     [/\b(do not\b.+)$/i, (match) => match[1]],
     [/\b(don't\b.+)$/i, (match) => match[1]],
     [/^i(?:'d| would)? recommend\s+(.+)$/i, (match) => match[1]],
+    [/^i think\s+(.+?)\s+would be nice$/i, (match) => `Consider ${match[1]}`],
+    [/^i think\s+(.+)$/i, (match) => match[1]],
+    [/^btw\s+i moved this here because\s+(.+)$/i, (match) => `Keep this here because ${match[1]}`],
     [/^this is a bit odd,?\s+we shouldn't have\s+(.+)$/i, (match) => `Do not have ${match[1]}`],
     [/^also fixes?\s+(.+)$/i, (match) => match[1]],
     [/^needs to\s+(.+)$/i, (match) => match[1]],
@@ -400,6 +403,10 @@ function isUsableCandidate(candidate: string): boolean {
   }
 
   if (/^(verify (build|db)|changed files)\b/i.test(normalized)) {
+    return false;
+  }
+
+  if (/^(why|what|how|can|could|should)\b/i.test(normalized)) {
     return false;
   }
 
