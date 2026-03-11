@@ -12,6 +12,7 @@ export interface GitHubPRInfo {
   headRefName: string;
   url: string; // GitHub web URL (html_url from API)
   state: string;
+  headSha?: string;
   author?: {
     login: string;
   };
@@ -25,7 +26,9 @@ export interface GitHubCheck {
 }
 
 export interface GitHubReviewThread {
+  id?: string;
   isResolved: boolean;
+  isOutdated?: boolean;
   comments: {
     nodes: Array<{
       id: string;
@@ -37,8 +40,38 @@ export interface GitHubReviewThread {
       createdAt: string;
       path?: string;
       line?: number;
+      url?: string;
     }>;
   };
+}
+
+export interface GitHubPullRequestEvidenceResponse extends GitHubPRInfo {
+  body?: string;
+  issueComments: Array<{
+    id: string;
+    body: string;
+    createdAt: string;
+    author?: {
+      login: string;
+    };
+    url?: string;
+  }>;
+  reviews: Array<{
+    id: string;
+    body: string;
+    state: string;
+    submittedAt?: string;
+    author?: {
+      login: string;
+    };
+    url?: string;
+  }>;
+  files: Array<{
+    path: string;
+    additions?: number;
+    deletions?: number;
+    changeType?: string;
+  }>;
 }
 
 export interface GitHubRepo {
@@ -245,7 +278,7 @@ export class GitHubAPIClient {
     const response = await this.makeRequest<{
       number: number;
       title: string;
-      head: { ref: string };
+      head: { ref: string; sha?: string };
       html_url: string;
       state: string;
       user?: { login: string };
@@ -255,9 +288,88 @@ export class GitHubAPIClient {
       number: response.number,
       title: response.title,
       headRefName: response.head.ref,
+      headSha: response.head.sha,
       url: response.html_url,
       state: response.state,
       author: response.user ? { login: response.user.login } : undefined
+    };
+  }
+
+  async getPullRequestEvidence(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubPullRequestEvidenceResponse> {
+    const prResponse = await this.makeRequest<{
+      number: number;
+      title: string;
+      body?: string;
+      head: { ref: string; sha?: string };
+      html_url: string;
+      state: string;
+      user?: { login: string };
+    }>(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+
+    const [issueComments, reviewResponse, files] = await Promise.all([
+      this.makeRequest<
+        Array<{
+          id: number;
+          body: string;
+          created_at: string;
+          user?: { login: string };
+          html_url?: string;
+        }>
+      >(`/repos/${owner}/${repo}/issues/${prNumber}/comments`),
+      this.makeRequest<
+        Array<{
+          id: number;
+          body?: string;
+          state: string;
+          submitted_at?: string;
+          user?: { login: string };
+          html_url?: string;
+        }>
+      >(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`),
+      this.makeRequest<
+        Array<{
+          filename: string;
+          additions?: number;
+          deletions?: number;
+          status?: string;
+        }>
+      >(`/repos/${owner}/${repo}/pulls/${prNumber}/files`)
+    ]);
+
+    return {
+      number: prResponse.number,
+      title: prResponse.title,
+      body: prResponse.body,
+      headRefName: prResponse.head.ref,
+      headSha: prResponse.head.sha,
+      url: prResponse.html_url,
+      state: prResponse.state,
+      author: prResponse.user ? { login: prResponse.user.login } : undefined,
+      issueComments: issueComments.map((comment) => ({
+        id: String(comment.id),
+        body: comment.body,
+        createdAt: comment.created_at,
+        author: comment.user ? { login: comment.user.login } : undefined,
+        url: comment.html_url
+      })),
+      reviews: reviewResponse.map((review) => ({
+        id: String(review.id),
+        body: review.body ?? '',
+        state: review.state,
+        submittedAt: review.submitted_at,
+        author: review.user ? { login: review.user.login } : undefined,
+        url: review.html_url
+      })),
+      files: files.map((file) => ({
+        path: file.filename,
+        additions: file.additions,
+        deletions: file.deletions,
+        changeType: file.status
+      }))
     };
   }
 
@@ -318,7 +430,7 @@ export class GitHubAPIClient {
     prNumber: number
   ): Promise<GitHubCheck[]> {
     const pr = await this.getPR(owner, repo, prNumber);
-    const headSha = (pr as unknown as { head?: { sha?: string } }).head?.sha;
+    const headSha = pr.headSha;
 
     if (!headSha) {
       return [];
@@ -360,7 +472,9 @@ export class GitHubAPIClient {
           pullRequest(number: ${prNumber}) {
             reviewThreads(first: 100) {
               nodes {
+                id
                 isResolved
+                isOutdated
                 comments(first: 100) {
                   nodes {
                     id
@@ -372,6 +486,7 @@ export class GitHubAPIClient {
                     createdAt
                     path
                     line
+                    url
                   }
                 }
               }
@@ -392,6 +507,14 @@ export class GitHubAPIClient {
     }>(query);
 
     return data.repository.pullRequest.reviewThreads.nodes;
+  }
+
+  async getDetailedReviewThreads(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubReviewThread[]> {
+    return this.getReviewThreads(owner, repo, prNumber);
   }
 
   /**
