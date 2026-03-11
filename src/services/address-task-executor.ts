@@ -1208,8 +1208,24 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             );
           }
 
-          // Extract the error details from the commit error
-          const errorDetails = errorMessage;
+          // Extract only the relevant error summary from the commit error
+          // The full errorMessage can be very long (includes all turbo output)
+          // We want to extract just the failure summary
+          let errorDetails = errorMessage;
+
+          // Look for "Failed:" sections which contain the actual errors
+          const failedMatch = errorMessage.match(/Failed:\s+(.+?)(?:\n\n|$)/s);
+          if (failedMatch) {
+            errorDetails = failedMatch[1];
+          } else {
+            // If no "Failed:" section, try to extract the last 2000 characters as a fallback
+            // This should capture the actual error while avoiding the full turbo output
+            const maxLength = 2000;
+            if (errorDetails.length > maxLength) {
+              errorDetails =
+                '...(truncated)...\n' + errorDetails.slice(-maxLength);
+            }
+          }
 
           // Prepare prompt for Claude to fix the errors
           const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;

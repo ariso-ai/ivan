@@ -770,8 +770,21 @@ async function main() {
     }
 
     if (operands.length === 0) {
-      await program.parseAsync();
+      // If help or version flags are present, let commander handle them
+      const hasHelpOrVersion = args.some(
+        (arg) =>
+          arg === '--help' ||
+          arg === '-h' ||
+          arg === '--version' ||
+          arg === '-V'
+      );
 
+      if (hasHelpOrVersion) {
+        await program.parseAsync();
+        return;
+      }
+
+      // Standard interactive flow
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
