@@ -1,6 +1,5 @@
 import path from 'path';
 import type { LearningsDataset } from './record-types.js';
-import { isStableRecordId } from './id.js';
 
 export class LearningsValidationError extends Error {
   issues: string[];
@@ -26,7 +25,7 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
   const learningIds = new Set<string>();
 
   for (const repository of dataset.repositories) {
-    if (!isStableRecordId(repository.id, 'repo')) {
+    if (!repository.id.startsWith('repo_')) {
       issues.push(
         `${repository.sourcePath}: repository id "${repository.id}" must start with "repo_"`
       );
@@ -56,7 +55,7 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
   }
 
   for (const evidence of dataset.evidence) {
-    if (!isStableRecordId(evidence.id, 'ev')) {
+    if (!evidence.id.startsWith('ev_')) {
       issues.push(
         `${evidence.sourcePath}: evidence id "${evidence.id}" must start with "ev_"`
       );
@@ -93,7 +92,7 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
   }
 
   for (const learning of dataset.learnings) {
-    if (!isStableRecordId(learning.id, 'lrn')) {
+    if (!learning.id.startsWith('lrn_')) {
       issues.push(
         `${learning.sourcePath}: learning id "${learning.id}" must start with "lrn_"`
       );

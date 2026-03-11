@@ -1,14 +1,31 @@
 import { openLearningsDatabase } from './database.js';
-import {
-  cosineSimilarity,
-  deserializeVector,
-  embedText
-} from './embeddings.js';
-import type {
-  LearningsQueryEvidence,
-  LearningsQueryResult,
-  LearningsSearchOptions
-} from './types.js';
+
+export interface LearningsQueryEvidence {
+  id: string;
+  sourceType: string;
+  content: string;
+  url?: string;
+  title?: string;
+  finalWeight?: number;
+}
+
+export interface LearningsQueryResult {
+  id: string;
+  repositoryId: string;
+  kind: string;
+  statement: string;
+  status: string;
+  tags: string[];
+  evidence: LearningsQueryEvidence[];
+  title?: string;
+  rationale?: string;
+  applicability?: string;
+  confidence?: number;
+}
+
+export interface LearningsSearchOptions {
+  limit?: number;
+}
 
 interface LearningRow {
   id: string;
@@ -20,10 +37,6 @@ interface LearningRow {
   applicability: string | null;
   confidence: number | null;
   status: string;
-}
-
-interface VectorLearningRow extends LearningRow {
-  vector_json: string;
 }
 
 export function queryLearnings(
@@ -121,11 +134,6 @@ function runLearningSearch(
   text: string,
   limit: number
 ): LearningRow[] {
-  const vectorRows = runVectorSearch(db, text, limit);
-  if (vectorRows.length > 0) {
-    return vectorRows;
-  }
-
   const ftsExpression = buildFtsExpression(text);
 
   if (ftsExpression) {
@@ -187,52 +195,6 @@ function runLearningSearch(
       likePattern,
       limit
     ) as LearningRow[];
-}
-
-function runVectorSearch(
-  db: ReturnType<typeof openLearningsDatabase>,
-  text: string,
-  limit: number
-): LearningRow[] {
-  const queryVector = embedText(text);
-  const rows = db
-    .prepare(
-      `
-        SELECT
-          l.id,
-          l.repository_id,
-          l.title,
-          l.kind,
-          l.statement,
-          l.rationale,
-          l.applicability,
-          l.confidence,
-          l.status,
-          le.vector_json
-        FROM learning_embeddings le
-        INNER JOIN learnings l ON l.id = le.learning_id
-        WHERE l.status = 'active'
-      `
-    )
-    .all() as VectorLearningRow[];
-
-  const scoredRows = rows
-    .map((row) => ({
-      row,
-      score: cosineSimilarity(queryVector, deserializeVector(row.vector_json))
-    }))
-    .filter((candidate) => candidate.score >= 0.12)
-    .sort((left, right) => {
-      return (
-        right.score - left.score ||
-        (right.row.confidence ?? 0) - (left.row.confidence ?? 0) ||
-        right.row.id.localeCompare(left.row.id)
-      );
-    })
-    .slice(0, limit)
-    .map((candidate) => candidate.row);
-
-  return scoredRows;
 }
 
 function buildFtsExpression(text: string): string | null {

@@ -9,7 +9,6 @@ import {
   createFreshLearningsDatabase,
   getLearningsDbPath
 } from './database.js';
-import { buildLearningEmbedding, serializeVector } from './embeddings.js';
 import { loadCanonicalRecords } from './parser.js';
 import { validateLearningsDataset } from './validator.js';
 
@@ -128,16 +127,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
     ) VALUES (?, ?, 'inferred', NULL, ?)
   `);
 
-  const insertLearningEmbedding = db.prepare(`
-    INSERT INTO learning_embeddings (
-      learning_id,
-      model,
-      dimensions,
-      vector_json,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?)
-  `);
-
   const transaction = db.transaction(() => {
     for (const repository of sortRecords(dataset.repositories)) {
       writeRepository(insertRepository, repository);
@@ -149,7 +138,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
 
     for (const learning of sortRecords(dataset.learnings)) {
       writeLearning(insertLearning, learning);
-      writeLearningEmbedding(insertLearningEmbedding, learning);
 
       for (const evidenceId of [...learning.evidence_ids].sort((a, b) =>
         a.localeCompare(b)
@@ -170,20 +158,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   });
 
   transaction();
-}
-
-function writeLearningEmbedding(
-  statement: Database.Statement,
-  learning: LearningRecord
-): void {
-  const embedding = buildLearningEmbedding(learning);
-  statement.run(
-    learning.id,
-    embedding.model,
-    embedding.dimensions,
-    serializeVector(embedding.vector),
-    learning.updated_at
-  );
 }
 
 function writeRepository(
