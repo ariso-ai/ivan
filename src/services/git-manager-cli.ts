@@ -118,7 +118,14 @@ export class GitManagerCLI implements IGitManager {
       console.log(chalk.green(`✅ Committed changes: ${message}`));
     } catch (commitError: unknown) {
       // Include the git error output for debugging
-      const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+      let errorMessage = '';
+      if (commitError && typeof commitError === 'object') {
+        const error = commitError as { stderr?: string; stdout?: string; message?: string };
+        // execSync errors have stdout/stderr properties
+        errorMessage = error.stderr || error.stdout || error.message || String(commitError);
+      } else {
+        errorMessage = String(commitError);
+      }
       throw new Error(`Git commit failed: ${errorMessage}`);
     } finally {
       // Clean up temp file
@@ -149,7 +156,14 @@ export class GitManagerCLI implements IGitManager {
       console.log(chalk.green(`✅ Created empty commit: ${message}`));
     } catch (commitError: unknown) {
       // Include the git error output for debugging
-      const errorMessage = commitError instanceof Error ? commitError.message : String(commitError);
+      let errorMessage = '';
+      if (commitError && typeof commitError === 'object') {
+        const error = commitError as { stderr?: string; stdout?: string; message?: string };
+        // execSync errors have stdout/stderr properties
+        errorMessage = error.stderr || error.stdout || error.message || String(commitError);
+      } else {
+        errorMessage = String(commitError);
+      }
       throw new Error(`Git commit failed: ${errorMessage}`);
     } finally {
       // Clean up temp file
