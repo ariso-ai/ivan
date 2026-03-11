@@ -497,7 +497,34 @@ export class TaskExecutor {
             }
 
             // Extract the error details from the commit error
-            const errorDetails = errorMessage;
+            let errorDetails = errorMessage;
+
+            // Condense error details if they're too large (over 10,000 characters)
+            const MAX_ERROR_LENGTH = 10000;
+            if (errorDetails.length > MAX_ERROR_LENGTH) {
+              if (!quiet) {
+                console.log(
+                  chalk.yellow(
+                    `📊 Build output is large (${errorDetails.length} chars), condensing with AI...`
+                  )
+                );
+              }
+              try {
+                errorDetails =
+                  await this.getOpenAIService().condenseBuildOutput(
+                    errorDetails,
+                    MAX_ERROR_LENGTH
+                  );
+              } catch (condenseError) {
+                // If condensation fails, just use truncation
+                console.warn(
+                  chalk.yellow(
+                    'Failed to condense output, using truncation instead'
+                  ),
+                  condenseError
+                );
+              }
+            }
 
             // Prepare prompt for Claude to fix the errors
             const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
@@ -761,7 +788,34 @@ export class TaskExecutor {
                 }
 
                 // Extract the error details from the commit error
-                const errorDetails = errorMessage;
+                let errorDetails = errorMessage;
+
+                // Condense error details if they're too large (over 10,000 characters)
+                const MAX_ERROR_LENGTH = 10000;
+                if (errorDetails.length > MAX_ERROR_LENGTH) {
+                  if (!quiet) {
+                    console.log(
+                      chalk.yellow(
+                        `📊 Build output is large (${errorDetails.length} chars), condensing with AI...`
+                      )
+                    );
+                  }
+                  try {
+                    errorDetails =
+                      await this.getOpenAIService().condenseBuildOutput(
+                        errorDetails,
+                        MAX_ERROR_LENGTH
+                      );
+                  } catch (condenseError) {
+                    // If condensation fails, just use truncation
+                    console.warn(
+                      chalk.yellow(
+                        'Failed to condense output, using truncation instead'
+                      ),
+                      condenseError
+                    );
+                  }
+                }
 
                 // Prepare prompt for Claude to fix the errors
                 const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
