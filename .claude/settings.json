@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/.claude/hooks/ivan-learnings-user-prompt.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/.claude/hooks/ivan-learnings-post-edit.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/.claude/hooks/ivan-learnings-stop.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
