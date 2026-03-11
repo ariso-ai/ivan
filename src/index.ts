@@ -7,7 +7,8 @@ import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
-import { NonInteractiveConfig } from './types/non-interactive-config.js';
+import type { NonInteractiveConfig } from './types/non-interactive-config.js';
+import { registerLearningsCommands } from './learnings/index.js';
 import {
   readFileSync,
   existsSync,
@@ -32,6 +33,8 @@ program
     '--rewrite-prompt',
     'Rewrite verbose task descriptions before execution using GPT-4o-mini'
   );
+
+registerLearningsCommands(program);
 
 program
   .command('reconfigure')
@@ -718,6 +721,7 @@ async function main() {
 
     // Check if first operand is a task description (not a recognized command)
     const recognizedCommands = [
+      'learnings',
       'reconfigure',
       'config-tools',
       'config-blocked-tools',
@@ -766,6 +770,21 @@ async function main() {
     }
 
     if (operands.length === 0) {
+      // If help or version flags are present, let commander handle them
+      const hasHelpOrVersion = args.some(
+        (arg) =>
+          arg === '--help' ||
+          arg === '-h' ||
+          arg === '--version' ||
+          arg === '-V'
+      );
+
+      if (hasHelpOrVersion) {
+        await program.parseAsync();
+        return;
+      }
+
+      // Standard interactive flow
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
         console.log('');
