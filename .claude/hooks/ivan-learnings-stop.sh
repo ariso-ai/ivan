@@ -13,9 +13,9 @@ mkdir -p "$log_dir"
 cp "$payload" "$log_dir/stop.$(date +%s).json"
 
 repo="$(jq -r '.cwd // empty' "$payload")"
-stop_hook_active="$(jq -r '.hook_event_name // empty' "$payload")"
+hook_event="$(jq -r '.hook_event_name // empty' "$payload")"
 
-if [[ -z "$repo" || -z "$stop_hook_active" ]]; then
+if [[ -z "$repo" || -z "$hook_event" ]]; then
   exit 0
 fi
 

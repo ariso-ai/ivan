@@ -115,49 +115,42 @@ function upsertClaudeSettings(
 ): boolean {
   const existingSettings = readClaudeSettings(settingsPath);
   const existingHooks = existingSettings.hooks ?? {};
-  const nextSettings: ClaudeSettingsFile = {
-    ...existingSettings,
-    hooks: { ...existingHooks }
-  };
-
   const userPromptCommand = buildHookCommand(scriptPaths.userPromptScriptPath);
   const postEditCommand = buildHookCommand(scriptPaths.postEditScriptPath);
   const stopCommand = buildHookCommand(scriptPaths.stopScriptPath);
 
-  nextSettings.hooks = {
-    ...existingHooks,
-    UserPromptSubmit: upsertHookEntry(
-      existingHooks.UserPromptSubmit ?? [],
-      {
-        hooks: [{ type: 'command', command: userPromptCommand, timeout: 10 }]
-      },
-      ['ivan-learnings-user-prompt.sh']
-    ),
-    PostToolUse: upsertHookEntry(
-      existingHooks.PostToolUse ?? [],
-      {
-        matcher: 'Edit|Write|MultiEdit',
-        hooks: [{ type: 'command', command: postEditCommand, timeout: 10 }]
-      },
-      ['ivan-learnings-post-edit.sh']
-    ),
-    Stop: upsertHookEntry(
-      existingHooks.Stop ?? [],
-      {
-        hooks: [{ type: 'command', command: stopCommand, timeout: 10 }]
-      },
-      ['ivan-learnings-stop.sh']
-    )
+  const nextSettings: ClaudeSettingsFile = {
+    ...existingSettings,
+    hooks: {
+      ...existingHooks,
+      UserPromptSubmit: upsertHookEntry(
+        existingHooks.UserPromptSubmit ?? [],
+        { hooks: [{ type: 'command', command: userPromptCommand, timeout: 10 }] },
+        ['ivan-learnings-user-prompt.sh']
+      ),
+      PostToolUse: upsertHookEntry(
+        existingHooks.PostToolUse ?? [],
+        {
+          matcher: 'Edit|Write|MultiEdit',
+          hooks: [{ type: 'command', command: postEditCommand, timeout: 10 }]
+        },
+        ['ivan-learnings-post-edit.sh']
+      ),
+      Stop: upsertHookEntry(
+        existingHooks.Stop ?? [],
+        { hooks: [{ type: 'command', command: stopCommand, timeout: 10 }] },
+        ['ivan-learnings-stop.sh']
+      )
+    }
   };
 
-  const previous = JSON.stringify(existingSettings, null, 2);
-  const next = `${JSON.stringify(nextSettings, null, 2)}\n`;
+  const serialized = `${JSON.stringify(nextSettings, null, 2)}\n`;
 
-  if (previous === next.trimEnd()) {
+  if (JSON.stringify(existingSettings, null, 2) === JSON.stringify(nextSettings, null, 2)) {
     return false;
   }
 
-  fs.writeFileSync(settingsPath, next, 'utf8');
+  fs.writeFileSync(settingsPath, serialized, 'utf8');
   return true;
 }
 
@@ -286,9 +279,9 @@ mkdir -p "$log_dir"
 cp "$payload" "$log_dir/stop.$(date +%s).json"
 
 repo="$(jq -r '.cwd // empty' "$payload")"
-stop_hook_active="$(jq -r '.hook_event_name // empty' "$payload")"
+hook_event="$(jq -r '.hook_event_name // empty' "$payload")"
 
-if [[ -z "$repo" || -z "$stop_hook_active" ]]; then
+if [[ -z "$repo" || -z "$hook_event" ]]; then
   exit 0
 fi
 
