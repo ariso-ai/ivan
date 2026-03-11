@@ -1,11 +1,9 @@
 import { Command } from 'commander';
 import { runExtractCommand } from './extract-command.js';
-import { initLearningsStore, runInitCommand } from './init-command.js';
+import { runInitCommand } from './init-command.js';
 import { runIngestPrCommand } from './ingest-pr-command.js';
-import { installLearningsHooks, runInstallHooksCommand } from './install-hooks-command.js';
-import { queryLearnings } from './query.js';
+import { runInstallHooksCommand } from './install-hooks-command.js';
 import { runQueryCommand } from './query-command.js';
-import { rebuildLearningsDatabase } from './builder.js';
 import { runRebuildCommand } from './rebuild-command.js';
 
 export function registerLearningsCommands(program: Command): void {
@@ -59,9 +57,3 @@ export function registerLearningsCommands(program: Command): void {
     .action(runInstallHooksCommand);
 }
 
-export {
-  initLearningsStore,
-  installLearningsHooks,
-  queryLearnings,
-  rebuildLearningsDatabase
-};
