@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { rebuildLearningsDatabase } from '../dist/learnings/builder.js';
+import { buildEvidenceRecordsFromPullRequest } from '../dist/learnings/evidence-writer.js';
 import { loadCanonicalRecords } from '../dist/learnings/parser.js';
 import { queryLearnings } from '../dist/learnings/query.js';
 
@@ -98,6 +99,131 @@ describe('learnings storage slice', () => {
     expect(output).toContain('Avoid holding locks across awaits');
     expect(output).toContain('ev_lock-await');
     expect(output).toContain('ev_lock-await-ack');
+  });
+
+  test('install-hooks writes the three Claude hook integrations idempotently', () => {
+    const repoPath = createEmptyRepo('hooks-repo');
+
+    execIvan(['learnings', 'install-hooks', '--repo', repoPath]);
+    execIvan(['learnings', 'install-hooks', '--repo', repoPath]);
+
+    const settingsPath = path.join(repoPath, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+
+    expect(
+      fs.existsSync(
+        path.join(repoPath, '.claude', 'hooks', 'ivan-learnings-user-prompt.sh')
+      )
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(repoPath, '.claude', 'hooks', 'ivan-learnings-post-edit.sh')
+      )
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(repoPath, '.claude', 'hooks', 'ivan-learnings-stop.sh')
+      )
+    ).toBe(true);
+
+    expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(settings.hooks.PostToolUse).toHaveLength(1);
+    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.PostToolUse[0].matcher).toBe(
+      'Edit|Write|MultiEdit'
+    );
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toContain(
+      'ivan-learnings-user-prompt.sh'
+    );
+    expect(settings.hooks.PostToolUse[0].hooks[0].command).toContain(
+      'ivan-learnings-post-edit.sh'
+    );
+    expect(settings.hooks.Stop[0].hooks[0].command).toContain(
+      'ivan-learnings-stop.sh'
+    );
+  });
+
+  test('maps GitHub PR evidence into deterministic canonical evidence records', () => {
+    const records = buildEvidenceRecordsFromPullRequest('repo_sample-repo', {
+      repository: {
+        owner: 'ariso-ai',
+        name: 'ivan'
+      },
+      pullRequest: {
+        number: 15,
+        title: 'Fix prompt routing',
+        body: 'Ensures -p stays before greedy flags.',
+        url: 'https://github.com/ariso-ai/ivan/pull/15',
+        state: 'OPEN',
+        headRefName: 'fix/prompt-routing',
+        author: { login: 'michaelgeiger' }
+      },
+      issueComments: [
+        {
+          id: 'c1',
+          body: 'Can we make this safer around disallowed tools?',
+          createdAt: '2026-03-09T00:00:00Z',
+          author: { login: 'reviewer1' }
+        }
+      ],
+      reviews: [
+        {
+          id: 'r1',
+          body: 'Needs to keep prompt ahead of the multi-value flags.',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-03-09T01:00:00Z',
+          author: { login: 'reviewer2' }
+        }
+      ],
+      reviewThreads: [
+        {
+          id: 't1',
+          isResolved: false,
+          isOutdated: false,
+          comments: [
+            {
+              id: 'tc1',
+              databaseId: 101,
+              body: 'This inline comment explains the parsing failure.',
+              createdAt: '2026-03-09T02:00:00Z',
+              author: { login: 'reviewer3' },
+              path: 'src/services/claude-cli-executor.ts',
+              line: 129
+            }
+          ]
+        }
+      ],
+      files: [
+        {
+          path: 'src/services/claude-cli-executor.ts',
+          additions: 3,
+          deletions: 1,
+          changeType: 'modified'
+        }
+      ],
+      checks: [
+        {
+          name: 'lint',
+          state: 'FAILURE'
+        }
+      ]
+    });
+
+    expect(records.map((record) => record.source_type)).toEqual([
+      'pr_check',
+      'pr_issue_comment',
+      'pr_review',
+      'pr_review_thread',
+      'pull_request'
+    ]);
+    expect(records.every((record) => record.id.startsWith('ev_'))).toBe(true);
+    expect(records.find((record) => record.source_type === 'pr_review')?.boosts).toContain(
+      'changes_requested'
+    );
+    expect(
+      records.find((record) => record.source_type === 'pr_review_thread')
+        ?.resolution_state
+    ).toBe('unresolved');
   });
 });
 

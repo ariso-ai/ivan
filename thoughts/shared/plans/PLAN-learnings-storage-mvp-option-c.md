@@ -26,6 +26,11 @@ This plan maps that storage model onto the current Ivan CLI codebase without dis
   - Rationale: current PR services are optimized for "address unresolved comments," not durable evidence extraction.
 - **Evidence-source focus**: Launch with GitHub PR evidence first; defer Claude/Codex session-derived evidence even though the broader product framing includes it.
   - Rationale: PR evidence already has concrete March 9 research, clear weighting guidance, and partial service hooks in the current codebase.
+- **Runtime integration surface**: For prompt-time incremental recall, standardize on three Claude Code hook points only:
+  - `UserPromptSubmit`
+  - `PostToolUse(Edit|Write|MultiEdit)`
+  - `Stop`
+  - Rationale: this maximizes incremental execution points without doubling noisy pre-edit events or depending on session-boundary hooks for per-turn behavior.
 - **Vector indexing**: Treat embeddings as optional in slice 1; ship the FTS-backed builder first and add `sqlite-vec` only once runtime loading is proven.
   - Rationale: the schema proposal includes `learning_embeddings`, but the current repo has no extension-loading path yet.
 - **Testing strategy**: Add a real test harness and fixture-based tests before shipping parser/builder/weighting logic.
@@ -284,7 +289,7 @@ Add the guardrails this repository currently lacks.
 ### Elephants
 
 - **The broader product framing includes session-derived learnings and downstream dashboard consumers**
-  - Note: keep slice 1 tightly focused on GitHub PR evidence plus local query, but design canonical records so later consumers can reuse them without reworking the storage model.
+  - Note: keep slice 1 tightly focused on GitHub PR evidence plus local query, but allow prompt-time retrieval wiring through the selected Claude hook surface so later consumers can reuse the same local query path without reworking the storage model.
 - **The derived schema is leaner than the richer PR evidence model proposed by research**
   - Note: decide early whether to expand the DDL or intentionally drop fields so the builder/ingester contract stays coherent.
 
@@ -297,8 +302,8 @@ Add the guardrails this repository currently lacks.
 
 ## Out of Scope
 
-- Live `UserPromptSubmit` hook integration or Claude/Codex runtime wiring
 - Claude/Codex session-derived evidence ingestion, despite being part of the broader product framing
+- Additional Claude hook points beyond `UserPromptSubmit`, `PostToolUse(Edit|Write|MultiEdit)`, and `Stop`
 - Cross-repo federation or multi-repo retrieval
 - Persisted background jobs, audit events, query history, or capability proposals
 - Bot comments as first-class learning evidence
