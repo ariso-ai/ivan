@@ -2,9 +2,12 @@ import { Command } from 'commander';
 import { runExtractCommand } from './extract-command.js';
 import { initLearningsStore, runInitCommand } from './init-command.js';
 import { runIngestPrCommand } from './ingest-pr-command.js';
-import { installLearningsHooks, runInstallHooksCommand } from './install-hooks-command.js';
-import { queryLearnings } from './query.js';
+import {
+  installLearningsHooks,
+  runInstallHooksCommand
+} from './install-hooks-command.js';
 import { runQueryCommand } from './query-command.js';
+import { queryLearnings } from './query.js';
 import { rebuildLearningsDatabase } from './builder.js';
 import { runRebuildCommand } from './rebuild-command.js';
 
@@ -45,7 +48,9 @@ export function registerLearningsCommands(program: Command): void {
 
   learnings
     .command('ingest-pr')
-    .description('Fetch GitHub PR evidence and write canonical evidence records')
+    .description(
+      'Fetch GitHub PR evidence and write canonical evidence records'
+    )
     .requiredOption('--repo <path>', 'Repository root path')
     .requiredOption('--pr <number>', 'Pull request number')
     .action(runIngestPrCommand);
@@ -60,8 +65,8 @@ export function registerLearningsCommands(program: Command): void {
 }
 
 export {
-  initLearningsStore,
   installLearningsHooks,
+  initLearningsStore,
   queryLearnings,
   rebuildLearningsDatabase
 };

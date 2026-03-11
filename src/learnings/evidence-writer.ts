@@ -1,11 +1,12 @@
-import fs from 'fs';
-import path from 'path';
+import { Effect } from 'effect';
 import { createDeterministicId } from './id.js';
 import type { EvidenceRecord } from './record-types.js';
 import type {
   GitHubPullRequestEvidence,
   GitHubReviewThreadEvidence
 } from './github-evidence.js';
+import { CanonicalStore } from './canonical-store.js';
+import { runLearningsEffect } from './run-effect.js';
 import {
   inferAuthorFields,
   weightCheck,
@@ -46,7 +47,10 @@ export function buildEvidenceRecordsFromPullRequest(
   });
 
   for (const comment of payload.issueComments) {
-    const id = createDeterministicId('ev', `${baseExternalId}:issue-comment:${comment.id}`);
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:issue-comment:${comment.id}`
+    );
     const weight = weightIssueComment(comment);
     const author = inferAuthorFields(comment.author?.login);
     records.push({
@@ -74,7 +78,10 @@ export function buildEvidenceRecordsFromPullRequest(
   }
 
   for (const review of payload.reviews) {
-    const id = createDeterministicId('ev', `${baseExternalId}:review:${review.id}`);
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:review:${review.id}`
+    );
     const weight = weightReview(review);
     const author = inferAuthorFields(review.author?.login);
     records.push({
@@ -117,7 +124,10 @@ export function buildEvidenceRecordsFromPullRequest(
   }
 
   for (const check of payload.checks) {
-    const id = createDeterministicId('ev', `${baseExternalId}:check:${check.name}:${check.state}`);
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:check:${check.name}:${check.state}`
+    );
     const weight = weightCheck(check);
     records.push({
       type: 'evidence',
@@ -149,51 +159,18 @@ export function writeEvidenceRecords(
   repoPath: string,
   repositoryId: string,
   records: EvidenceRecord[]
-): string[] {
-  const evidenceDir = path.join(repoPath, 'learnings', 'evidence');
-  fs.mkdirSync(evidenceDir, { recursive: true });
-
-  const filePath = path.join(evidenceDir, `${repositoryId}.jsonl`);
-  const mergedRecords = mergeEvidenceRecords(filePath, records)
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((record) => ({
-      ...record,
-      sourcePath: evidenceSourcePath(repositoryId)
-    }));
-
-  const nextContent = mergedRecords
-    .map((record) => `${JSON.stringify(serializeEvidenceRecord(record))}\n`)
-    .join('');
-  fs.writeFileSync(filePath, nextContent, 'utf8');
-  removeLegacyEvidenceDirectory(repoPath, repositoryId);
-
-  return mergedRecords.map((record, index) => `${filePath}#L${index + 1}`);
-}
-
-function mergeEvidenceRecords(
-  filePath: string,
-  records: EvidenceRecord[]
-): EvidenceRecord[] {
-  const byId = new Map<string, EvidenceRecord>();
-
-  if (fs.existsSync(filePath)) {
-    const lines = fs.readFileSync(filePath, 'utf8').split('\n');
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) {
-        continue;
-      }
-
-      const parsed = JSON.parse(line) as EvidenceRecord;
-      byId.set(parsed.id, parsed);
-    }
-  }
-
-  for (const record of records) {
-    byId.set(record.id, record);
-  }
-
-  return [...byId.values()];
+): Promise<string[]> {
+  return runLearningsEffect(
+    Effect.gen(function* () {
+      const store = yield* CanonicalStore;
+      const written = yield* store.writeEvidence(
+        repoPath,
+        repositoryId,
+        records
+      );
+      return [...written];
+    })
+  );
 }
 
 function buildThreadEvidenceRecord(
@@ -209,7 +186,10 @@ function buildThreadEvidenceRecord(
   }
 
   const threadId = thread.id ?? firstComment.id;
-  const id = createDeterministicId('ev', `${baseExternalId}:thread:${threadId}`);
+  const id = createDeterministicId(
+    'ev',
+    `${baseExternalId}:thread:${threadId}`
+  );
   const weight = weightReviewThread(thread);
   const author = inferAuthorFields(firstComment.author?.login);
 
@@ -243,9 +223,13 @@ function buildThreadEvidenceRecord(
   };
 }
 
-function buildPullRequestSummaryBody(payload: GitHubPullRequestEvidence): string {
+function buildPullRequestSummaryBody(
+  payload: GitHubPullRequestEvidence
+): string {
   const sections: string[] = [];
-  sections.push(`PR #${payload.pullRequest.number}: ${payload.pullRequest.title}`);
+  sections.push(
+    `PR #${payload.pullRequest.number}: ${payload.pullRequest.title}`
+  );
 
   if (payload.pullRequest.body.trim()) {
     sections.push(payload.pullRequest.body.trim());
@@ -262,59 +246,8 @@ function buildPullRequestSummaryBody(payload: GitHubPullRequestEvidence): string
   return sections.join('\n\n');
 }
 
-function serializeEvidenceRecord(
-  record: EvidenceRecord
-): Record<string, unknown> {
-  return {
-    id: record.id,
-    repository_id: record.repository_id,
-    source_system: record.source_system,
-    source_type: record.source_type,
-    external_id: record.external_id,
-    parent_external_id: record.parent_external_id,
-    url: record.url,
-    pr_number: record.pr_number,
-    review_id: record.review_id,
-    thread_id: record.thread_id,
-    comment_id: record.comment_id,
-    author_type: record.author_type,
-    author_name: record.author_name,
-    author_role: record.author_role,
-    title: record.title,
-    file_path: record.file_path,
-    line_start: record.line_start,
-    line_end: record.line_end,
-    review_state: record.review_state,
-    resolution_state: record.resolution_state,
-    occurred_at: record.occurred_at,
-    base_weight: record.base_weight,
-    final_weight: record.final_weight,
-    boosts: record.boosts,
-    penalties: record.penalties,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
-    content: record.content.trim()
-  };
-}
-
 function evidenceSourcePath(repositoryId: string): string {
   return `learnings/evidence/${repositoryId}.jsonl`;
-}
-
-function removeLegacyEvidenceDirectory(
-  repoPath: string,
-  repositoryId: string
-): void {
-  const legacyDirectory = path.join(
-    repoPath,
-    'learnings',
-    'evidence',
-    repositoryId
-  );
-
-  if (fs.existsSync(legacyDirectory)) {
-    fs.rmSync(legacyDirectory, { recursive: true, force: true });
-  }
 }
 
 function buildThreadTitle(filePath?: string, line?: number): string {

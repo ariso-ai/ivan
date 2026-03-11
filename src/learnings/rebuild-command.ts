@@ -8,7 +8,7 @@ interface RebuildCommandOptions {
 export async function runRebuildCommand(
   options: RebuildCommandOptions
 ): Promise<void> {
-  const result = rebuildLearningsDatabase(options.repo);
+  const result = await rebuildLearningsDatabase(options.repo);
 
   console.log(chalk.green('✅ Learnings database rebuilt'));
   console.log(chalk.gray(`DB: ${result.dbPath}`));

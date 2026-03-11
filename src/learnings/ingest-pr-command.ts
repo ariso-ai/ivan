@@ -18,6 +18,8 @@ export async function runIngestPrCommand(
 
   console.log(chalk.green('✅ GitHub PR evidence ingested'));
   console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));
-  console.log(chalk.gray(`Evidence records written: ${result.writtenEvidenceCount}`));
+  console.log(
+    chalk.gray(`Evidence records written: ${result.writtenEvidenceCount}`)
+  );
   console.log(chalk.gray(`Rebuilt DB: ${result.rebuild.dbPath}`));
 }

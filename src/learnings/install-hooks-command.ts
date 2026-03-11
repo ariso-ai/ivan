@@ -199,7 +199,10 @@ function buildHookCommand(scriptPath: string): string {
   return `bash ${shellQuote(scriptPath)}`;
 }
 
-function buildUserPromptScript(nodeExecutable: string, ivanEntry: string): string {
+function buildUserPromptScript(
+  nodeExecutable: string,
+  ivanEntry: string
+): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -233,7 +236,10 @@ printf 'Local learnings relevant to this prompt:\\n%s\\n' "$output"
 `;
 }
 
-function buildPostEditScript(nodeExecutable: string, ivanEntry: string): string {
+function buildPostEditScript(
+  nodeExecutable: string,
+  ivanEntry: string
+): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
 

@@ -117,25 +117,97 @@ async function fetchPatEvidence(
 
   return {
     repository: { owner, name },
-    pullRequest: {
-      number: pr.number,
-      title: pr.title,
-      body: pr.body ?? '',
-      url: pr.url,
-      state: pr.state,
-      headRefName: pr.headRefName,
-      headSha: pr.headSha,
-      author: pr.author
-    },
-    issueComments: pr.issueComments,
-    reviews: pr.reviews,
-    reviewThreads,
-    files: pr.files,
-    checks: checks.map((check) => ({
-      name: check.name,
-      state: check.state,
-      link: check.link
-    }))
+    pullRequest: withOptionalFields(
+      {
+        number: pr.number,
+        title: pr.title,
+        body: pr.body ?? '',
+        url: pr.url,
+        state: pr.state,
+        headRefName: pr.headRefName
+      },
+      {
+        headSha: pr.headSha,
+        author: toActor(pr.author)
+      }
+    ),
+    issueComments: pr.issueComments.map((comment) =>
+      withOptionalFields(
+        {
+          id: comment.id,
+          body: comment.body,
+          createdAt: comment.createdAt
+        },
+        {
+          author: toActor(comment.author),
+          url: comment.url
+        }
+      )
+    ),
+    reviews: pr.reviews.map((review) =>
+      withOptionalFields(
+        {
+          id: review.id,
+          body: review.body,
+          state: review.state
+        },
+        {
+          submittedAt: review.submittedAt,
+          author: toActor(review.author),
+          url: review.url
+        }
+      )
+    ),
+    reviewThreads: reviewThreads.map((thread) =>
+      withOptionalFields(
+        {
+          isResolved: thread.isResolved,
+          comments: thread.comments.nodes.map((comment) =>
+            withOptionalFields(
+              {
+                id: comment.id,
+                body: comment.body,
+                createdAt: comment.createdAt,
+                author: { login: comment.author.login }
+              },
+              {
+                databaseId: comment.databaseId,
+                path: comment.path,
+                line: comment.line,
+                url: comment.url
+              }
+            )
+          )
+        },
+        {
+          id: thread.id,
+          isOutdated: thread.isOutdated
+        }
+      )
+    ),
+    files: pr.files.map((file) =>
+      withOptionalFields(
+        {
+          path: file.path
+        },
+        {
+          additions: file.additions,
+          deletions: file.deletions,
+          changeType: file.changeType
+        }
+      )
+    ),
+    checks: checks.map((check) =>
+      withOptionalFields(
+        {
+          name: check.name,
+          state: check.state
+        },
+        {
+          link: check.link
+        }
+      )
+    )
   };
 }
 
@@ -293,56 +365,117 @@ async function fetchCliEvidence(
       owner: repoInfo.owner.login,
       name: repoInfo.name
     },
-    pullRequest: {
-      number: pr.number,
-      title: pr.title,
-      body: pr.body ?? '',
-      url: pr.url,
-      state: pr.state,
-      headRefName: pr.headRefName,
-      headSha,
-      author: pr.author ? { login: pr.author.login } : undefined
-    },
-    issueComments: (pr.comments ?? []).map((comment, index) => ({
-      id: comment.id ?? `issue-comment-${pr.number}-${index + 1}`,
-      body: comment.body ?? '',
-      createdAt: comment.createdAt ?? '',
-      author: comment.author ? { login: comment.author.login } : undefined,
-      url: comment.url
-    })),
-    reviews: (pr.reviews ?? []).map((review, index) => ({
-      id: review.id ?? `review-${pr.number}-${index + 1}`,
-      body: review.body ?? '',
-      state: review.state ?? 'COMMENTED',
-      submittedAt: review.submittedAt,
-      author: review.author ? { login: review.author.login } : undefined,
-      url: review.url
-    })),
-    reviewThreads: reviewThreads.map((thread) => ({
-      id: thread.id,
-      isResolved: thread.isResolved ?? false,
-      isOutdated: thread.isOutdated ?? false,
-      comments: (thread.comments?.nodes ?? []).map((comment) => ({
-        id: comment.id ?? '',
-        databaseId: comment.databaseId,
-        body: comment.body ?? '',
-        createdAt: comment.createdAt ?? '',
-        author: comment.author ? { login: comment.author.login } : undefined,
-        path: comment.path,
-        line: comment.line,
-        url: comment.url
-      }))
-    })),
-    files: (pr.files ?? []).map((file) => ({
-      path: file.path,
-      additions: file.additions,
-      deletions: file.deletions,
-      changeType: file.changeType
-    })),
-    checks: checks.map((check) => ({
-      name: check.name,
-      state: check.state,
-      link: check.link
-    }))
+    pullRequest: withOptionalFields(
+      {
+        number: pr.number,
+        title: pr.title,
+        body: pr.body ?? '',
+        url: pr.url,
+        state: pr.state,
+        headRefName: pr.headRefName
+      },
+      {
+        headSha,
+        author: toActor(pr.author)
+      }
+    ),
+    issueComments: (pr.comments ?? []).map((comment, index) =>
+      withOptionalFields(
+        {
+          id: comment.id ?? `issue-comment-${pr.number}-${index + 1}`,
+          body: comment.body ?? '',
+          createdAt: comment.createdAt ?? ''
+        },
+        {
+          author: toActor(comment.author),
+          url: comment.url
+        }
+      )
+    ),
+    reviews: (pr.reviews ?? []).map((review, index) =>
+      withOptionalFields(
+        {
+          id: review.id ?? `review-${pr.number}-${index + 1}`,
+          body: review.body ?? '',
+          state: review.state ?? 'COMMENTED'
+        },
+        {
+          submittedAt: review.submittedAt,
+          author: toActor(review.author),
+          url: review.url
+        }
+      )
+    ),
+    reviewThreads: reviewThreads.map((thread) =>
+      withOptionalFields(
+        {
+          isResolved: thread.isResolved ?? false,
+          comments: (thread.comments?.nodes ?? []).map((comment) =>
+            withOptionalFields(
+              {
+                id: comment.id ?? '',
+                body: comment.body ?? '',
+                createdAt: comment.createdAt ?? ''
+              },
+              {
+                databaseId: comment.databaseId,
+                author: toActor(comment.author),
+                path: comment.path,
+                line: comment.line,
+                url: comment.url
+              }
+            )
+          )
+        },
+        {
+          id: thread.id,
+          isOutdated: thread.isOutdated
+        }
+      )
+    ),
+    files: (pr.files ?? []).map((file) =>
+      withOptionalFields(
+        {
+          path: file.path
+        },
+        {
+          additions: file.additions,
+          deletions: file.deletions,
+          changeType: file.changeType
+        }
+      )
+    ),
+    checks: checks.map((check) =>
+      withOptionalFields(
+        {
+          name: check.name,
+          state: check.state
+        },
+        {
+          link: check.link
+        }
+      )
+    )
   };
+}
+
+function toActor(actor?: { login: string }): GitHubActor | undefined {
+  return actor ? { login: actor.login } : undefined;
+}
+
+function withOptionalFields<T extends object>(
+  base: T,
+  optionalFields: Record<string, unknown>
+): T {
+  const result: Record<string, unknown> = {
+    ...(base as Record<string, unknown>)
+  };
+
+  for (const [key, value] of Object.entries(optionalFields)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result as T;
 }

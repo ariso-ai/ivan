@@ -1,40 +1,20 @@
 import chalk from 'chalk';
-import {
-  ensureGitignoreCoverage,
-  ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
-  writeRepositoryRecord
-} from './repository.js';
+import type { InitResult } from './models.js';
+import { init } from './init-program.js';
+import { runLearningsEffect } from './run-effect.js';
 
 interface InitCommandOptions {
   repo: string;
 }
 
-export function initLearningsStore(repoPath: string): {
-  repositoryId: string;
-  repositoryFile: string;
-  createdDirectories: string[];
-  gitignoreUpdated: boolean;
-  createdRepositoryRecord: boolean;
-} {
-  const context = resolveLearningsRepositoryContext(repoPath);
-  const createdDirectories = ensureLearningsDirectories(context);
-  const repositoryWrite = writeRepositoryRecord(context);
-  const gitignoreUpdated = ensureGitignoreCoverage(context.repoPath);
-
-  return {
-    repositoryId: context.repositoryId,
-    repositoryFile: repositoryWrite.filePath,
-    createdDirectories,
-    gitignoreUpdated,
-    createdRepositoryRecord: repositoryWrite.created
-  };
+export function initLearningsStore(repoPath: string): Promise<InitResult> {
+  return runLearningsEffect(init({ repoPath }));
 }
 
 export async function runInitCommand(
   options: InitCommandOptions
 ): Promise<void> {
-  const result = initLearningsStore(options.repo);
+  const result = await initLearningsStore(options.repo);
 
   console.log(chalk.green('✅ Learnings store initialized'));
   console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));

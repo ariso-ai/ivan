@@ -16,6 +16,7 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
+    "test:learnings": "tsx --test src/learnings/__tests__/*.test.ts",
     "test": "npm run build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --config jest.config.cjs",
     "prepare": "effect-language-service patch && npm run build"
   },
@@ -64,6 +65,11 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.8",
     "@effect/cli": "^0.73.2",
+    "@effect/experimental": "^0.58.0",
+    "@effect/platform": "^0.94.5",
+    "@effect/platform-node": "^0.104.1",
+    "@effect/sql": "^0.49.0",
+    "@effect/sql-sqlite-node": "^0.50.1",
     "@types/express": "^5.0.3",
     "better-sqlite3": "^12.2.0",
     "chalk": "^5.6.0",

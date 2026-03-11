@@ -96,10 +96,15 @@ export function inferAuthorFields(authorName?: string): {
   author_type?: string;
   author_name?: string;
 } {
-  return {
-    author_type: classifyAuthorType(authorName),
-    author_name: authorName
-  };
+  const result: { author_type?: string; author_name?: string } = {};
+  const authorType = classifyAuthorType(authorName);
+  if (authorType !== undefined) {
+    result.author_type = authorType;
+  }
+  if (authorName !== undefined) {
+    result.author_name = authorName;
+  }
+  return result;
 }
 
 function computeWeight(

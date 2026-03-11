@@ -1,16 +1,7 @@
 import path from 'path';
-import type { LearningsDataset } from './record-types.js';
-import { isStableRecordId } from './id.js';
-
-export class LearningsValidationError extends Error {
-  issues: string[];
-
-  constructor(issues: string[]) {
-    super(`Invalid learnings records:\n- ${issues.join('\n- ')}`);
-    this.name = 'LearningsValidationError';
-    this.issues = issues;
-  }
-}
+import { InvariantViolation } from './errors.js';
+import type { CanonicalDataset as LearningsDataset } from './models.js';
+import { isStableRecordId } from './ids.js';
 
 export function validateLearningsDataset(dataset: LearningsDataset): void {
   const issues: string[] = [];
@@ -146,6 +137,6 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
   }
 
   if (issues.length > 0) {
-    throw new LearningsValidationError(issues);
+    throw new InvariantViolation({ issues });
   }
 }

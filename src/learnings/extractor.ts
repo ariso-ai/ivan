@@ -5,11 +5,7 @@ import { isLowSignalReviewText } from './heuristics.js';
 import { writeLearningRecords } from './learning-writer.js';
 import { loadCanonicalRecords } from './parser.js';
 import type { EvidenceRecord, LearningRecord } from './record-types.js';
-import {
-  ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
-  writeRepositoryRecord
-} from './repository.js';
+import { initLearningsStore } from './init-command.js';
 
 export interface ExtractionResult {
   repositoryId: string;
@@ -18,22 +14,21 @@ export interface ExtractionResult {
   rebuild: LearningsBuildResult;
 }
 
-export function extractLearningsFromEvidence(repoPath: string): ExtractionResult {
-  const context = resolveLearningsRepositoryContext(repoPath);
-  ensureLearningsDirectories(context);
-  writeRepositoryRecord(context);
-
-  const dataset = loadCanonicalRecords(context.repoPath);
+export async function extractLearningsFromEvidence(
+  repoPath: string
+): Promise<ExtractionResult> {
+  const initResult = await initLearningsStore(repoPath);
+  const dataset = await loadCanonicalRecords(repoPath);
   const extractedRecords = extractLearningRecords(dataset.evidence);
-  const writtenPaths = writeLearningRecords(
-    context.repoPath,
-    context.repositoryId,
+  const writtenPaths = await writeLearningRecords(
+    repoPath,
+    initResult.repositoryId,
     extractedRecords
   );
-  const rebuild = rebuildLearningsDatabase(context.repoPath);
+  const rebuild = await rebuildLearningsDatabase(repoPath);
 
   return {
-    repositoryId: context.repositoryId,
+    repositoryId: initResult.repositoryId,
     writtenLearningCount: extractedRecords.length,
     writtenPaths,
     rebuild
@@ -41,7 +36,7 @@ export function extractLearningsFromEvidence(repoPath: string): ExtractionResult
 }
 
 export function extractLearningRecords(
-  evidenceRecords: EvidenceRecord[]
+  evidenceRecords: ReadonlyArray<EvidenceRecord>
 ): LearningRecord[] {
   const records = evidenceRecords
     .filter(shouldExtractEvidence)
@@ -67,7 +62,9 @@ function shouldExtractEvidence(evidence: EvidenceRecord): boolean {
 
   if (
     evidence.source_type === 'pr_issue_comment' &&
-    /\b(before rewrite|after rewrite|agent instructions)\b/i.test(evidence.content)
+    /\b(before rewrite|after rewrite|agent instructions)\b/i.test(
+      evidence.content
+    )
   ) {
     return false;
   }
@@ -110,30 +107,35 @@ function buildLearningRecord(evidence: EvidenceRecord): LearningRecord | null {
   const now = evidence.updated_at;
   const title = inferTitle(statement);
 
-  return withOptionalFields<LearningRecord>({
-    type: 'learning',
-    sourcePath: `learnings/lessons/${evidence.repository_id}.jsonl`,
-    id: createDeterministicId(
-      'lrn',
-      evidence.repository_id,
-      evidence.id,
-      statement
-    ),
-    repository_id: evidence.repository_id,
-    kind,
-    statement,
-    status: 'active',
-    evidence_ids: evidenceIds,
-    tags: inferTags(statement, evidence),
-    created_at: now,
-    updated_at: now
-  }, {
-    source_type: 'github_pr_discourse',
-    title,
-    rationale,
-    applicability: inferApplicability(kind, evidence),
-    confidence: inferConfidence(evidence.final_weight ?? evidence.base_weight ?? 0)
-  });
+  return withOptionalFields<LearningRecord>(
+    {
+      type: 'learning',
+      sourcePath: `learnings/lessons/${evidence.repository_id}.jsonl`,
+      id: createDeterministicId(
+        'lrn',
+        evidence.repository_id,
+        evidence.id,
+        statement
+      ),
+      repository_id: evidence.repository_id,
+      kind,
+      statement,
+      status: 'active',
+      evidence_ids: evidenceIds,
+      tags: inferTags(statement, evidence),
+      created_at: now,
+      updated_at: now
+    },
+    {
+      source_type: 'github_pr_discourse',
+      title,
+      rationale,
+      applicability: inferApplicability(kind, evidence),
+      confidence: inferConfidence(
+        evidence.final_weight ?? evidence.base_weight ?? 0
+      )
+    }
+  );
 }
 
 function extractStatement(content: string): string | null {
@@ -165,9 +167,7 @@ function extractStatement(content: string): string | null {
   return sentenceCase(fallback.replace(/[.?!]+$/, ''));
 }
 
-function extractPullRequestStatement(
-  evidence: EvidenceRecord
-): string | null {
+function extractPullRequestStatement(evidence: EvidenceRecord): string | null {
   const content = sanitizeEvidenceContent(evidence.content);
   const candidates = content
     .split(/(?<=[.?!])\s+/)
@@ -190,7 +190,10 @@ function extractPullRequestStatement(
   return title ? sentenceCase(title.replace(/[.?!]+$/, '')) : null;
 }
 
-function extractRationale(content: string, statement: string): string | undefined {
+function extractRationale(
+  content: string,
+  statement: string
+): string | undefined {
   const normalizedContent = sanitizeEvidenceContent(content);
   if (!normalizedContent) {
     return undefined;
@@ -216,7 +219,8 @@ function inferLearningKind(
   evidence: EvidenceRecord,
   statement: string
 ): string {
-  const haystack = `${statement} ${evidence.title ?? ''} ${evidence.file_path ?? ''}`.toLowerCase();
+  const haystack =
+    `${statement} ${evidence.title ?? ''} ${evidence.file_path ?? ''}`.toLowerCase();
 
   if (
     /\b(ivan|claude|hook|prompt|cli|command|settings|github|repo|worktree)\b/.test(
@@ -235,7 +239,9 @@ function inferTitle(statement: string): string | undefined {
     return undefined;
   }
 
-  return trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`;
+  return trimmed.length <= 72
+    ? trimmed
+    : `${trimmed.slice(0, 69).trimEnd()}...`;
 }
 
 function inferApplicability(
@@ -310,8 +316,14 @@ function toImperativeStatement(candidate: string): string | null {
     [/^i(?:'d| would)? recommend\s+(.+)$/i, (match) => match[1]],
     [/^i think\s+(.+?)\s+would be nice$/i, (match) => `Consider ${match[1]}`],
     [/^i think\s+(.+)$/i, (match) => match[1]],
-    [/^btw\s+i moved this here because\s+(.+)$/i, (match) => `Keep this here because ${match[1]}`],
-    [/^this is a bit odd,?\s+we shouldn't have\s+(.+)$/i, (match) => `Do not have ${match[1]}`],
+    [
+      /^btw\s+i moved this here because\s+(.+)$/i,
+      (match) => `Keep this here because ${match[1]}`
+    ],
+    [
+      /^this is a bit odd,?\s+we shouldn't have\s+(.+)$/i,
+      (match) => `Do not have ${match[1]}`
+    ],
     [/^also fixes?\s+(.+)$/i, (match) => match[1]],
     [/^needs to\s+(.+)$/i, (match) => match[1]],
     [/^need to\s+(.+)$/i, (match) => match[1]],
@@ -362,7 +374,9 @@ function extractEmphasizedStatement(content: string): string | null {
   const matches = content.matchAll(/\*\*([^*]+)\*\*/g);
   for (const match of matches) {
     const candidate = sentenceCase(
-      normalizeCandidateText(match[1]).replace(/[.?!]+$/, '').trim()
+      normalizeCandidateText(match[1])
+        .replace(/[.?!]+$/, '')
+        .trim()
     );
     if (isUsableCandidate(candidate)) {
       return candidate;
@@ -455,7 +469,9 @@ function withOptionalFields<T extends object>(
   base: T,
   optionalFields: Record<string, unknown>
 ): T {
-  const result: Record<string, unknown> = { ...base };
+  const result: Record<string, unknown> = {
+    ...(base as Record<string, unknown>)
+  };
 
   for (const [key, value] of Object.entries(optionalFields)) {
     if (value !== undefined) {

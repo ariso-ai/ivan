@@ -26,9 +26,9 @@ afterEach(() => {
 });
 
 describe('learnings storage slice', () => {
-  test('parses canonical records from fixture files', () => {
+  test('parses canonical records from fixture files', async () => {
     const repoPath = copyFixtureRepo();
-    const dataset = loadCanonicalRecords(repoPath);
+    const dataset = await loadCanonicalRecords(repoPath);
 
     expect(dataset.repositories).toHaveLength(1);
     expect(dataset.evidence).toHaveLength(2);
@@ -42,17 +42,21 @@ describe('learnings storage slice', () => {
     ]);
   });
 
-  test('rebuilds learnings.db and returns evidence-backed query results', () => {
+  test('rebuilds learnings.db and returns evidence-backed query results', async () => {
     const repoPath = copyFixtureRepo();
-    const result = rebuildLearningsDatabase(repoPath);
-    const queryResults = queryLearnings(repoPath, 'locks await', { limit: 2 });
+    const result = await rebuildLearningsDatabase(repoPath);
+    const queryResults = await queryLearnings(repoPath, 'locks await', {
+      limit: 2
+    });
 
     expect(fs.existsSync(result.dbPath)).toBe(true);
     expect(result.repositoryCount).toBe(1);
     expect(result.evidenceCount).toBe(2);
     expect(result.learningCount).toBe(1);
     expect(queryResults).toHaveLength(1);
-    expect(queryResults[0].statement).toContain('Avoid holding locks across awaits');
+    expect(queryResults[0].statement).toContain(
+      'Avoid holding locks across awaits'
+    );
     expect(queryResults[0].evidence.map((evidence) => evidence.id)).toEqual([
       'ev_lock-await',
       'ev_lock-await-ack'
@@ -65,16 +69,14 @@ describe('learnings storage slice', () => {
     execIvan(['learnings', 'init', '--repo', repoPath]);
 
     expect(
-      fs.existsSync(
-        path.join(repoPath, 'learnings', 'repositories.jsonl')
-      )
+      fs.existsSync(path.join(repoPath, 'learnings', 'repositories.jsonl'))
     ).toBe(true);
-    expect(
-      fs.existsSync(path.join(repoPath, 'learnings', 'evidence'))
-    ).toBe(true);
-    expect(
-      fs.existsSync(path.join(repoPath, 'learnings', 'lessons'))
-    ).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, 'learnings', 'evidence'))).toBe(
+      true
+    );
+    expect(fs.existsSync(path.join(repoPath, 'learnings', 'lessons'))).toBe(
+      true
+    );
     expect(
       fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8')
     ).toContain('learnings.db');
@@ -126,9 +128,7 @@ describe('learnings storage slice', () => {
     expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
     expect(settings.hooks.PostToolUse).toHaveLength(1);
     expect(settings.hooks.Stop).toHaveLength(1);
-    expect(settings.hooks.PostToolUse[0].matcher).toBe(
-      'Edit|Write|MultiEdit'
-    );
+    expect(settings.hooks.PostToolUse[0].matcher).toBe('Edit|Write|MultiEdit');
     expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toContain(
       'ivan-learnings-user-prompt.sh'
     );
@@ -214,9 +214,9 @@ describe('learnings storage slice', () => {
       'pull_request'
     ]);
     expect(records.every((record) => record.id.startsWith('ev_'))).toBe(true);
-    expect(records.find((record) => record.source_type === 'pr_review')?.boosts).toContain(
-      'changes_requested'
-    );
+    expect(
+      records.find((record) => record.source_type === 'pr_review')?.boosts
+    ).toContain('changes_requested');
     expect(
       records.find((record) => record.source_type === 'pr_review_thread')
         ?.resolution_state

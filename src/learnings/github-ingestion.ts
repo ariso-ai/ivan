@@ -5,11 +5,7 @@ import {
 } from './evidence-writer.js';
 import { extractLearningsFromEvidence } from './extractor.js';
 import { fetchGitHubPullRequestEvidence } from './github-evidence.js';
-import {
-  ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
-  writeRepositoryRecord
-} from './repository.js';
+import { initLearningsStore } from './init-command.js';
 
 export interface PullRequestIngestionResult {
   repositoryId: string;
@@ -22,24 +18,22 @@ export async function ingestPullRequestEvidence(
   repoPath: string,
   prNumber: number
 ): Promise<PullRequestIngestionResult> {
-  const context = resolveLearningsRepositoryContext(repoPath);
-  ensureLearningsDirectories(context);
-  writeRepositoryRecord(context);
+  const initResult = await initLearningsStore(repoPath);
 
-  const payload = await fetchGitHubPullRequestEvidence(context.repoPath, prNumber);
+  const payload = await fetchGitHubPullRequestEvidence(repoPath, prNumber);
   const records = buildEvidenceRecordsFromPullRequest(
-    context.repositoryId,
+    initResult.repositoryId,
     payload
   );
-  const writtenPaths = writeEvidenceRecords(
-    context.repoPath,
-    context.repositoryId,
+  const writtenPaths = await writeEvidenceRecords(
+    repoPath,
+    initResult.repositoryId,
     records
   );
-  const extraction = extractLearningsFromEvidence(context.repoPath);
+  const extraction = await extractLearningsFromEvidence(repoPath);
 
   return {
-    repositoryId: context.repositoryId,
+    repositoryId: initResult.repositoryId,
     writtenEvidenceCount: records.length,
     writtenPaths,
     rebuild: extraction.rebuild

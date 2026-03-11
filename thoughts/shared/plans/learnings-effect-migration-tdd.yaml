@@ -1,0 +1,41 @@
+---
+title: Learnings Effect Migration
+date: 2026-03-11
+type: implementation-plan
+approach: TDD (test → build → pass → review)
+
+items:
+  - name: foundation
+    file: src/learnings/domain/errors.ts
+    test: src/learnings/__tests__/programs.test.ts
+    deps: []
+  - name: canonical-store
+    file: src/learnings/infra/fs/CanonicalStoreLive.ts
+    test: src/learnings/__tests__/programs.test.ts
+    deps: [foundation]
+  - name: sqlite-repository
+    file: src/learnings/infra/sqlite/LearningsRepositoryLive.ts
+    test: src/learnings/__tests__/programs.test.ts
+    deps: [foundation]
+  - name: programs-and-cli
+    file: src/learnings/index.ts
+    test: src/learnings/__tests__/commands.test.ts
+    deps: [canonical-store, sqlite-repository]
+  - name: extract-and-ingest
+    file: src/learnings/extractor.ts
+    test: src/learnings/__tests__/commands.test.ts
+    deps: [programs-and-cli]
+
+reference: src/learnings/index.ts
+
+workflow:
+  per_item:
+    1: Write failing test
+    2: Implement minimal
+    3: Build
+    4: Pass test
+    5: Review
+  final:
+    6: Full typecheck
+    7: Full test suite
+    8: Review and diff
