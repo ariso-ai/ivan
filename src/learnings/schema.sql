@@ -81,6 +81,15 @@ CREATE TABLE IF NOT EXISTS learning_tags (
     FOREIGN KEY (learning_id) REFERENCES learnings(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS learning_embeddings (
+    learning_id TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    vector_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (learning_id) REFERENCES learnings(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_evidence_repo_type
     ON evidence(repository_id, source_type, occurred_at);
 
@@ -95,6 +104,9 @@ CREATE INDEX IF NOT EXISTS idx_learning_evidence_evidence
 
 CREATE INDEX IF NOT EXISTS idx_learning_tags_tag
     ON learning_tags(tag);
+
+CREATE INDEX IF NOT EXISTS idx_learning_embeddings_model
+    ON learning_embeddings(model);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
     id UNINDEXED,

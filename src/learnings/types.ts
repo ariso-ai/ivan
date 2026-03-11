@@ -1,15 +1,3 @@
-export type LearningsScalar = string | number | boolean | null;
-export type LearningsValue = LearningsScalar | LearningsScalar[];
-
-export interface LearningsFrontmatter {
-  [key: string]: LearningsValue | undefined;
-}
-
-export interface ParsedFrontmatterDocument {
-  frontmatter: LearningsFrontmatter;
-  body: string;
-}
-
 export interface LearningsSearchOptions {
   limit?: number;
 }

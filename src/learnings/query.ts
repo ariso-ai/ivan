@@ -1,5 +1,10 @@
 import { openLearningsDatabase } from './database.js';
 import {
+  cosineSimilarity,
+  deserializeVector,
+  embedText
+} from './embeddings.js';
+import type {
   LearningsQueryEvidence,
   LearningsQueryResult,
   LearningsSearchOptions
@@ -15,6 +20,10 @@ interface LearningRow {
   applicability: string | null;
   confidence: number | null;
   status: string;
+}
+
+interface VectorLearningRow extends LearningRow {
+  vector_json: string;
 }
 
 export function queryLearnings(
@@ -69,30 +78,38 @@ export function queryLearnings(
           content: string;
           final_weight: number | null;
         }>
-      ).map(
-        (evidenceRow): LearningsQueryEvidence => ({
-          id: evidenceRow.id,
-          url: evidenceRow.url ?? undefined,
-          sourceType: evidenceRow.source_type,
-          title: evidenceRow.title ?? undefined,
-          content: evidenceRow.content,
-          finalWeight: evidenceRow.final_weight ?? undefined
-        })
+      ).map((evidenceRow): LearningsQueryEvidence =>
+        withOptionalFields<LearningsQueryEvidence>(
+          {
+            id: evidenceRow.id,
+            sourceType: evidenceRow.source_type,
+            content: evidenceRow.content
+          },
+          {
+            url: evidenceRow.url ?? undefined,
+            title: evidenceRow.title ?? undefined,
+            finalWeight: evidenceRow.final_weight ?? undefined
+          }
+        )
       );
 
-      return {
+      return withOptionalFields<LearningsQueryResult>(
+        {
         id: row.id,
         repositoryId: row.repository_id,
-        title: row.title ?? undefined,
         kind: row.kind,
         statement: row.statement,
-        rationale: row.rationale ?? undefined,
-        applicability: row.applicability ?? undefined,
-        confidence: row.confidence ?? undefined,
         status: row.status,
         tags,
         evidence
-      };
+        },
+        {
+          title: row.title ?? undefined,
+          rationale: row.rationale ?? undefined,
+          applicability: row.applicability ?? undefined,
+          confidence: row.confidence ?? undefined
+        }
+      );
     });
   } finally {
     db.close();
@@ -104,6 +121,11 @@ function runLearningSearch(
   text: string,
   limit: number
 ): LearningRow[] {
+  const vectorRows = runVectorSearch(db, text, limit);
+  if (vectorRows.length > 0) {
+    return vectorRows;
+  }
+
   const ftsExpression = buildFtsExpression(text);
 
   if (ftsExpression) {
@@ -167,6 +189,52 @@ function runLearningSearch(
     ) as LearningRow[];
 }
 
+function runVectorSearch(
+  db: ReturnType<typeof openLearningsDatabase>,
+  text: string,
+  limit: number
+): LearningRow[] {
+  const queryVector = embedText(text);
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          l.id,
+          l.repository_id,
+          l.title,
+          l.kind,
+          l.statement,
+          l.rationale,
+          l.applicability,
+          l.confidence,
+          l.status,
+          le.vector_json
+        FROM learning_embeddings le
+        INNER JOIN learnings l ON l.id = le.learning_id
+        WHERE l.status = 'active'
+      `
+    )
+    .all() as VectorLearningRow[];
+
+  const scoredRows = rows
+    .map((row) => ({
+      row,
+      score: cosineSimilarity(queryVector, deserializeVector(row.vector_json))
+    }))
+    .filter((candidate) => candidate.score >= 0.12)
+    .sort((left, right) => {
+      return (
+        right.score - left.score ||
+        (right.row.confidence ?? 0) - (left.row.confidence ?? 0) ||
+        right.row.id.localeCompare(left.row.id)
+      );
+    })
+    .slice(0, limit)
+    .map((candidate) => candidate.row);
+
+  return scoredRows;
+}
+
 function buildFtsExpression(text: string): string | null {
   const terms = Array.from(
     new Set(
@@ -181,4 +249,19 @@ function buildFtsExpression(text: string): string | null {
   }
 
   return terms.join(' ');
+}
+
+function withOptionalFields<T extends object>(
+  base: T,
+  optionalFields: Record<string, unknown>
+): T {
+  const result: Record<string, unknown> = { ...base };
+
+  for (const [key, value] of Object.entries(optionalFields)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result as T;
 }

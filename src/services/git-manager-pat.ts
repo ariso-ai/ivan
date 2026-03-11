@@ -4,7 +4,7 @@ import { OpenAIService } from './openai-service.js';
 import { ConfigManager } from '../config.js';
 import path from 'path';
 import { promises as fs } from 'fs';
-import { IGitManager } from './git-interfaces.js';
+import type { IGitManager } from './git-interfaces.js';
 import type { PRInfo } from './git-interfaces.js';
 import { GitHubAPIClient } from './github-api-client.js';
 

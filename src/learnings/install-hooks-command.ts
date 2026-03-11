@@ -306,11 +306,11 @@ printf 'Local learnings relevant at stop:\\n%s\\n' "$output"
 
 function resolveIvanEntryPoint(): string {
   const entryArg = process.argv[1];
-  if (!entryArg) {
-    throw new Error('Unable to resolve the current Ivan entry point');
+  if (entryArg) {
+    return path.resolve(entryArg);
   }
 
-  return path.resolve(entryArg);
+  return path.resolve(new URL('../index.js', import.meta.url).pathname);
 }
 
 function shellQuote(value: string): string {

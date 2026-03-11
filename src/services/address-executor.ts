@@ -2,11 +2,12 @@ import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { JobManager } from './job-manager.js';
-import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
+import { ExecutorFactory } from './executor-factory.js';
+import type { IClaudeExecutor } from './executor-factory.js';
 import { ConfigManager } from '../config.js';
-import { Task } from '../database.js';
+import type { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
-import {
+import type {
   IGitManager,
   IPRService,
   IRepositoryManager

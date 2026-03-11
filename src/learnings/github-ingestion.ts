@@ -1,9 +1,9 @@
 import type { LearningsBuildResult } from './builder.js';
-import { rebuildLearningsDatabase } from './builder.js';
 import {
   buildEvidenceRecordsFromPullRequest,
   writeEvidenceRecords
 } from './evidence-writer.js';
+import { extractLearningsFromEvidence } from './extractor.js';
 import { fetchGitHubPullRequestEvidence } from './github-evidence.js';
 import {
   ensureLearningsDirectories,
@@ -36,12 +36,12 @@ export async function ingestPullRequestEvidence(
     context.repositoryId,
     records
   );
-  const rebuild = rebuildLearningsDatabase(context.repoPath);
+  const extraction = extractLearningsFromEvidence(context.repoPath);
 
   return {
     repositoryId: context.repositoryId,
     writtenEvidenceCount: records.length,
     writtenPaths,
-    rebuild
+    rebuild: extraction.rebuild
   };
 }

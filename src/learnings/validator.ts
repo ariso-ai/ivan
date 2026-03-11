@@ -1,5 +1,5 @@
 import path from 'path';
-import { LearningsDataset } from './record-types.js';
+import type { LearningsDataset } from './record-types.js';
 import { isStableRecordId } from './id.js';
 
 export class LearningsValidationError extends Error {
@@ -17,7 +17,7 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
 
   if (dataset.repositories.length === 0) {
     issues.push(
-      'No repository records found under learnings/repositories. Run "ivan learnings init --repo <path>" first.'
+      'No repository records found under learnings/repositories.jsonl. Run "ivan learnings init --repo <path>" first.'
     );
   }
 
@@ -47,10 +47,10 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
       issues.push(`${repository.sourcePath}: name must not be empty`);
     }
 
-    const expectedFileName = `${repository.id}${path.extname(repository.sourcePath)}`;
-    if (path.posix.basename(repository.sourcePath) !== expectedFileName) {
+    const repositorySourceFile = repository.sourcePath.split('#')[0];
+    if (repositorySourceFile !== 'learnings/repositories.jsonl') {
       issues.push(
-        `${repository.sourcePath}: repository file name should match the id (${expectedFileName})`
+        `${repository.sourcePath}: repository must live in learnings/repositories.jsonl`
       );
     }
   }
@@ -79,13 +79,15 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
       issues.push(`${evidence.sourcePath}: evidence content must not be empty`);
     }
 
-    const expectedDir = evidence.repository_id;
+    const evidenceSourceFile = evidence.sourcePath.split('#')[0];
+    const expectedFileName = `${evidence.repository_id}.jsonl`;
     if (
-      path.posix.basename(path.posix.dirname(evidence.sourcePath)) !==
-      expectedDir
+      path.posix.basename(path.posix.dirname(evidenceSourceFile)) !==
+        'evidence' ||
+      path.posix.basename(evidenceSourceFile) !== expectedFileName
     ) {
       issues.push(
-        `${evidence.sourcePath}: evidence must live under learnings/evidence/${expectedDir}/`
+        `${evidence.sourcePath}: evidence must live in learnings/evidence/${expectedFileName}`
       );
     }
   }
@@ -112,7 +114,7 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
 
     if (!learning.statement.trim()) {
       issues.push(
-        `${learning.sourcePath}: learning statement must not be empty (expected a ## Statement section)`
+        `${learning.sourcePath}: learning statement must not be empty`
       );
     }
 
@@ -130,13 +132,15 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
       }
     }
 
-    const expectedDir = learning.repository_id;
+    const learningSourceFile = learning.sourcePath.split('#')[0];
+    const expectedFileName = `${learning.repository_id}.jsonl`;
     if (
-      path.posix.basename(path.posix.dirname(learning.sourcePath)) !==
-      expectedDir
+      path.posix.basename(path.posix.dirname(learningSourceFile)) !==
+        'lessons' ||
+      path.posix.basename(learningSourceFile) !== expectedFileName
     ) {
       issues.push(
-        `${learning.sourcePath}: learning must live under learnings/lessons/${expectedDir}/`
+        `${learning.sourcePath}: learning must live in learnings/lessons/${expectedFileName}`
       );
     }
   }

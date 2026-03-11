@@ -65,18 +65,14 @@ describe('learnings storage slice', () => {
 
     expect(
       fs.existsSync(
-        path.join(
-          repoPath,
-          'learnings',
-          'repositories',
-          'repo_init-repo.yaml'
-        )
+        path.join(repoPath, 'learnings', 'repositories.jsonl')
       )
     ).toBe(true);
     expect(
-      fs.existsSync(
-        path.join(repoPath, 'learnings', 'evidence', 'repo_init-repo')
-      )
+      fs.existsSync(path.join(repoPath, 'learnings', 'evidence'))
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(repoPath, 'learnings', 'lessons'))
     ).toBe(true);
     expect(
       fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8')

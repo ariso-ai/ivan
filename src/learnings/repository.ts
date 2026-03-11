@@ -1,9 +1,8 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { stringifySimpleYaml } from './frontmatter.js';
 import { createRepositoryId, slugify } from './id.js';
-import { RepositoryRecord } from './record-types.js';
+import type { RepositoryRecord } from './record-types.js';
 import { loadCanonicalRecords } from './parser.js';
 
 export interface LearningsRepositoryContext {
@@ -28,14 +27,15 @@ export function resolveLearningsRepositoryContext(
     existingRecord?.slug ?? slugify(path.basename(resolvedRepoPath));
   const repositoryId = existingRecord?.id ?? createRepositoryId(repositorySlug);
 
-  return {
+  return withOptionalFields<LearningsRepositoryContext>({
     repoPath: resolvedRepoPath,
     repositoryId,
     repositorySlug,
     repositoryName,
+  }, {
     remoteUrl: existingRecord?.remote_url ?? readRemoteUrl(resolvedRepoPath),
     existingRecord
-  };
+  });
 }
 
 export function buildRepositoryRecord(
@@ -43,29 +43,25 @@ export function buildRepositoryRecord(
 ): RepositoryRecord {
   const now = new Date().toISOString();
 
-  return {
+  return withOptionalFields<RepositoryRecord>({
     type: 'repository',
-    sourcePath: `learnings/repositories/${context.repositoryId}.yaml`,
+    sourcePath: 'learnings/repositories.jsonl',
     id: context.repositoryId,
     slug: context.repositorySlug,
     name: context.repositoryName,
     local_path: context.repoPath,
-    remote_url: context.remoteUrl,
     is_active: true,
     created_at: context.existingRecord?.created_at ?? now,
     updated_at: now
-  };
+  }, {
+    remote_url: context.remoteUrl
+  });
 }
 
 export function getRepositoryRecordPath(
   context: LearningsRepositoryContext
 ): string {
-  return path.join(
-    context.repoPath,
-    'learnings',
-    'repositories',
-    `${context.repositoryId}.yaml`
-  );
+  return path.join(context.repoPath, 'learnings', 'repositories.jsonl');
 }
 
 export function ensureLearningsDirectories(
@@ -73,9 +69,8 @@ export function ensureLearningsDirectories(
 ): string[] {
   const directories = [
     path.join(context.repoPath, 'learnings'),
-    path.join(context.repoPath, 'learnings', 'repositories'),
-    path.join(context.repoPath, 'learnings', 'evidence', context.repositoryId),
-    path.join(context.repoPath, 'learnings', 'lessons', context.repositoryId)
+    path.join(context.repoPath, 'learnings', 'evidence'),
+    path.join(context.repoPath, 'learnings', 'lessons')
   ];
   const created: string[] = [];
 
@@ -120,23 +115,56 @@ export function writeRepositoryRecord(context: LearningsRepositoryContext): {
 } {
   const record = buildRepositoryRecord(context);
   const filePath = getRepositoryRecordPath(context);
-  const created = !fs.existsSync(filePath);
-
-  fs.writeFileSync(
-    filePath,
-    stringifySimpleYaml({
-      id: record.id,
-      slug: record.slug,
-      name: record.name,
-      local_path: record.local_path,
-      remote_url: record.remote_url,
-      is_active: record.is_active,
-      created_at: record.created_at,
-      updated_at: record.updated_at
-    })
+  const existingRecords = loadCanonicalRecords(context.repoPath).repositories;
+  const created = !existingRecords.some(
+    (existingRecord) => existingRecord.id === record.id
   );
 
+  const mergedRecords = [...existingRecords.filter((existingRecord) => existingRecord.id !== record.id), record]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((repositoryRecord) => serializeRepositoryRecord(repositoryRecord));
+
+  const nextContent = mergedRecords
+    .map((repositoryRecord) => `${JSON.stringify(repositoryRecord)}\n`)
+    .join('');
+  fs.writeFileSync(filePath, nextContent, 'utf8');
+  removeLegacyRepositoriesDirectory(context.repoPath);
+
   return { filePath, created };
+}
+
+function serializeRepositoryRecord(
+  record: RepositoryRecord
+): Omit<RepositoryRecord, 'type' | 'sourcePath'> {
+  return withOptionalFields<Omit<RepositoryRecord, 'type' | 'sourcePath'>>({
+    id: record.id,
+    slug: record.slug,
+    name: record.name,
+    is_active: record.is_active,
+    created_at: record.created_at,
+    updated_at: record.updated_at
+  }, {
+    local_path: record.local_path,
+    remote_url: record.remote_url
+  });
+}
+
+function removeLegacyRepositoriesDirectory(repoPath: string): void {
+  const legacyDirectory = path.join(repoPath, 'learnings', 'repositories');
+  if (!fs.existsSync(legacyDirectory)) {
+    return;
+  }
+
+  const entries = fs.readdirSync(legacyDirectory);
+  if (entries.length === 0) {
+    fs.rmdirSync(legacyDirectory);
+    return;
+  }
+
+  for (const entry of entries) {
+    fs.rmSync(path.join(legacyDirectory, entry), { force: true, recursive: true });
+  }
+  fs.rmdirSync(legacyDirectory);
 }
 
 function assertDirectoryExists(repoPath: string): void {
@@ -172,7 +200,7 @@ function getExistingRepositoryRecord(
   }
 
   throw new Error(
-    `Expected a single repository record in ${repoPath}/learnings/repositories but found ${dataset.repositories.length}`
+    `Expected a single repository record in ${repoPath}/learnings/repositories.jsonl but found ${dataset.repositories.length}`
   );
 }
 
@@ -192,4 +220,19 @@ function readRemoteUrl(repoPath: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function withOptionalFields<T extends object>(
+  base: T,
+  optionalFields: Record<string, unknown>
+): T {
+  const result: Record<string, unknown> = { ...base };
+
+  for (const [key, value] of Object.entries(optionalFields)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result as T;
 }

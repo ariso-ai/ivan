@@ -7,7 +7,7 @@ import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
-import { NonInteractiveConfig } from './types/non-interactive-config.js';
+import type { NonInteractiveConfig } from './types/non-interactive-config.js';
 import { registerLearningsCommands } from './learnings/index.js';
 import {
   readFileSync,

@@ -3,9 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
-import { Selectable } from 'kysely';
-import { DatabaseManager, Repository } from '../database.js';
-import { IRepositoryManager, RepositoryInfo } from './git-interfaces.js';
+import type { Selectable } from 'kysely';
+import { DatabaseManager } from '../database.js';
+import type { Repository } from '../database.js';
+import type { IRepositoryManager, RepositoryInfo } from './git-interfaces.js';
 
 export class RepositoryManagerPAT implements IRepositoryManager {
   private dbManager: DatabaseManager;

@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely';
 import chalk from 'chalk';
-import { Database } from './types.js';
+import type { Database } from './types.js';
 import { migrations } from './migrations/index.js';
 
 export class MigrationManager {

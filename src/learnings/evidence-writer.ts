@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { stringifySimpleYaml } from './frontmatter.js';
 import { createDeterministicId } from './id.js';
 import type { EvidenceRecord } from './record-types.js';
 import type {
@@ -25,10 +24,7 @@ export function buildEvidenceRecordsFromPullRequest(
 
   records.push({
     type: 'evidence',
-    sourcePath: evidenceSourcePath(
-      repositoryId,
-      createDeterministicId('ev', `${baseExternalId}:summary`)
-    ),
+    sourcePath: evidenceSourcePath(repositoryId),
     id: createDeterministicId('ev', `${baseExternalId}:summary`),
     repository_id: repositoryId,
     source_system: 'github',
@@ -55,7 +51,7 @@ export function buildEvidenceRecordsFromPullRequest(
     const author = inferAuthorFields(comment.author?.login);
     records.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(repositoryId, id),
+      sourcePath: evidenceSourcePath(repositoryId),
       id,
       repository_id: repositoryId,
       source_system: 'github',
@@ -83,7 +79,7 @@ export function buildEvidenceRecordsFromPullRequest(
     const author = inferAuthorFields(review.author?.login);
     records.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(repositoryId, id),
+      sourcePath: evidenceSourcePath(repositoryId),
       id,
       repository_id: repositoryId,
       source_system: 'github',
@@ -125,7 +121,7 @@ export function buildEvidenceRecordsFromPullRequest(
     const weight = weightCheck(check);
     records.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(repositoryId, id),
+      sourcePath: evidenceSourcePath(repositoryId),
       id,
       repository_id: repositoryId,
       source_system: 'github',
@@ -154,17 +150,50 @@ export function writeEvidenceRecords(
   repositoryId: string,
   records: EvidenceRecord[]
 ): string[] {
-  const evidenceDir = path.join(repoPath, 'learnings', 'evidence', repositoryId);
+  const evidenceDir = path.join(repoPath, 'learnings', 'evidence');
   fs.mkdirSync(evidenceDir, { recursive: true });
 
-  const writtenPaths: string[] = [];
-  for (const record of records) {
-    const filePath = path.join(evidenceDir, `${record.id}.md`);
-    fs.writeFileSync(filePath, stringifyEvidenceRecord(record), 'utf8');
-    writtenPaths.push(filePath);
+  const filePath = path.join(evidenceDir, `${repositoryId}.jsonl`);
+  const mergedRecords = mergeEvidenceRecords(filePath, records)
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((record) => ({
+      ...record,
+      sourcePath: evidenceSourcePath(repositoryId)
+    }));
+
+  const nextContent = mergedRecords
+    .map((record) => `${JSON.stringify(serializeEvidenceRecord(record))}\n`)
+    .join('');
+  fs.writeFileSync(filePath, nextContent, 'utf8');
+  removeLegacyEvidenceDirectory(repoPath, repositoryId);
+
+  return mergedRecords.map((record, index) => `${filePath}#L${index + 1}`);
+}
+
+function mergeEvidenceRecords(
+  filePath: string,
+  records: EvidenceRecord[]
+): EvidenceRecord[] {
+  const byId = new Map<string, EvidenceRecord>();
+
+  if (fs.existsSync(filePath)) {
+    const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+
+      const parsed = JSON.parse(line) as EvidenceRecord;
+      byId.set(parsed.id, parsed);
+    }
   }
 
-  return writtenPaths.sort((left, right) => left.localeCompare(right));
+  for (const record of records) {
+    byId.set(record.id, record);
+  }
+
+  return [...byId.values()];
 }
 
 function buildThreadEvidenceRecord(
@@ -186,7 +215,7 @@ function buildThreadEvidenceRecord(
 
   return {
     type: 'evidence',
-    sourcePath: evidenceSourcePath(repositoryId, id),
+    sourcePath: evidenceSourcePath(repositoryId),
     id,
     repository_id: repositoryId,
     source_system: 'github',
@@ -233,8 +262,10 @@ function buildPullRequestSummaryBody(payload: GitHubPullRequestEvidence): string
   return sections.join('\n\n');
 }
 
-function stringifyEvidenceRecord(record: EvidenceRecord): string {
-  const frontmatter = stringifySimpleYaml({
+function serializeEvidenceRecord(
+  record: EvidenceRecord
+): Record<string, unknown> {
+  return {
     id: record.id,
     repository_id: record.repository_id,
     source_system: record.source_system,
@@ -261,14 +292,29 @@ function stringifyEvidenceRecord(record: EvidenceRecord): string {
     boosts: record.boosts,
     penalties: record.penalties,
     created_at: record.created_at,
-    updated_at: record.updated_at
-  });
-
-  return `---\n${frontmatter}---\n${record.content.trim()}\n`;
+    updated_at: record.updated_at,
+    content: record.content.trim()
+  };
 }
 
-function evidenceSourcePath(repositoryId: string, evidenceId: string): string {
-  return `learnings/evidence/${repositoryId}/${evidenceId}.md`;
+function evidenceSourcePath(repositoryId: string): string {
+  return `learnings/evidence/${repositoryId}.jsonl`;
+}
+
+function removeLegacyEvidenceDirectory(
+  repoPath: string,
+  repositoryId: string
+): void {
+  const legacyDirectory = path.join(
+    repoPath,
+    'learnings',
+    'evidence',
+    repositoryId
+  );
+
+  if (fs.existsSync(legacyDirectory)) {
+    fs.rmSync(legacyDirectory, { recursive: true, force: true });
+  }
 }
 
 function buildThreadTitle(filePath?: string, line?: number): string {

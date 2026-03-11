@@ -22,7 +22,9 @@ export function classifyAuthorType(authorName?: string): string | undefined {
     return undefined;
   }
 
-  return /\b(bot|github-actions)\b/i.test(authorName) ? 'bot' : 'human';
+  return /(bot|github-actions|coderabbit(?:ai)?|copilot|assistant)/i.test(authorName)
+    ? 'bot'
+    : 'human';
 }
 
 export function inferReviewStatePenalty(state?: string): string[] {
