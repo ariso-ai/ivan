@@ -17,7 +17,7 @@ export function registerLearningsCommands(program: Command): void {
   const learnings = program
     .command('learnings')
     .description(
-      'Manage repo-local learnings records and derived learnings.db'
+      'Manage repo-local learnings records and derived .ivan/db.sqlite'
     );
 
   learnings
@@ -30,9 +30,9 @@ export function registerLearningsCommands(program: Command): void {
 
   learnings
     .command('rebuild')
-    .description('Rebuild <repo>/learnings.db from canonical learnings records')
+    .description('Rebuild <repo>/.ivan/db.sqlite from canonical learnings records')
     .requiredOption('--repo <path>', 'Repository root path')
-    .option('--if-stale', 'Skip rebuild if learnings.db is already up to date')
+    .option('--if-stale', 'Skip rebuild if .ivan/db.sqlite is already up to date')
     .action(runRebuildCommand);
 
   learnings
@@ -43,7 +43,7 @@ export function registerLearningsCommands(program: Command): void {
 
   learnings
     .command('query')
-    .description('Query the local learnings.db without live GitHub access')
+    .description('Query the local .ivan/db.sqlite without live GitHub access')
     .requiredOption('--repo <path>', 'Repository root path')
     .requiredOption('--text <text>', 'Search text')
     .option('--limit <number>', 'Maximum learnings to return', '5')

@@ -1,6 +1,6 @@
 # How to rebuild the learnings database
 
-`learnings.db` is a derived artifact. Rebuild it after editing JSONL files directly, after a git pull that changes them, or whenever the database is missing or corrupt.
+`.ivan/db.sqlite` is a derived artifact. Rebuild it after editing JSONL files directly, after a git pull that changes them, or whenever the database is missing or corrupt.
 
 ## Rebuild from the canonical JSONL files
 
@@ -14,7 +14,7 @@ Expected output:
 
 ```
 ✅ Learnings database rebuilt
-DB: /path/to/your-project/learnings.db
+DB: /path/to/your-project/.ivan/db.sqlite
 Repositories: 1, evidence: 43, learnings: 17
 ```
 
@@ -26,7 +26,7 @@ If you want to re-run the extraction heuristics (for example, after updating iva
 ivan learnings extract --repo /path/to/your-project
 ```
 
-This overwrites `learnings/lessons/repo_*.jsonl` and then calls `rebuild` automatically.
+This overwrites `.ivan/lessons.jsonl` and then calls `rebuild` automatically.
 
 ## Check what is in the database
 

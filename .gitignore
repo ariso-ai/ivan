@@ -28,6 +28,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Prose
+.prose/
+
 # Editor and OS files
 .DS_Store
 .vscode/

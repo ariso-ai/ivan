@@ -254,7 +254,7 @@ ivan learnings rebuild --repo /path/to/repo
 ivan learnings query --repo /path/to/repo --text "locks await"
 ```
 
-This slice stores canonical learnings as committed JSONL files under `learnings/` and rebuilds a derived local `learnings.db` for query-time retrieval. Queries read only the local derived database; they do not fetch live GitHub data.
+This slice stores canonical learnings as committed JSONL files under `.ivan/` and rebuilds a derived local `.ivan/db.sqlite` for query-time retrieval. Queries read only the local derived database; they do not fetch live GitHub data.
 
 `ivan learnings install-hooks --repo ...` installs the recommended Claude Code retrieval surface into the target repo's `.claude/settings.json`:
 

@@ -18,6 +18,11 @@ import {
   openLearningsDatabase
 } from './database.js';
 import { buildLearningEmbedding, serializeVector } from './embeddings.js';
+import {
+  EVIDENCE_JSONL_RELATIVE_PATH,
+  LESSONS_JSONL_RELATIVE_PATH,
+  resolveCanonicalLearningsPath
+} from './paths.js';
 import { loadCanonicalRecords } from './parser.js';
 import { validateLearningsDataset } from './validator.js';
 
@@ -58,7 +63,7 @@ export function rebuildLearningsDatabase(
 }
 
 /**
- * Returns true when `learnings.db` is absent or its stored JSONL hash does not match
+ * Returns true when `.ivan/db.sqlite` is absent or its stored JSONL hash does not match
  * the current hash of the canonical JSONL files. Used by the pre-commit hook to skip
  * unnecessary rebuilds.
  */
@@ -87,12 +92,12 @@ export function isLearningsDatabaseStale(repoPath: string): boolean {
 
 /**
  * Computes a SHA-256 digest over the sorted paths and contents of all canonical
- * JSONL files (repositories, evidence, lessons). Returns an empty string when
- * the learnings directory does not exist.
+ * JSONL files (`evidence.jsonl`, `lessons.jsonl`). Returns an empty string when
+ * the `.ivan` directory does not exist.
  */
 export function computeJsonlHash(repoPath: string): string {
   const resolved = path.resolve(repoPath);
-  const learningsDir = path.join(resolved, 'learnings');
+  const learningsDir = resolveCanonicalLearningsPath(resolved);
 
   if (!fs.existsSync(learningsDir)) {
     return '';
@@ -100,19 +105,13 @@ export function computeJsonlHash(repoPath: string): string {
 
   const files: string[] = [];
 
-  const repoFile = path.join(learningsDir, 'repositories.jsonl');
-  if (fs.existsSync(repoFile)) {
-    files.push(repoFile);
-  }
-
-  for (const subdir of ['evidence', 'lessons']) {
-    const dir = path.join(learningsDir, subdir);
-    if (fs.existsSync(dir)) {
-      for (const entry of fs.readdirSync(dir).sort()) {
-        if (entry.endsWith('.jsonl')) {
-          files.push(path.join(dir, entry));
-        }
-      }
+  for (const relativePath of [
+    EVIDENCE_JSONL_RELATIVE_PATH,
+    LESSONS_JSONL_RELATIVE_PATH
+  ]) {
+    const file = path.join(resolved, relativePath);
+    if (fs.existsSync(file)) {
+      files.push(file);
     }
   }
 

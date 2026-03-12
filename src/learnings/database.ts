@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { URL } from 'url';
+import { LEARNINGS_DB_RELATIVE_PATH } from './paths.js';
 
 /** Schema SQL is loaded once at module init and reused for every fresh database creation. */
 const SCHEMA_SQL = fs.readFileSync(
@@ -15,7 +16,7 @@ const SCHEMA_SQL = fs.readFileSync(
 
 /** Returns the absolute path to the learnings SQLite database for the given repo root. */
 export function getLearningsDbPath(repoPath: string): string {
-  return path.join(path.resolve(repoPath), 'learnings.db');
+  return path.join(path.resolve(repoPath), LEARNINGS_DB_RELATIVE_PATH);
 }
 
 /**

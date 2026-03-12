@@ -1,10 +1,5 @@
 {
   "compilerOptions": {
-    "plugins": [
-      {
-        "name": "@effect/language-service"
-      }
-    ],
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",

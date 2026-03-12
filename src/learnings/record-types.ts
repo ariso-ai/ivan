@@ -1,4 +1,4 @@
-// Canonical record types persisted as JSONL files under `learnings/`.
+// Canonical record types persisted as JSONL files under `.ivan/`.
 // These are the source-of-truth data structures; the SQLite database is a
 // derived, rebuilable index built from these files.
 
@@ -6,13 +6,13 @@
 export interface CanonicalRecord {
   id: string;
   type: 'repository' | 'evidence' | 'learning';
-  /** Relative path within the repo (e.g. `learnings/evidence/repo_foo.jsonl#L3`). */
+  /** Relative path within the repo (e.g. `.ivan/evidence.jsonl#L3`). */
   sourcePath: string;
   created_at: string;
   updated_at: string;
 }
 
-/** Identifies a tracked repository; exactly one record lives in `learnings/repositories.jsonl`. */
+/** Synthetic repository record derived from the target repo path and git metadata. */
 export interface RepositoryRecord extends CanonicalRecord {
   type: 'repository';
   slug: string;

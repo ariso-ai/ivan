@@ -1,5 +1,5 @@
 // CLI handler for `ivan learnings rebuild`.
-// Drops and recreates learnings.db from the canonical JSONL files without touching GitHub.
+// Drops and recreates `.ivan/db.sqlite` from the canonical JSONL files without touching GitHub.
 
 import chalk from 'chalk';
 import { isLearningsDatabaseStale, rebuildLearningsDatabase } from './builder.js';
@@ -14,7 +14,7 @@ export async function runRebuildCommand(
   options: RebuildCommandOptions
 ): Promise<void> {
   if (options.ifStale && !isLearningsDatabaseStale(options.repo)) {
-    console.log(chalk.gray('learnings.db is up to date'));
+    console.log(chalk.gray('.ivan/db.sqlite is up to date'));
     return;
   }
 

@@ -1,12 +1,13 @@
 // CLI handler for `ivan learnings init`.
-// Sets up the learnings directory structure, registers the repository, and gitignores the SQLite file.
+// Sets up the repo-local `.ivan/` structure and gitignores the derived SQLite file.
 
 import chalk from 'chalk';
 import {
+  ensureCanonicalJsonlFiles,
   ensureGitignoreCoverage,
   ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
-  writeRepositoryRecord
+  removeLegacyRepositoriesDirectory,
+  resolveLearningsRepositoryContext
 } from './repository.js';
 
 interface InitCommandOptions {
@@ -14,27 +15,26 @@ interface InitCommandOptions {
 }
 
 /**
- * Initialises the learnings store for `repoPath`: creates directories, upserts the
- * repository record, and ensures `learnings.db` is gitignored.
+ * Initialises the learnings store for `repoPath`: creates the `.ivan/` directory and canonical files,
+ * removes legacy registry paths, and ensures `.ivan/db.sqlite` is gitignored.
  */
 export function initLearningsStore(repoPath: string): {
   repositoryId: string;
-  repositoryFile: string;
   createdDirectories: string[];
+  createdFiles: string[];
   gitignoreUpdated: boolean;
-  createdRepositoryRecord: boolean;
 } {
   const context = resolveLearningsRepositoryContext(repoPath);
   const createdDirectories = ensureLearningsDirectories(context);
-  const repositoryWrite = writeRepositoryRecord(context);
+  const createdFiles = ensureCanonicalJsonlFiles(context.repoPath);
+  removeLegacyRepositoriesDirectory(context.repoPath);
   const gitignoreUpdated = ensureGitignoreCoverage(context.repoPath);
 
   return {
     repositoryId: context.repositoryId,
-    repositoryFile: repositoryWrite.filePath,
     createdDirectories,
-    gitignoreUpdated,
-    createdRepositoryRecord: repositoryWrite.created
+    createdFiles,
+    gitignoreUpdated
   };
 }
 
@@ -46,7 +46,6 @@ export async function runInitCommand(
 
   console.log(chalk.green('✅ Learnings store initialized'));
   console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));
-  console.log(chalk.gray(`Repository record: ${result.repositoryFile}`));
 
   if (result.createdDirectories.length > 0) {
     console.log(chalk.gray('Created directories:'));
@@ -55,11 +54,18 @@ export async function runInitCommand(
     }
   }
 
+  if (result.createdFiles.length > 0) {
+    console.log(chalk.gray('Created files:'));
+    for (const filePath of result.createdFiles) {
+      console.log(chalk.gray(`  - ${filePath}`));
+    }
+  }
+
   console.log(
     chalk.gray(
       result.gitignoreUpdated
-        ? 'Updated .gitignore with learnings.db exclusions'
-        : '.gitignore already covered learnings.db'
+        ? 'Updated .gitignore with .ivan/db.sqlite exclusions'
+        : '.gitignore already covered .ivan/db.sqlite'
     )
   );
 }

@@ -42,7 +42,7 @@ describe('learnings storage slice', () => {
     ]);
   });
 
-  test('rebuilds learnings.db and returns evidence-backed query results', () => {
+  test('rebuilds .ivan/db.sqlite and returns evidence-backed query results', () => {
     const repoPath = copyFixtureRepo();
     const result = rebuildLearningsDatabase(repoPath);
     const queryResults = queryLearnings(repoPath, 'locks await', { limit: 2 });
@@ -65,19 +65,14 @@ describe('learnings storage slice', () => {
     execIvan(['learnings', 'init', '--repo', repoPath]);
 
     expect(
-      fs.existsSync(
-        path.join(repoPath, 'learnings', 'repositories.jsonl')
-      )
+      fs.existsSync(path.join(repoPath, '.ivan', 'evidence.jsonl'))
     ).toBe(true);
     expect(
-      fs.existsSync(path.join(repoPath, 'learnings', 'evidence'))
-    ).toBe(true);
-    expect(
-      fs.existsSync(path.join(repoPath, 'learnings', 'lessons'))
+      fs.existsSync(path.join(repoPath, '.ivan', 'lessons.jsonl'))
     ).toBe(true);
     expect(
       fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8')
-    ).toContain('learnings.db');
+    ).toContain('.ivan/db.sqlite');
   });
 
   test('rebuild and query commands work end to end via CLI', () => {
@@ -224,7 +219,7 @@ describe('learnings storage slice', () => {
     const extracted = extractLearningRecords([
       {
         type: 'evidence',
-        sourcePath: 'learnings/evidence/repo_sample-repo.jsonl',
+        sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_pr_summary',
         repository_id: 'repo_sample-repo',
         source_system: 'github',
@@ -250,7 +245,7 @@ describe('learnings storage slice', () => {
       },
       {
         type: 'evidence',
-        sourcePath: 'learnings/evidence/repo_sample-repo.jsonl',
+        sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_bot_review',
         repository_id: 'repo_sample-repo',
         source_system: 'github',
@@ -281,7 +276,7 @@ describe('learnings storage slice', () => {
     const extracted = extractLearningRecords([
       {
         type: 'evidence',
-        sourcePath: 'learnings/evidence/repo_sample-repo.jsonl',
+        sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_human_review',
         repository_id: 'repo_sample-repo',
         source_system: 'github',

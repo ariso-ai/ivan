@@ -1,13 +1,13 @@
 // Repository identity resolution and learnings directory management.
-// Responsible for identifying which repo is being tracked, creating the directory
-// structure, and keeping the `repositories.jsonl` registry up to date.
+// Responsible for identifying which repo is being tracked and creating the local
+// `.ivan/` storage directory.
 
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { createRepositoryId, slugify } from './id.js';
+import { resolveCanonicalLearningsPath } from './paths.js';
 import type { RepositoryRecord } from './record-types.js';
-import { loadCanonicalRecords } from './parser.js';
 
 /** Resolved identity information for the repository being tracked; passed through the init/extract pipeline. */
 export interface LearningsRepositoryContext {
@@ -16,80 +16,81 @@ export interface LearningsRepositoryContext {
   repositorySlug: string;
   repositoryName: string;
   remoteUrl?: string;
-  existingRecord?: RepositoryRecord;
 }
 
-/**
- * Reads any existing repository record for `repoPath` (or derives identity from the directory name),
- * reads the git remote URL, and returns a fully populated `LearningsRepositoryContext`.
- */
+/** Derives repository identity from `repoPath` and git metadata. */
 export function resolveLearningsRepositoryContext(
   repoPath: string
 ): LearningsRepositoryContext {
   const resolvedRepoPath = path.resolve(repoPath);
   assertDirectoryExists(resolvedRepoPath);
 
-  const existingRecord = getExistingRepositoryRecord(resolvedRepoPath);
-  const repositoryName =
-    existingRecord?.name ?? path.basename(resolvedRepoPath);
-  const repositorySlug =
-    existingRecord?.slug ?? slugify(path.basename(resolvedRepoPath));
-  const repositoryId = existingRecord?.id ?? createRepositoryId(repositorySlug);
+  const repositoryName = path.basename(resolvedRepoPath);
+  const repositorySlug = slugify(repositoryName);
+  const repositoryId = createRepositoryId(repositorySlug);
 
-  return withOptionalFields<LearningsRepositoryContext>({
-    repoPath: resolvedRepoPath,
-    repositoryId,
-    repositorySlug,
-    repositoryName,
-  }, {
-    remoteUrl: existingRecord?.remote_url ?? readRemoteUrl(resolvedRepoPath),
-    existingRecord
-  });
+  return withOptionalFields<LearningsRepositoryContext>(
+    {
+      repoPath: resolvedRepoPath,
+      repositoryId,
+      repositorySlug,
+      repositoryName
+    },
+    {
+      remoteUrl: readRemoteUrl(resolvedRepoPath)
+    }
+  );
 }
 
-/** Constructs a `RepositoryRecord` from context; preserves `created_at` from any existing record. */
+/** Constructs the synthetic repository record used to populate the derived SQLite database. */
 export function buildRepositoryRecord(
   context: LearningsRepositoryContext
 ): RepositoryRecord {
   const now = new Date().toISOString();
 
-  return withOptionalFields<RepositoryRecord>({
-    type: 'repository',
-    sourcePath: 'learnings/repositories.jsonl',
-    id: context.repositoryId,
-    slug: context.repositorySlug,
-    name: context.repositoryName,
-    local_path: context.repoPath,
-    is_active: true,
-    created_at: context.existingRecord?.created_at ?? now,
-    updated_at: now
-  }, {
-    remote_url: context.remoteUrl
-  });
+  return withOptionalFields<RepositoryRecord>(
+    {
+      type: 'repository',
+      sourcePath: '.ivan#derived',
+      id: context.repositoryId,
+      slug: context.repositorySlug,
+      name: context.repositoryName,
+      local_path: context.repoPath,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      remote_url: context.remoteUrl
+    }
+  );
 }
 
-/** Returns the absolute path to `learnings/repositories.jsonl` for the context's repo. */
-export function getRepositoryRecordPath(
-  context: LearningsRepositoryContext
-): string {
-  return path.join(context.repoPath, 'learnings', 'repositories.jsonl');
-}
-
-/** Creates `learnings/`, `learnings/evidence/`, and `learnings/lessons/` if they don't exist; returns the list of paths actually created. */
+/** Creates `.ivan/` if it doesn't exist; returns the list of paths actually created. */
 export function ensureLearningsDirectories(
   context: LearningsRepositoryContext
 ): string[] {
-  const directories = [
-    path.join(context.repoPath, 'learnings'),
-    path.join(context.repoPath, 'learnings', 'evidence'),
-    path.join(context.repoPath, 'learnings', 'lessons')
+  const directory = resolveCanonicalLearningsPath(context.repoPath);
+  if (fs.existsSync(directory)) {
+    return [];
+  }
+
+  fs.mkdirSync(directory, { recursive: true });
+  return [directory];
+}
+
+/** Creates empty canonical JSONL files when they do not already exist. */
+export function ensureCanonicalJsonlFiles(repoPath: string): string[] {
+  const files = [
+    resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl'),
+    resolveCanonicalLearningsPath(repoPath, 'lessons.jsonl')
   ];
   const created: string[] = [];
 
-  for (const directory of directories) {
-    if (!fs.existsSync(directory)) {
-      fs.mkdirSync(directory, { recursive: true });
-      created.push(directory);
+  for (const filePath of files) {
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, '', 'utf8');
+      created.push(filePath);
     }
   }
 
@@ -97,12 +98,12 @@ export function ensureLearningsDirectories(
 }
 
 /**
- * Appends `learnings.db` and `learnings.db-*` to `.gitignore` if they are not already present.
+ * Appends `.ivan/db.sqlite` and SQLite sidecar patterns to `.gitignore` if they are not already present.
  * Returns true if the file was modified, false if no changes were needed.
  */
 export function ensureGitignoreCoverage(repoPath: string): boolean {
   const gitignorePath = path.join(repoPath, '.gitignore');
-  const requiredPatterns = ['learnings.db', 'learnings.db-*'];
+  const requiredPatterns = ['.ivan/db.sqlite', '.ivan/db.sqlite-*'];
   const existingContent = fs.existsSync(gitignorePath)
     ? fs.readFileSync(gitignorePath, 'utf8')
     : '';
@@ -125,53 +126,13 @@ export function ensureGitignoreCoverage(repoPath: string): boolean {
   return true;
 }
 
-/**
- * Upserts the repository record for `context` into `repositories.jsonl` (sorted by id),
- * removes any legacy directory, and returns whether the record was newly created.
- */
-export function writeRepositoryRecord(context: LearningsRepositoryContext): {
-  filePath: string;
-  created: boolean;
-} {
-  const record = buildRepositoryRecord(context);
-  const filePath = getRepositoryRecordPath(context);
-  const existingRecords = loadCanonicalRecords(context.repoPath).repositories;
-  const created = !existingRecords.some(
-    (existingRecord) => existingRecord.id === record.id
-  );
+/** Removes legacy repository-registry paths from prior schema versions, if present. */
+export function removeLegacyRepositoriesDirectory(repoPath: string): void {
+  const legacyRegistryFile = path.join(repoPath, 'learnings', 'repositories.jsonl');
+  if (fs.existsSync(legacyRegistryFile)) {
+    fs.rmSync(legacyRegistryFile, { force: true });
+  }
 
-  const mergedRecords = [...existingRecords.filter((existingRecord) => existingRecord.id !== record.id), record]
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((repositoryRecord) => serializeRepositoryRecord(repositoryRecord));
-
-  const nextContent = mergedRecords
-    .map((repositoryRecord) => `${JSON.stringify(repositoryRecord)}\n`)
-    .join('');
-  fs.writeFileSync(filePath, nextContent, 'utf8');
-  removeLegacyRepositoriesDirectory(context.repoPath);
-
-  return { filePath, created };
-}
-
-/** Produces the plain-object form of a `RepositoryRecord` for JSON serialization, omitting `type` and `sourcePath`. */
-function serializeRepositoryRecord(
-  record: RepositoryRecord
-): Omit<RepositoryRecord, 'type' | 'sourcePath'> {
-  return withOptionalFields<Omit<RepositoryRecord, 'type' | 'sourcePath'>>({
-    id: record.id,
-    slug: record.slug,
-    name: record.name,
-    is_active: record.is_active,
-    created_at: record.created_at,
-    updated_at: record.updated_at
-  }, {
-    local_path: record.local_path,
-    remote_url: record.remote_url
-  });
-}
-
-/** Removes the old `learnings/repositories/` directory from a prior schema version, if present. */
-function removeLegacyRepositoriesDirectory(repoPath: string): void {
   const legacyDirectory = path.join(repoPath, 'learnings', 'repositories');
   if (!fs.existsSync(legacyDirectory)) {
     return;
@@ -198,37 +159,6 @@ function assertDirectoryExists(repoPath: string): void {
   if (!fs.statSync(repoPath).isDirectory()) {
     throw new Error(`Repository path is not a directory: ${repoPath}`);
   }
-}
-
-/**
- * Reads the canonical records and returns the single matching repository for `repoPath`.
- * Throws if more than one record exists and none matches by `local_path`.
- */
-function getExistingRepositoryRecord(
-  repoPath: string
-): RepositoryRecord | undefined {
-  const dataset = loadCanonicalRecords(repoPath);
-
-  if (dataset.repositories.length === 0) {
-    return undefined;
-  }
-
-  if (dataset.repositories.length === 1) {
-    return dataset.repositories[0];
-  }
-
-  const matchingRecord = dataset.repositories.filter(
-    (record) =>
-      record.local_path && path.resolve(record.local_path) === repoPath
-  );
-
-  if (matchingRecord.length === 1) {
-    return matchingRecord[0];
-  }
-
-  throw new Error(
-    `Expected a single repository record in ${repoPath}/learnings/repositories.jsonl but found ${dataset.repositories.length}`
-  );
 }
 
 /** Reads `remote.origin.url` from git config; returns `undefined` silently if the repo has no remote. */

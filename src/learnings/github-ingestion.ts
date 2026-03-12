@@ -10,8 +10,7 @@ import { extractLearningsFromEvidence } from './extractor.js';
 import { fetchGitHubPullRequestEvidence } from './github-evidence.js';
 import {
   ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
-  writeRepositoryRecord
+  resolveLearningsRepositoryContext
 } from './repository.js';
 
 /** Returned by `ingestPullRequestEvidence`; summarises the full ingestion outcome. */
@@ -32,7 +31,6 @@ export async function ingestPullRequestEvidence(
 ): Promise<PullRequestIngestionResult> {
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
-  writeRepositoryRecord(context);
 
   const payload = await fetchGitHubPullRequestEvidence(context.repoPath, prNumber);
   const records = buildEvidenceRecordsFromPullRequest(

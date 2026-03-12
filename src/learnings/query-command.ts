@@ -1,5 +1,5 @@
 // CLI handler for `ivan learnings query`.
-// Searches the local learnings.db and prints each result with statement, metadata, and evidence links.
+// Searches the local `.ivan/db.sqlite` and prints each result with statement, metadata, and evidence links.
 
 import chalk from 'chalk';
 import { queryLearnings } from './query.js';

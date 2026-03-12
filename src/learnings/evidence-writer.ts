@@ -3,8 +3,11 @@
 // so re-ingesting a PR is safe and idempotent.
 
 import fs from 'fs';
-import path from 'path';
 import { createDeterministicId } from './id.js';
+import {
+  EVIDENCE_JSONL_RELATIVE_PATH,
+  resolveCanonicalLearningsPath
+} from './paths.js';
 import type { EvidenceRecord } from './record-types.js';
 import type {
   GitHubPullRequestEvidence,
@@ -33,7 +36,7 @@ export function buildEvidenceRecordsFromPullRequest(
 
   records.push({
     type: 'evidence',
-    sourcePath: evidenceSourcePath(repositoryId),
+    sourcePath: evidenceSourcePath(),
     id: createDeterministicId('ev', `${baseExternalId}:summary`),
     repository_id: repositoryId,
     source_system: 'github',
@@ -60,7 +63,7 @@ export function buildEvidenceRecordsFromPullRequest(
     const author = inferAuthorFields(comment.author?.login);
     records.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(repositoryId),
+      sourcePath: evidenceSourcePath(),
       id,
       repository_id: repositoryId,
       source_system: 'github',
@@ -88,7 +91,7 @@ export function buildEvidenceRecordsFromPullRequest(
     const author = inferAuthorFields(review.author?.login);
     records.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(repositoryId),
+      sourcePath: evidenceSourcePath(),
       id,
       repository_id: repositoryId,
       source_system: 'github',
@@ -130,7 +133,7 @@ export function buildEvidenceRecordsFromPullRequest(
     const weight = weightCheck(check);
     records.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(repositoryId),
+      sourcePath: evidenceSourcePath(),
       id,
       repository_id: repositoryId,
       source_system: 'github',
@@ -155,31 +158,27 @@ export function buildEvidenceRecordsFromPullRequest(
 }
 
 /**
- * Upserts `records` into `learnings/evidence/{repositoryId}.jsonl`, merging with existing data
- * by id (new records win), and removes the legacy per-PR directory if present.
+ * Upserts `records` into `.ivan/evidence.jsonl`, merging with existing data
+ * by id (new records win).
  * Returns the `{filePath}#L{n}` source paths for every record written.
  */
 export function writeEvidenceRecords(
   repoPath: string,
-  repositoryId: string,
+  _repositoryId: string,
   records: EvidenceRecord[]
 ): string[] {
-  const evidenceDir = path.join(repoPath, 'learnings', 'evidence');
-  fs.mkdirSync(evidenceDir, { recursive: true });
-
-  const filePath = path.join(evidenceDir, `${repositoryId}.jsonl`);
+  const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
   const mergedRecords = mergeEvidenceRecords(filePath, records)
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((record) => ({
       ...record,
-      sourcePath: evidenceSourcePath(repositoryId)
+      sourcePath: evidenceSourcePath()
     }));
 
   const nextContent = mergedRecords
     .map((record) => `${JSON.stringify(serializeEvidenceRecord(record))}\n`)
     .join('');
   fs.writeFileSync(filePath, nextContent, 'utf8');
-  removeLegacyEvidenceDirectory(repoPath, repositoryId);
 
   return mergedRecords.map((record, index) => `${filePath}#L${index + 1}`);
 }
@@ -231,7 +230,7 @@ function buildThreadEvidenceRecord(
 
   return {
     type: 'evidence',
-    sourcePath: evidenceSourcePath(repositoryId),
+    sourcePath: evidenceSourcePath(),
     id,
     repository_id: repositoryId,
     source_system: 'github',
@@ -318,26 +317,9 @@ function serializeEvidenceRecord(
   };
 }
 
-/** Returns the canonical relative path for an evidence JSONL file (without a line number). */
-function evidenceSourcePath(repositoryId: string): string {
-  return `learnings/evidence/${repositoryId}.jsonl`;
-}
-
-/** Removes the old per-repository evidence directory (`learnings/evidence/{id}/`) if it still exists from a prior schema version. */
-function removeLegacyEvidenceDirectory(
-  repoPath: string,
-  repositoryId: string
-): void {
-  const legacyDirectory = path.join(
-    repoPath,
-    'learnings',
-    'evidence',
-    repositoryId
-  );
-
-  if (fs.existsSync(legacyDirectory)) {
-    fs.rmSync(legacyDirectory, { recursive: true, force: true });
-  }
+/** Returns the canonical relative path for the evidence JSONL file (without a line number). */
+function evidenceSourcePath(): string {
+  return EVIDENCE_JSONL_RELATIVE_PATH;
 }
 
 /** Formats a human-readable title for a review thread, including file path and line number when available. */

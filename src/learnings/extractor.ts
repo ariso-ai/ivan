@@ -7,12 +7,12 @@ import { rebuildLearningsDatabase } from './builder.js';
 import { createDeterministicId, slugify } from './id.js';
 import { isLowSignalReviewText } from './heuristics.js';
 import { writeLearningRecords } from './learning-writer.js';
+import { LESSONS_JSONL_RELATIVE_PATH } from './paths.js';
 import { loadCanonicalRecords } from './parser.js';
 import type { EvidenceRecord, LearningRecord } from './record-types.js';
 import {
   ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
-  writeRepositoryRecord
+  resolveLearningsRepositoryContext
 } from './repository.js';
 
 /** Returned by `extractLearningsFromEvidence`; summarises what was written and the rebuild outcome. */
@@ -30,7 +30,6 @@ export interface ExtractionResult {
 export function extractLearningsFromEvidence(repoPath: string): ExtractionResult {
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
-  writeRepositoryRecord(context);
 
   const dataset = loadCanonicalRecords(context.repoPath);
   const extractedRecords = extractLearningRecords(dataset.evidence);
@@ -133,7 +132,7 @@ function buildLearningRecord(evidence: EvidenceRecord): LearningRecord | null {
 
   return withOptionalFields<LearningRecord>({
     type: 'learning',
-    sourcePath: `learnings/lessons/${evidence.repository_id}.jsonl`,
+    sourcePath: LESSONS_JSONL_RELATIVE_PATH,
     id: createDeterministicId(
       'lrn',
       evidence.repository_id,
