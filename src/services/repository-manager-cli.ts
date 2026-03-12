@@ -4,7 +4,8 @@ import path from 'path';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import type { Selectable } from 'kysely';
-import { DatabaseManager, Repository } from '../database.js';
+import { DatabaseManager } from '../database.js';
+import type { Repository } from '../database.js';
 import type { IRepositoryManager, RepositoryInfo } from './git-interfaces.js';
 
 export class RepositoryManagerCLI implements IRepositoryManager {

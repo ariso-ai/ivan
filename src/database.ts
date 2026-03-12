@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
 import path from 'path';
 import os from 'os';
-import { Database as DatabaseSchema } from './database/types.js';
+import type { Database as DatabaseSchema } from './database/types.js';
 import { MigrationManager } from './database/migration.js';
 
 export * from './database/types.js';

@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 import chalk from 'chalk';
-import { IPRService, PullRequest, PRComment } from './git-interfaces.js';
+import type { IPRService, PullRequest, PRComment } from './git-interfaces.js';
 
 export class PRServiceCLI implements IPRService {
   private workingDir: string;

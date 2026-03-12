@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Rebuilds learnings.db from JSONL if stale, then stages it for the commit.
+# Skips repos that have no learnings store.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if [[ ! -d "$repo_root/learnings" ]]; then
+  exit 0
+fi
+
+node_bin="$(which node)"
+ivan_entry="$repo_root/dist/index.js"
+
+if [[ ! -f "$ivan_entry" ]]; then
+  echo "pre-commit: $ivan_entry not found — run npm run build" >&2
+  exit 1
+fi
+
+"$node_bin" "$ivan_entry" learnings rebuild --repo "$repo_root" --if-stale
+
+if [[ -f "$repo_root/learnings.db" ]]; then
+  git add "$repo_root/learnings.db"
+fi

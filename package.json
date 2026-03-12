@@ -7,7 +7,7 @@
     "ivan": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmitOnError false; node --input-type=module -e \"import fs from 'node:fs'; fs.mkdirSync('dist/learnings', { recursive: true }); fs.copyFileSync('src/learnings/schema.sql', 'dist/learnings/schema.sql');\"",
     "watch": "tsc --watch",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
@@ -16,8 +16,8 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "npm run build"
+    "test": "npm run build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --config jest.config.cjs",
+    "prepare": "npm run build && git config core.hooksPath .githooks"
   },
   "author": "Ariso AI",
   "license": "MIT",
