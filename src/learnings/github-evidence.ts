@@ -1,11 +1,16 @@
+// GitHub evidence fetching: type definitions for all PR data structures and two
+// fetch strategies—REST/GraphQL via a PAT token, or the `gh` CLI for token-free use.
+
 import { execSync } from 'child_process';
 import { ConfigManager } from '../config.js';
 import { GitHubAPIClient } from '../services/github-api-client.js';
 
+/** A GitHub user, as returned by REST and GraphQL APIs. */
 export interface GitHubActor {
   login: string;
 }
 
+/** A comment posted directly on the PR issue (not a review thread comment). */
 export interface GitHubIssueCommentEvidence {
   id: string;
   body: string;
@@ -14,6 +19,7 @@ export interface GitHubIssueCommentEvidence {
   url?: string;
 }
 
+/** A full PR review submission (`APPROVED`, `CHANGES_REQUESTED`, or `COMMENTED`). */
 export interface GitHubReviewEvidence {
   id: string;
   body: string;
@@ -23,6 +29,7 @@ export interface GitHubReviewEvidence {
   url?: string;
 }
 
+/** A single comment within a review thread, which may be anchored to a specific file and line. */
 export interface GitHubReviewThreadCommentEvidence {
   id: string;
   databaseId?: number;
@@ -34,6 +41,7 @@ export interface GitHubReviewThreadCommentEvidence {
   url?: string;
 }
 
+/** A PR review thread containing one or more comments; may be resolved or outdated. */
 export interface GitHubReviewThreadEvidence {
   id?: string;
   isResolved: boolean;
@@ -41,6 +49,7 @@ export interface GitHubReviewThreadEvidence {
   comments: GitHubReviewThreadCommentEvidence[];
 }
 
+/** Metadata about a single file changed in the PR. */
 export interface GitHubFileEvidence {
   path: string;
   additions?: number;
@@ -48,12 +57,14 @@ export interface GitHubFileEvidence {
   changeType?: string;
 }
 
+/** A single CI check run result associated with the PR head commit. */
 export interface GitHubCheckEvidence {
   name: string;
   state: string;
   link?: string;
 }
 
+/** Complete evidence payload for one PR: all comments, reviews, threads, files, and checks. */
 export interface GitHubPullRequestEvidence {
   repository: {
     owner: string;
@@ -76,6 +87,10 @@ export interface GitHubPullRequestEvidence {
   checks: GitHubCheckEvidence[];
 }
 
+/**
+ * Entry point for PR evidence fetching: routes to the PAT-based REST/GraphQL path
+ * or the `gh` CLI path depending on the configured auth type.
+ */
 export async function fetchGitHubPullRequestEvidence(
   repoPath: string,
   prNumber: number
@@ -97,6 +112,7 @@ export async function fetchGitHubPullRequestEvidence(
   return fetchCliEvidence(repoPath, prNumber);
 }
 
+/** Fetches all PR evidence via the GitHub REST API and GraphQL using a Personal Access Token. */
 async function fetchPatEvidence(
   repoPath: string,
   prNumber: number,
@@ -139,6 +155,7 @@ async function fetchPatEvidence(
   };
 }
 
+/** Fetches all PR evidence by shelling out to the `gh` CLI, normalising the output into `GitHubPullRequestEvidence`. */
 async function fetchCliEvidence(
   repoPath: string,
   prNumber: number

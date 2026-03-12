@@ -1,3 +1,10 @@
+// Rebuilds the learnings SQLite database from scratch by reading all canonical JSONL files,
+// validating them, and inserting records inside a single transaction.
+// This is intentionally a full-replace build (not an incremental migration).
+
+import { createHash } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import Database from 'better-sqlite3';
 import type {
   EvidenceRecord,
@@ -7,12 +14,14 @@ import type {
 } from './record-types.js';
 import {
   createFreshLearningsDatabase,
-  getLearningsDbPath
+  getLearningsDbPath,
+  openLearningsDatabase
 } from './database.js';
 import { buildLearningEmbedding, serializeVector } from './embeddings.js';
 import { loadCanonicalRecords } from './parser.js';
 import { validateLearningsDataset } from './validator.js';
 
+/** Counts and path returned after a successful database rebuild. */
 export interface LearningsBuildResult {
   dbPath: string;
   repositoryCount: number;
@@ -20,6 +29,10 @@ export interface LearningsBuildResult {
   learningCount: number;
 }
 
+/**
+ * Validates all canonical JSONL records, then creates a fresh SQLite database,
+ * bulk-inserts everything in one transaction, and populates the FTS tables.
+ */
 export function rebuildLearningsDatabase(
   repoPath: string
 ): LearningsBuildResult {
@@ -31,6 +44,7 @@ export function rebuildLearningsDatabase(
   try {
     insertDataset(db, dataset);
     populateFtsTables(db);
+    storeJsonlHash(db, computeJsonlHash(repoPath));
 
     return {
       dbPath: getLearningsDbPath(repoPath),
@@ -43,6 +57,80 @@ export function rebuildLearningsDatabase(
   }
 }
 
+/**
+ * Returns true when `learnings.db` is absent or its stored JSONL hash does not match
+ * the current hash of the canonical JSONL files. Used by the pre-commit hook to skip
+ * unnecessary rebuilds.
+ */
+export function isLearningsDatabaseStale(repoPath: string): boolean {
+  const dbPath = getLearningsDbPath(repoPath);
+  if (!fs.existsSync(dbPath)) {
+    return true;
+  }
+
+  const currentHash = computeJsonlHash(repoPath);
+
+  try {
+    const db = openLearningsDatabase(repoPath, { readonly: true });
+    try {
+      const row = db
+        .prepare('SELECT value FROM meta WHERE key = ?')
+        .get('jsonl_hash') as { value: string } | undefined;
+      return !row || row.value !== currentHash;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Computes a SHA-256 digest over the sorted paths and contents of all canonical
+ * JSONL files (repositories, evidence, lessons). Returns an empty string when
+ * the learnings directory does not exist.
+ */
+export function computeJsonlHash(repoPath: string): string {
+  const resolved = path.resolve(repoPath);
+  const learningsDir = path.join(resolved, 'learnings');
+
+  if (!fs.existsSync(learningsDir)) {
+    return '';
+  }
+
+  const files: string[] = [];
+
+  const repoFile = path.join(learningsDir, 'repositories.jsonl');
+  if (fs.existsSync(repoFile)) {
+    files.push(repoFile);
+  }
+
+  for (const subdir of ['evidence', 'lessons']) {
+    const dir = path.join(learningsDir, subdir);
+    if (fs.existsSync(dir)) {
+      for (const entry of fs.readdirSync(dir).sort()) {
+        if (entry.endsWith('.jsonl')) {
+          files.push(path.join(dir, entry));
+        }
+      }
+    }
+  }
+
+  const hash = createHash('sha256');
+  for (const file of files) {
+    hash.update(path.relative(resolved, file));
+    hash.update('\0');
+    hash.update(fs.readFileSync(file));
+    hash.update('\0');
+  }
+
+  return hash.digest('hex');
+}
+
+/**
+ * Inserts all repositories, evidence, learnings, embeddings, and tag/evidence join rows
+ * in a single SQLite transaction for atomicity and performance.
+ */
 function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   const insertRepository = db.prepare(`
     INSERT INTO repositories (
@@ -172,6 +260,7 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   transaction();
 }
 
+/** Builds a local embedding for `learning` and inserts it into the `learning_embeddings` table. */
 function writeLearningEmbedding(
   statement: Database.Statement,
   learning: LearningRecord
@@ -186,6 +275,7 @@ function writeLearningEmbedding(
   );
 }
 
+/** Executes the prepared `INSERT INTO repositories` statement for one record. */
 function writeRepository(
   statement: Database.Statement,
   repository: RepositoryRecord
@@ -202,6 +292,7 @@ function writeRepository(
   );
 }
 
+/** Executes the prepared `INSERT INTO evidence` statement, serializing boosts/penalties arrays as JSON. */
 function writeEvidence(
   statement: Database.Statement,
   evidence: EvidenceRecord
@@ -238,6 +329,7 @@ function writeEvidence(
   );
 }
 
+/** Executes the prepared `INSERT INTO learnings` statement for one record. */
 function writeLearning(
   statement: Database.Statement,
   learning: LearningRecord
@@ -258,6 +350,7 @@ function writeLearning(
   );
 }
 
+/** Clears and re-populates both FTS5 virtual tables (`evidence_fts`, `learnings_fts`) from their base tables. */
 function populateFtsTables(db: Database.Database): void {
   db.exec('DELETE FROM evidence_fts');
   db.exec('DELETE FROM learnings_fts');
@@ -292,6 +385,14 @@ function populateFtsTables(db: Database.Database): void {
   `);
 }
 
+/** Writes the JSONL content hash into the `meta` table so staleness checks can compare it later. */
+function storeJsonlHash(db: Database.Database, hash: string): void {
+  db.prepare(
+    'INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES (?, ?, ?)'
+  ).run('jsonl_hash', hash, new Date().toISOString());
+}
+
+/** Sorts records by `sourcePath` then `id` to produce deterministic insertion order. */
 function sortRecords<T extends { id: string; sourcePath: string }>(
   records: T[]
 ): T[] {

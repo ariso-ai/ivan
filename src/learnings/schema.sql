@@ -108,6 +108,12 @@ CREATE INDEX IF NOT EXISTS idx_learning_tags_tag
 CREATE INDEX IF NOT EXISTS idx_learning_embeddings_model
     ON learning_embeddings(model);
 
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
     id UNINDEXED,
     repository_id UNINDEXED,

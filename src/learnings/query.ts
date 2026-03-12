@@ -1,3 +1,7 @@
+// Full-text and vector search over the learnings SQLite database.
+// Search strategy: vector cosine similarity → FTS5 BM25 → LIKE fallback,
+// trying each tier until results are found.
+
 import { openLearningsDatabase } from './database.js';
 import {
   cosineSimilarity,
@@ -10,6 +14,7 @@ import type {
   LearningsSearchOptions
 } from './types.js';
 
+/** Raw SQLite row shape returned by learning search queries. */
 interface LearningRow {
   id: string;
   repository_id: string;
@@ -22,10 +27,15 @@ interface LearningRow {
   status: string;
 }
 
+/** Extends `LearningRow` with the serialized embedding vector for cosine scoring. */
 interface VectorLearningRow extends LearningRow {
   vector_json: string;
 }
 
+/**
+ * Searches the learnings database for records relevant to `text`, hydrating each result
+ * with its tags and evidence.  Opens the DB read-only and closes it before returning.
+ */
 export function queryLearnings(
   repoPath: string,
   text: string,
@@ -116,6 +126,10 @@ export function queryLearnings(
   }
 }
 
+/**
+ * Tries vector search, then FTS5, then LIKE in order, returning the first non-empty result set.
+ * This cascade ensures useful results even for short or non-word queries.
+ */
 function runLearningSearch(
   db: ReturnType<typeof openLearningsDatabase>,
   text: string,
@@ -189,6 +203,10 @@ function runLearningSearch(
     ) as LearningRow[];
 }
 
+/**
+ * Embeds `text`, loads all active learning vectors, computes cosine similarity,
+ * filters results below 0.12, and returns the top `limit` rows by score then confidence.
+ */
 function runVectorSearch(
   db: ReturnType<typeof openLearningsDatabase>,
   text: string,
@@ -235,6 +253,10 @@ function runVectorSearch(
   return scoredRows;
 }
 
+/**
+ * Converts query text into a space-separated FTS5 MATCH expression by extracting
+ * unique lowercase terms longer than one character.  Returns null if no valid terms exist.
+ */
 function buildFtsExpression(text: string): string | null {
   const terms = Array.from(
     new Set(

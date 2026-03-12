@@ -1,3 +1,7 @@
+// Builds and persists EvidenceRecord JSONL files from raw GitHub PR payloads.
+// Records are deterministically identified and upserted (new data overwrites old)
+// so re-ingesting a PR is safe and idempotent.
+
 import fs from 'fs';
 import path from 'path';
 import { createDeterministicId } from './id.js';
@@ -14,6 +18,11 @@ import {
   weightReviewThread
 } from './weighting.js';
 
+/**
+ * Converts a `GitHubPullRequestEvidence` payload into a flat list of `EvidenceRecord` objects—
+ * one per PR summary, issue comment, review, review thread, and CI check.
+ * Each record is weighted and sorted by `source_type` for deterministic JSONL output.
+ */
 export function buildEvidenceRecordsFromPullRequest(
   repositoryId: string,
   payload: GitHubPullRequestEvidence
@@ -142,9 +151,14 @@ export function buildEvidenceRecordsFromPullRequest(
     });
   }
 
-  return records.sort((left, right) => left.id.localeCompare(right.id));
+  return records.sort((left, right) => left.source_type.localeCompare(right.source_type));
 }
 
+/**
+ * Upserts `records` into `learnings/evidence/{repositoryId}.jsonl`, merging with existing data
+ * by id (new records win), and removes the legacy per-PR directory if present.
+ * Returns the `{filePath}#L{n}` source paths for every record written.
+ */
 export function writeEvidenceRecords(
   repoPath: string,
   repositoryId: string,
@@ -170,6 +184,7 @@ export function writeEvidenceRecords(
   return mergedRecords.map((record, index) => `${filePath}#L${index + 1}`);
 }
 
+/** Loads any existing JSONL at `filePath` into an id-keyed map, then upserts `records` on top. */
 function mergeEvidenceRecords(
   filePath: string,
   records: EvidenceRecord[]
@@ -196,6 +211,7 @@ function mergeEvidenceRecords(
   return [...byId.values()];
 }
 
+/** Constructs an `EvidenceRecord` from the first comment of a review thread; returns null if the thread has no comments. */
 function buildThreadEvidenceRecord(
   repositoryId: string,
   payload: GitHubPullRequestEvidence,
@@ -243,6 +259,7 @@ function buildThreadEvidenceRecord(
   };
 }
 
+/** Assembles a human-readable summary of the PR (number + title + body + changed files) as the evidence content. */
 function buildPullRequestSummaryBody(payload: GitHubPullRequestEvidence): string {
   const sections: string[] = [];
   sections.push(`PR #${payload.pullRequest.number}: ${payload.pullRequest.title}`);
@@ -262,6 +279,10 @@ function buildPullRequestSummaryBody(payload: GitHubPullRequestEvidence): string
   return sections.join('\n\n');
 }
 
+/**
+ * Produces a plain-object representation of an `EvidenceRecord` for JSON serialization.
+ * Omits `type` and `sourcePath` (derived fields not stored in JSONL).
+ */
 function serializeEvidenceRecord(
   record: EvidenceRecord
 ): Record<string, unknown> {
@@ -297,10 +318,12 @@ function serializeEvidenceRecord(
   };
 }
 
+/** Returns the canonical relative path for an evidence JSONL file (without a line number). */
 function evidenceSourcePath(repositoryId: string): string {
   return `learnings/evidence/${repositoryId}.jsonl`;
 }
 
+/** Removes the old per-repository evidence directory (`learnings/evidence/{id}/`) if it still exists from a prior schema version. */
 function removeLegacyEvidenceDirectory(
   repoPath: string,
   repositoryId: string
@@ -317,6 +340,7 @@ function removeLegacyEvidenceDirectory(
   }
 }
 
+/** Formats a human-readable title for a review thread, including file path and line number when available. */
 function buildThreadTitle(filePath?: string, line?: number): string {
   if (!filePath) {
     return 'Review thread';

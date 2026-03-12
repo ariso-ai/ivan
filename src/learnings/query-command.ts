@@ -1,3 +1,6 @@
+// CLI handler for `ivan learnings query`.
+// Searches the local learnings.db and prints each result with statement, metadata, and evidence links.
+
 import chalk from 'chalk';
 import { queryLearnings } from './query.js';
 
@@ -7,6 +10,7 @@ interface QueryCommandOptions {
   limit?: string;
 }
 
+/** Commander action handler: validates options, calls `queryLearnings`, and pretty-prints results. */
 export async function runQueryCommand(
   options: QueryCommandOptions
 ): Promise<void> {

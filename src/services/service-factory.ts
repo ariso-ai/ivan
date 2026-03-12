@@ -1,5 +1,5 @@
 import { ConfigManager } from '../config.js';
-import {
+import type {
   IGitManager,
   IPRService,
   IRepositoryManager

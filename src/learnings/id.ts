@@ -1,7 +1,12 @@
+// Stable, deterministic ID generation for learnings records.
+// All IDs use a `{prefix}_{body}` convention so type can be inferred at a glance.
+
 import { createHash } from 'crypto';
 
+/** Pattern every record ID must match regardless of prefix. */
 const GENERIC_ID_PATTERN = /^[a-z]{2,8}_[a-z0-9][a-z0-9_-]*$/;
 
+/** Converts an arbitrary string to a lowercase, hyphen-separated slug safe for use in IDs and paths. */
 export function slugify(value: string): string {
   return value
     .trim()
@@ -11,6 +16,7 @@ export function slugify(value: string): string {
     .replace(/-{2,}/g, '-');
 }
 
+/** Returns `repo_{slug}` for the given repository name; throws if the name produces an empty slug. */
 export function createRepositoryId(value: string): string {
   const slug = slugify(value);
   if (!slug) {
@@ -22,6 +28,11 @@ export function createRepositoryId(value: string): string {
   return `repo_${slug}`;
 }
 
+/**
+ * Builds a stable `{prefix}_{20-hex-char SHA1}` ID from the given parts.
+ * Parts are joined with the ASCII unit-separator (U+001F) before hashing so
+ * order matters but separators cannot clash with part content.
+ */
 export function createDeterministicId(
   prefix: string,
   ...parts: Array<string | undefined>
@@ -35,6 +46,7 @@ export function createDeterministicId(
   return `${prefix}_${digest}`;
 }
 
+/** Returns true when `id` matches the `{prefix}_[a-z0-9][a-z0-9_-]*` pattern (or the generic 2–8-char prefix form). */
 export function isStableRecordId(id: string, prefix?: string): boolean {
   if (prefix) {
     return new RegExp(`^${prefix}_[a-z0-9][a-z0-9_-]*$`).test(id);

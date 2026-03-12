@@ -1,8 +1,10 @@
 import { randomUUID } from 'crypto';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
-import { DatabaseManager, Job, Task } from '../database.js';
-import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
+import { DatabaseManager } from '../database.js';
+import type { Job, Task } from '../database.js';
+import { ExecutorFactory } from './executor-factory.js';
+import type { IClaudeExecutor } from './executor-factory.js';
 
 export class JobManager {
   private dbManager: DatabaseManager;

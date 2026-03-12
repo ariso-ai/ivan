@@ -1,7 +1,14 @@
+// Persists extracted LearningRecord objects to JSONL files under `learnings/lessons/`.
+// This is a full-replace write: the entire file for a repository is rewritten on each call.
+
 import fs from 'fs';
 import path from 'path';
 import type { LearningRecord } from './record-types.js';
 
+/**
+ * Sorts `records` by id, writes them to `learnings/lessons/{repositoryId}.jsonl`,
+ * removes any legacy per-repository directory, and returns the `{file}#L{n}` paths.
+ */
 export function writeLearningRecords(
   repoPath: string,
   repositoryId: string,
@@ -27,6 +34,7 @@ export function writeLearningRecords(
   return normalizedRecords.map((record, index) => `${filePath}#L${index + 1}`);
 }
 
+/** Produces the plain-object form of a `LearningRecord` for JSON serialization, omitting `type` and `sourcePath`. */
 function serializeLearningRecord(
   record: LearningRecord
 ): Omit<LearningRecord, 'type' | 'sourcePath'> {
@@ -49,10 +57,12 @@ function serializeLearningRecord(
   });
 }
 
+/** Returns the canonical relative path for a learnings JSONL file (without a line number). */
 function learningSourcePath(repositoryId: string): string {
   return `learnings/lessons/${repositoryId}.jsonl`;
 }
 
+/** Removes the old per-repository lessons directory (`learnings/lessons/{id}/`) from a prior schema version. */
 function removeLegacyLessonsDirectory(repoPath: string, repositoryId: string): void {
   const legacyDirectory = path.join(repoPath, 'learnings', 'lessons', repositoryId);
   if (!fs.existsSync(legacyDirectory)) {

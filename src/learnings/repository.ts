@@ -1,3 +1,7 @@
+// Repository identity resolution and learnings directory management.
+// Responsible for identifying which repo is being tracked, creating the directory
+// structure, and keeping the `repositories.jsonl` registry up to date.
+
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -5,6 +9,7 @@ import { createRepositoryId, slugify } from './id.js';
 import type { RepositoryRecord } from './record-types.js';
 import { loadCanonicalRecords } from './parser.js';
 
+/** Resolved identity information for the repository being tracked; passed through the init/extract pipeline. */
 export interface LearningsRepositoryContext {
   repoPath: string;
   repositoryId: string;
@@ -14,6 +19,10 @@ export interface LearningsRepositoryContext {
   existingRecord?: RepositoryRecord;
 }
 
+/**
+ * Reads any existing repository record for `repoPath` (or derives identity from the directory name),
+ * reads the git remote URL, and returns a fully populated `LearningsRepositoryContext`.
+ */
 export function resolveLearningsRepositoryContext(
   repoPath: string
 ): LearningsRepositoryContext {
@@ -38,6 +47,7 @@ export function resolveLearningsRepositoryContext(
   });
 }
 
+/** Constructs a `RepositoryRecord` from context; preserves `created_at` from any existing record. */
 export function buildRepositoryRecord(
   context: LearningsRepositoryContext
 ): RepositoryRecord {
@@ -58,12 +68,14 @@ export function buildRepositoryRecord(
   });
 }
 
+/** Returns the absolute path to `learnings/repositories.jsonl` for the context's repo. */
 export function getRepositoryRecordPath(
   context: LearningsRepositoryContext
 ): string {
   return path.join(context.repoPath, 'learnings', 'repositories.jsonl');
 }
 
+/** Creates `learnings/`, `learnings/evidence/`, and `learnings/lessons/` if they don't exist; returns the list of paths actually created. */
 export function ensureLearningsDirectories(
   context: LearningsRepositoryContext
 ): string[] {
@@ -84,6 +96,10 @@ export function ensureLearningsDirectories(
   return created;
 }
 
+/**
+ * Appends `learnings.db` and `learnings.db-*` to `.gitignore` if they are not already present.
+ * Returns true if the file was modified, false if no changes were needed.
+ */
 export function ensureGitignoreCoverage(repoPath: string): boolean {
   const gitignorePath = path.join(repoPath, '.gitignore');
   const requiredPatterns = ['learnings.db', 'learnings.db-*'];
@@ -109,6 +125,10 @@ export function ensureGitignoreCoverage(repoPath: string): boolean {
   return true;
 }
 
+/**
+ * Upserts the repository record for `context` into `repositories.jsonl` (sorted by id),
+ * removes any legacy directory, and returns whether the record was newly created.
+ */
 export function writeRepositoryRecord(context: LearningsRepositoryContext): {
   filePath: string;
   created: boolean;
@@ -133,6 +153,7 @@ export function writeRepositoryRecord(context: LearningsRepositoryContext): {
   return { filePath, created };
 }
 
+/** Produces the plain-object form of a `RepositoryRecord` for JSON serialization, omitting `type` and `sourcePath`. */
 function serializeRepositoryRecord(
   record: RepositoryRecord
 ): Omit<RepositoryRecord, 'type' | 'sourcePath'> {
@@ -149,6 +170,7 @@ function serializeRepositoryRecord(
   });
 }
 
+/** Removes the old `learnings/repositories/` directory from a prior schema version, if present. */
 function removeLegacyRepositoriesDirectory(repoPath: string): void {
   const legacyDirectory = path.join(repoPath, 'learnings', 'repositories');
   if (!fs.existsSync(legacyDirectory)) {
@@ -167,6 +189,7 @@ function removeLegacyRepositoriesDirectory(repoPath: string): void {
   fs.rmdirSync(legacyDirectory);
 }
 
+/** Throws a descriptive error if `repoPath` does not exist or is not a directory. */
 function assertDirectoryExists(repoPath: string): void {
   if (!fs.existsSync(repoPath)) {
     throw new Error(`Repository path does not exist: ${repoPath}`);
@@ -177,6 +200,10 @@ function assertDirectoryExists(repoPath: string): void {
   }
 }
 
+/**
+ * Reads the canonical records and returns the single matching repository for `repoPath`.
+ * Throws if more than one record exists and none matches by `local_path`.
+ */
 function getExistingRepositoryRecord(
   repoPath: string
 ): RepositoryRecord | undefined {
@@ -204,6 +231,7 @@ function getExistingRepositoryRecord(
   );
 }
 
+/** Reads `remote.origin.url` from git config; returns `undefined` silently if the repo has no remote. */
 function readRemoteUrl(repoPath: string): string | undefined {
   try {
     const remoteUrl = execFileSync(

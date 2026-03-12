@@ -1,3 +1,7 @@
+// Reads all canonical JSONL files from a repository's `learnings/` directory and
+// deserializes them into typed in-memory records.  The parser is additive: missing
+// optional fields are silently dropped rather than treated as errors.
+
 import fs from 'fs';
 import path from 'path';
 import type {
@@ -9,6 +13,7 @@ import type {
 
 type JsonlRecord = Record<string, unknown>;
 
+/** Reads and sorts all three JSONL record types for `repoPath`, returning a combined `LearningsDataset`. */
 export function loadCanonicalRecords(repoPath: string): LearningsDataset {
   const resolvedRepoPath = path.resolve(repoPath);
 
@@ -19,6 +24,7 @@ export function loadCanonicalRecords(repoPath: string): LearningsDataset {
   });
 }
 
+/** Parses `learnings/repositories.jsonl` into `RepositoryRecord[]`; returns `[]` if the file is absent. */
 function readRepositoryRecords(repoPath: string): RepositoryRecord[] {
   const filePath = path.join(repoPath, 'learnings', 'repositories.jsonl');
   return readJsonlFile(filePath, repoPath, (sourcePath, record) =>
@@ -41,6 +47,7 @@ function readRepositoryRecords(repoPath: string): RepositoryRecord[] {
   );
 }
 
+/** Reads all `.jsonl` files under `learnings/evidence/` and parses them into `EvidenceRecord[]`. */
 function readEvidenceRecords(repoPath: string): EvidenceRecord[] {
   const evidenceRoot = path.join(repoPath, 'learnings', 'evidence');
   if (!fs.existsSync(evidenceRoot)) {
@@ -89,6 +96,7 @@ function readEvidenceRecords(repoPath: string): EvidenceRecord[] {
   );
 }
 
+/** Reads all `.jsonl` files under `learnings/lessons/` and parses them into `LearningRecord[]`. */
 function readLearningRecords(repoPath: string): LearningRecord[] {
   const lessonsRoot = path.join(repoPath, 'learnings', 'lessons');
   if (!fs.existsSync(lessonsRoot)) {
@@ -123,6 +131,10 @@ function readLearningRecords(repoPath: string): LearningRecord[] {
   );
 }
 
+/**
+ * Reads a JSONL file line by line, calls `parser` with a `{file}#L{n}` source path per line,
+ * and accumulates results.  Empty lines and absent files are silently skipped.
+ */
 function readJsonlFile<T>(
   filePath: string,
   repoPath: string,
@@ -149,6 +161,7 @@ function readJsonlFile<T>(
   return records;
 }
 
+/** Returns the absolute paths of all `.jsonl` files in `directory`, sorted by name. */
 function collectJsonlFiles(directory: string): string[] {
   return fs
     .readdirSync(directory, { withFileTypes: true })
@@ -157,6 +170,7 @@ function collectJsonlFiles(directory: string): string[] {
     .map((entry) => path.join(directory, entry.name));
 }
 
+/** Reads a string field that must be present and non-empty; throws with `sourcePath` context if missing. */
 function getRequiredString(
   record: JsonlRecord,
   key: string,
@@ -170,6 +184,7 @@ function getRequiredString(
   return value;
 }
 
+/** Returns a trimmed string value or `undefined` when the field is absent, null, an array, or blank. */
 function getOptionalString(
   record: JsonlRecord,
   key: string
@@ -182,6 +197,7 @@ function getOptionalString(
   return String(value).trim() || undefined;
 }
 
+/** Coerces a JSON value to a number; throws on non-numeric strings; returns `undefined` for absent/null. */
 function getOptionalNumber(
   record: JsonlRecord,
   key: string
@@ -203,6 +219,7 @@ function getOptionalNumber(
   return parsed;
 }
 
+/** Parses a boolean field accepting `true`/`false` literals and their string equivalents. */
 function getOptionalBoolean(
   record: JsonlRecord,
   key: string
@@ -227,6 +244,7 @@ function getOptionalBoolean(
   throw new Error(`Expected boolean field "${key}"`);
 }
 
+/** Returns a `string[]` from a JSON field, gracefully handling missing, scalar, or array values. */
 function getStringArray(record: JsonlRecord, key: string): string[] {
   const value = record[key];
   if (value === undefined || value === null || value === '') {
@@ -240,10 +258,12 @@ function getStringArray(record: JsonlRecord, key: string): string[] {
   return value.map((item) => String(item).trim()).filter(Boolean);
 }
 
+/** Converts an absolute file path to a forward-slash relative path from `repoPath`. */
 function toCanonicalPath(repoPath: string, filePath: string): string {
   return path.relative(repoPath, filePath).split(path.sep).join('/');
 }
 
+/** Sorts each record list in a dataset by `sourcePath` then `id` for consistent ordering across calls. */
 function sortDataset(dataset: LearningsDataset): LearningsDataset {
   return {
     repositories: [...dataset.repositories].sort(sortByPathThenId),
@@ -252,6 +272,7 @@ function sortDataset(dataset: LearningsDataset): LearningsDataset {
   };
 }
 
+/** Comparator that orders by `sourcePath` first, then `id`, both lexicographically. */
 function sortByPathThenId(
   left: { sourcePath: string; id: string },
   right: { sourcePath: string; id: string }

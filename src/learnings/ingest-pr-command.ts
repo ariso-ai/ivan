@@ -1,3 +1,6 @@
+// CLI handler for `ivan learnings ingest-pr`.
+// Fetches all evidence for a GitHub PR and runs the full extraction + rebuild pipeline.
+
 import chalk from 'chalk';
 import { ingestPullRequestEvidence } from './github-ingestion.js';
 
@@ -6,6 +9,7 @@ interface IngestPrCommandOptions {
   pr: string;
 }
 
+/** Commander action handler: validates the PR number, calls `ingestPullRequestEvidence`, and prints a summary. */
 export async function runIngestPrCommand(
   options: IngestPrCommandOptions
 ): Promise<void> {

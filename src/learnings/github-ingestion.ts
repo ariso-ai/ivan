@@ -1,3 +1,6 @@
+// Orchestrates the full end-to-end PR ingestion pipeline:
+// fetch GitHub evidence → build records → write JSONL → extract learnings → rebuild DB.
+
 import type { LearningsBuildResult } from './builder.js';
 import {
   buildEvidenceRecordsFromPullRequest,
@@ -11,6 +14,7 @@ import {
   writeRepositoryRecord
 } from './repository.js';
 
+/** Returned by `ingestPullRequestEvidence`; summarises the full ingestion outcome. */
 export interface PullRequestIngestionResult {
   repositoryId: string;
   writtenEvidenceCount: number;
@@ -18,6 +22,10 @@ export interface PullRequestIngestionResult {
   rebuild: LearningsBuildResult;
 }
 
+/**
+ * Runs the full ingestion pipeline for a single PR: resolves the repo context, fetches
+ * all GitHub evidence, writes JSONL, extracts learnings, and rebuilds the SQLite index.
+ */
 export async function ingestPullRequestEvidence(
   repoPath: string,
   prNumber: number

@@ -1,3 +1,7 @@
+// Entry point for the `learnings` command group.
+// Registers all subcommands on the Commander program and re-exports the public API
+// used by other parts of ivan (task executor, hooks, etc.).
+
 import { Command } from 'commander';
 import { runExtractCommand } from './extract-command.js';
 import { initLearningsStore, runInitCommand } from './init-command.js';
@@ -8,6 +12,7 @@ import { runQueryCommand } from './query-command.js';
 import { rebuildLearningsDatabase } from './builder.js';
 import { runRebuildCommand } from './rebuild-command.js';
 
+/** Registers the `learnings` subcommand tree (init, rebuild, extract, query, ingest-pr, install-hooks) on `program`. */
 export function registerLearningsCommands(program: Command): void {
   const learnings = program
     .command('learnings')
@@ -27,6 +32,7 @@ export function registerLearningsCommands(program: Command): void {
     .command('rebuild')
     .description('Rebuild <repo>/learnings.db from canonical learnings records')
     .requiredOption('--repo <path>', 'Repository root path')
+    .option('--if-stale', 'Skip rebuild if learnings.db is already up to date')
     .action(runRebuildCommand);
 
   learnings
@@ -53,7 +59,7 @@ export function registerLearningsCommands(program: Command): void {
   learnings
     .command('install-hooks')
     .description(
-      'Install Claude Code hook scripts for UserPromptSubmit, PostToolUse(Edit|Write|MultiEdit), and Stop'
+      'Install Claude Code hook scripts for UserPromptSubmit and PostToolUse(Edit|Write|MultiEdit)'
     )
     .requiredOption('--repo <path>', 'Repository root path')
     .action(runInstallHooksCommand);

@@ -1,3 +1,6 @@
+// CLI handler for `ivan learnings init`.
+// Sets up the learnings directory structure, registers the repository, and gitignores the SQLite file.
+
 import chalk from 'chalk';
 import {
   ensureGitignoreCoverage,
@@ -10,6 +13,10 @@ interface InitCommandOptions {
   repo: string;
 }
 
+/**
+ * Initialises the learnings store for `repoPath`: creates directories, upserts the
+ * repository record, and ensures `learnings.db` is gitignored.
+ */
 export function initLearningsStore(repoPath: string): {
   repositoryId: string;
   repositoryFile: string;
@@ -31,6 +38,7 @@ export function initLearningsStore(repoPath: string): {
   };
 }
 
+/** Commander action handler: calls `initLearningsStore` and prints a formatted summary. */
 export async function runInitCommand(
   options: InitCommandOptions
 ): Promise<void> {

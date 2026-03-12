@@ -1,17 +1,28 @@
+// SQLite database lifecycle helpers for the learnings store.
+// The DB is a derived artifact rebuilt from JSONL source files—never edit it directly.
+// WAL files (.db-shm, .db-wal) are removed alongside the main file to avoid stale state.
+
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { URL } from 'url';
 
+/** Schema SQL is loaded once at module init and reused for every fresh database creation. */
 const SCHEMA_SQL = fs.readFileSync(
   new URL('./schema.sql', import.meta.url),
   'utf8'
 );
 
+/** Returns the absolute path to the learnings SQLite database for the given repo root. */
 export function getLearningsDbPath(repoPath: string): string {
   return path.join(path.resolve(repoPath), 'learnings.db');
 }
 
+/**
+ * Deletes any existing database (including WAL/SHM files), creates a fresh one,
+ * applies the schema, and returns the open connection.
+ * Uses `DELETE` journal mode so no WAL files are created during the bulk rebuild.
+ */
 export function createFreshLearningsDatabase(
   repoPath: string
 ): Database.Database {
@@ -26,6 +37,10 @@ export function createFreshLearningsDatabase(
   return db;
 }
 
+/**
+ * Opens an existing learnings database for reading or writing.
+ * Throws a descriptive error (with the rebuild command) if the file does not exist.
+ */
 export function openLearningsDatabase(
   repoPath: string,
   options: { readonly?: boolean } = {}
@@ -46,6 +61,7 @@ export function openLearningsDatabase(
   return db;
 }
 
+/** Removes the `.db`, `.db-shm`, and `.db-wal` files if they exist (safe to call when none are present). */
 export function removeLearningsDatabaseFiles(dbPath: string): void {
   for (const candidate of [dbPath, `${dbPath}-shm`, `${dbPath}-wal`]) {
     if (fs.existsSync(candidate)) {

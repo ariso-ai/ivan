@@ -98,7 +98,7 @@ describe('learnings storage slice', () => {
     expect(output).toContain('ev_lock-await-ack');
   });
 
-  test('install-hooks writes the three Claude hook integrations idempotently', () => {
+  test('install-hooks writes the two Claude hook integrations idempotently', () => {
     const repoPath = createEmptyRepo('hooks-repo');
 
     execIvan(['learnings', 'install-hooks', '--repo', repoPath]);
@@ -121,11 +121,11 @@ describe('learnings storage slice', () => {
       fs.existsSync(
         path.join(repoPath, '.claude', 'hooks', 'ivan-learnings-stop.sh')
       )
-    ).toBe(true);
+    ).toBe(false);
 
     expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
     expect(settings.hooks.PostToolUse).toHaveLength(1);
-    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.Stop).toBeUndefined();
     expect(settings.hooks.PostToolUse[0].matcher).toBe(
       'Edit|Write|MultiEdit'
     );
@@ -134,9 +134,6 @@ describe('learnings storage slice', () => {
     );
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toContain(
       'ivan-learnings-post-edit.sh'
-    );
-    expect(settings.hooks.Stop[0].hooks[0].command).toContain(
-      'ivan-learnings-stop.sh'
     );
   });
 

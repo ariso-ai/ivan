@@ -1,3 +1,7 @@
+// Converts raw evidence records into actionable learning records using NLP heuristics.
+// The extraction pipeline: filter low-signal evidence → distill an imperative statement
+// → infer kind/title/tags/confidence → write JSONL → rebuild the SQLite index.
+
 import type { LearningsBuildResult } from './builder.js';
 import { rebuildLearningsDatabase } from './builder.js';
 import { createDeterministicId, slugify } from './id.js';
@@ -11,6 +15,7 @@ import {
   writeRepositoryRecord
 } from './repository.js';
 
+/** Returned by `extractLearningsFromEvidence`; summarises what was written and the rebuild outcome. */
 export interface ExtractionResult {
   repositoryId: string;
   writtenLearningCount: number;
@@ -18,6 +23,10 @@ export interface ExtractionResult {
   rebuild: LearningsBuildResult;
 }
 
+/**
+ * Top-level orchestrator: ensures the repo is initialised, runs extraction over all
+ * evidence records, writes the resulting learnings to JSONL, and rebuilds the SQLite DB.
+ */
 export function extractLearningsFromEvidence(repoPath: string): ExtractionResult {
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
@@ -40,6 +49,10 @@ export function extractLearningsFromEvidence(repoPath: string): ExtractionResult
   };
 }
 
+/**
+ * Filters evidence through `shouldExtractEvidence`, maps each survivor to a `LearningRecord`,
+ * drops nulls, and returns records sorted by id for deterministic JSONL output.
+ */
 export function extractLearningRecords(
   evidenceRecords: EvidenceRecord[]
 ): LearningRecord[] {
@@ -51,6 +64,10 @@ export function extractLearningRecords(
   return records.sort((left, right) => left.id.localeCompare(right.id));
 }
 
+/**
+ * Returns false for evidence that should not produce a learning: bot authors,
+ * CI checks, auto-generated comments, weight below 3, or low-signal text.
+ */
 function shouldExtractEvidence(evidence: EvidenceRecord): boolean {
   if (
     evidence.author_type === 'bot' ||
@@ -95,6 +112,10 @@ function shouldExtractEvidence(evidence: EvidenceRecord): boolean {
   return true;
 }
 
+/**
+ * Constructs a `LearningRecord` from a single evidence item; returns null if no
+ * usable statement can be extracted (the record is silently dropped).
+ */
 function buildLearningRecord(evidence: EvidenceRecord): LearningRecord | null {
   const statement =
     evidence.source_type === 'pull_request'
@@ -136,6 +157,10 @@ function buildLearningRecord(evidence: EvidenceRecord): LearningRecord | null {
   });
 }
 
+/**
+ * Attempts to distil one actionable statement from free-form review text.
+ * Priority order: bold-emphasized text → imperative sentence → first usable sentence.
+ */
 function extractStatement(content: string): string | null {
   const emphasized = extractEmphasizedStatement(content);
   if (emphasized && isUsableCandidate(emphasized)) {
@@ -165,17 +190,21 @@ function extractStatement(content: string): string | null {
   return sentenceCase(fallback.replace(/[.?!]+$/, ''));
 }
 
+/**
+ * Specialised statement extractor for `pull_request`-type evidence.
+ * Skips PR-prefix lines and "verify/changed files" boilerplate before picking the first usable sentence.
+ */
 function extractPullRequestStatement(
   evidence: EvidenceRecord
 ): string | null {
-  const content = sanitizeEvidenceContent(evidence.content);
-  const candidates = content
-    .split(/(?<=[.?!])\s+/)
+  const candidates = evidence.content
+    .split(/\n+/)
+    .flatMap((line) => sanitizeEvidenceContent(line).split(/(?<=[.?!])\s+/))
     .map((candidate) => normalizeCandidateText(candidate))
     .filter((candidate) => isUsableCandidate(candidate));
 
   for (const candidate of candidates) {
-    if (/^pr\s+\d+:/i.test(candidate)) {
+    if (/^pr\s*#?\s*\d+:/i.test(candidate)) {
       continue;
     }
 
@@ -190,6 +219,10 @@ function extractPullRequestStatement(
   return title ? sentenceCase(title.replace(/[.?!]+$/, '')) : null;
 }
 
+/**
+ * Returns the text that follows the statement within the evidence content as the rationale.
+ * Falls back to the full normalized content when the statement does not appear at the start.
+ */
 function extractRationale(content: string, statement: string): string | undefined {
   const normalizedContent = sanitizeEvidenceContent(content);
   if (!normalizedContent) {
@@ -212,6 +245,10 @@ function extractRationale(content: string, statement: string): string | undefine
   return undefined;
 }
 
+/**
+ * Returns `repo_convention` when the statement or metadata references ivan/Claude/hooks/CLI,
+ * otherwise `engineering_lesson` for broadly applicable patterns.
+ */
 function inferLearningKind(
   evidence: EvidenceRecord,
   statement: string
@@ -229,6 +266,7 @@ function inferLearningKind(
   return 'engineering_lesson';
 }
 
+/** Truncates the statement to 72 chars (with `...`) for use as a short display title. */
 function inferTitle(statement: string): string | undefined {
   const trimmed = statement.trim();
   if (!trimmed) {
@@ -238,6 +276,7 @@ function inferTitle(statement: string): string | undefined {
   return trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`;
 }
 
+/** Produces a one-sentence applicability hint based on kind and whether the evidence has a file path. */
 function inferApplicability(
   kind: string,
   evidence: EvidenceRecord
@@ -253,11 +292,16 @@ function inferApplicability(
   return 'Use this when similar implementation or review patterns show up again.';
 }
 
+/** Maps a `final_weight` (0–12+) to a confidence score in [0.35, 0.95] using a linear scale. */
 function inferConfidence(weight: number): number {
   const confidence = 0.35 + Math.min(weight, 12) / 20;
   return Math.max(0.35, Math.min(0.95, Number(confidence.toFixed(2))));
 }
 
+/**
+ * Assigns topic tags by matching the statement and file path against keyword patterns.
+ * Falls back to a slugified `source_type` when no pattern matches.
+ */
 function inferTags(statement: string, evidence: EvidenceRecord): string[] {
   const source = `${statement} ${evidence.file_path ?? ''}`.toLowerCase();
   const tags = new Set<string>();
@@ -286,6 +330,11 @@ function inferTags(statement: string, evidence: EvidenceRecord): string[] {
   return [...tags].sort((left, right) => left.localeCompare(right));
 }
 
+/**
+ * Attempts to rewrite a natural-language sentence into an imperative ("Avoid X", "Use Y") form.
+ * Uses 20+ regex patterns covering common review phrasings; returns null if no pattern matches
+ * or the candidate is a single word.
+ */
 function toImperativeStatement(candidate: string): string | null {
   const normalized = normalizeCandidateText(candidate)
     .replace(/^[*\-\d.\s]+/, '')
@@ -308,7 +357,11 @@ function toImperativeStatement(candidate: string): string | null {
     [/\b(do not\b.+)$/i, (match) => match[1]],
     [/\b(don't\b.+)$/i, (match) => match[1]],
     [/^i(?:'d| would)? recommend\s+(.+)$/i, (match) => match[1]],
-    [/^i think\s+(.+?)\s+would be nice$/i, (match) => `Consider ${match[1]}`],
+    [/^i think\s+(.+?)\s+would be nice(?:\s+(.+))?$/i, (match) => {
+      const tail = match[2]?.trim();
+      const core = tail ? `${match[1]} ${tail}` : match[1];
+      return `Consider ${core}.`;
+    }],
     [/^i think\s+(.+)$/i, (match) => match[1]],
     [/^btw\s+i moved this here because\s+(.+)$/i, (match) => `Keep this here because ${match[1]}`],
     [/^this is a bit odd,?\s+we shouldn't have\s+(.+)$/i, (match) => `Do not have ${match[1]}`],
@@ -329,6 +382,7 @@ function toImperativeStatement(candidate: string): string | null {
   return normalized.includes(' ') ? sentenceCase(normalized) : null;
 }
 
+/** Uppercases the first character of a trimmed string; a no-op on empty input. */
 function sentenceCase(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -338,6 +392,10 @@ function sentenceCase(value: string): string {
   return `${trimmed[0].toUpperCase()}${trimmed.slice(1)}`;
 }
 
+/**
+ * Strips HTML, Markdown structural noise, code fences, and bot-generated boilerplate
+ * from evidence text, leaving only the human-readable prose for statement extraction.
+ */
 function sanitizeEvidenceContent(content: string): string {
   return content
     .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -358,6 +416,7 @@ function sanitizeEvidenceContent(content: string): string {
     .trim();
 }
 
+/** Returns the first `**bold**` span that passes `isUsableCandidate`, or null if none found. */
 function extractEmphasizedStatement(content: string): string | null {
   const matches = content.matchAll(/\*\*([^*]+)\*\*/g);
   for (const match of matches) {
@@ -372,6 +431,10 @@ function extractEmphasizedStatement(content: string): string | null {
   return null;
 }
 
+/**
+ * Gate that rejects candidates too short, bot-generated, question-starting, or matching
+ * known boilerplate patterns (walkthrough, action items, rewrite headers, etc.).
+ */
 function isUsableCandidate(candidate: string): boolean {
   if (!candidate) {
     return false;
@@ -425,6 +488,7 @@ function isUsableCandidate(candidate: string): boolean {
   return true;
 }
 
+/** Strips bot-generated tail sections (walkthrough, reviews paused, etc.) from a rationale string. */
 function trimRationale(value: string): string | undefined {
   const trimmed = value
     .replace(/\b(Reviews paused|Walkthrough|Thanks for using)\b[\s\S]*$/i, '')
@@ -434,6 +498,7 @@ function trimRationale(value: string): string | undefined {
   return trimmed || undefined;
 }
 
+/** Strips leading severity labels (nitpick/minor/major/critical) and emoji from a candidate string. */
 function normalizeCandidateText(value: string): string {
   return value
     .replace(
@@ -451,6 +516,7 @@ function normalizeCandidateText(value: string): string {
     .trim();
 }
 
+/** Merges `optionalFields` into `base`, skipping keys whose value is `undefined`. */
 function withOptionalFields<T extends object>(
   base: T,
   optionalFields: Record<string, unknown>

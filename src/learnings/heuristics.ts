@@ -1,3 +1,10 @@
+// Text and author classification helpers shared across weighting and extraction.
+// These are pure functions with no I/O so they can be unit-tested in isolation.
+
+/**
+ * Returns true for text that carries no engineering signal worth extracting—
+ * e.g. empty strings or comments that are purely stylistic nits or typo fixes.
+ */
 export function isLowSignalReviewText(text: string): boolean {
   const normalized = text.trim().toLowerCase();
 
@@ -17,6 +24,10 @@ export function isLowSignalReviewText(text: string): boolean {
   return lowSignalPrefixes.some((prefix) => normalized.startsWith(prefix));
 }
 
+/**
+ * Detects whether a GitHub actor is a bot by matching well-known bot name patterns.
+ * Returns `undefined` when no name is provided (anonymous author).
+ */
 export function classifyAuthorType(authorName?: string): string | undefined {
   if (!authorName) {
     return undefined;
@@ -27,6 +38,11 @@ export function classifyAuthorType(authorName?: string): string | undefined {
     : 'human';
 }
 
+/**
+ * Maps a GitHub review state to a signal penalty list.
+ * `COMMENTED` reviews lack an explicit verdict, so they get a `review_comment_only` penalty;
+ * `APPROVED` and `CHANGES_REQUESTED` reviews carry no penalty here.
+ */
 export function inferReviewStatePenalty(state?: string): string[] {
   if (!state) {
     return [];

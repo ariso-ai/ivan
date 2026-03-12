@@ -1,8 +1,14 @@
+// Structural validation for the canonical JSONL dataset before it is used to build
+// or query the SQLite database.  Throws early with a human-readable list of all
+// issues so users can fix everything in one pass rather than one error at a time.
+
 import path from 'path';
 import type { LearningsDataset } from './record-types.js';
 import { isStableRecordId } from './id.js';
 
+/** Thrown by `validateLearningsDataset` when the dataset contains one or more structural problems. */
 export class LearningsValidationError extends Error {
+  /** Each string describes one broken invariant, formatted as `{sourcePath}: {reason}`. */
   issues: string[];
 
   constructor(issues: string[]) {
@@ -12,6 +18,11 @@ export class LearningsValidationError extends Error {
   }
 }
 
+/**
+ * Validates all three record types in `dataset` against the schema rules:
+ * correct ID prefixes, no duplicates, valid cross-references, and correct file locations.
+ * Throws `LearningsValidationError` listing every issue found; returns void on success.
+ */
 export function validateLearningsDataset(dataset: LearningsDataset): void {
   const issues: string[] = [];
 

@@ -1,3 +1,7 @@
+// CLI handler for `ivan learnings install-hooks`.
+// Writes two bash scripts and wires them into `.claude/settings.json` so that
+// learnings are surfaced automatically on each prompt submission and tool use.
+
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
@@ -6,22 +10,29 @@ interface InstallHooksCommandOptions {
   repo: string;
 }
 
+/** A single shell command registered as a Claude Code hook. */
 interface ClaudeHookCommandConfig {
   type: 'command';
   command: string;
   timeout: number;
 }
 
+/** Groups hook commands under an optional tool-name matcher pattern. */
 interface ClaudeHookMatcherConfig {
   matcher?: string;
   hooks: ClaudeHookCommandConfig[];
 }
 
+/** Partial representation of `.claude/settings.json` used for reading and merging hook configuration. */
 interface ClaudeSettingsFile {
   hooks?: Record<string, ClaudeHookMatcherConfig[]>;
   [key: string]: unknown;
 }
 
+/**
+ * Writes the two hook bash scripts, marks them executable, and upserts the hook entries
+ * into `.claude/settings.json`.  Safe to re-run; existing scripts and settings are replaced.
+ */
 export function installLearningsHooks(repoPath: string): {
   settingsPath: string;
   createdScripts: string[];
@@ -44,7 +55,6 @@ export function installLearningsHooks(repoPath: string): {
     'ivan-learnings-user-prompt.sh'
   );
   const postEditScriptPath = path.join(hooksDir, 'ivan-learnings-post-edit.sh');
-  const stopScriptPath = path.join(hooksDir, 'ivan-learnings-stop.sh');
 
   fs.writeFileSync(
     userPromptScriptPath,
@@ -56,30 +66,24 @@ export function installLearningsHooks(repoPath: string): {
     buildPostEditScript(nodeExecutable, ivanEntry),
     'utf8'
   );
-  fs.writeFileSync(
-    stopScriptPath,
-    buildStopScript(nodeExecutable, ivanEntry),
-    'utf8'
-  );
 
   fs.chmodSync(userPromptScriptPath, 0o755);
   fs.chmodSync(postEditScriptPath, 0o755);
-  fs.chmodSync(stopScriptPath, 0o755);
 
   const settingsPath = path.join(claudeDir, 'settings.json');
   const updatedSettings = upsertClaudeSettings(settingsPath, {
     userPromptScriptPath,
-    postEditScriptPath,
-    stopScriptPath
+    postEditScriptPath
   });
 
   return {
     settingsPath,
-    createdScripts: [userPromptScriptPath, postEditScriptPath, stopScriptPath],
+    createdScripts: [userPromptScriptPath, postEditScriptPath],
     updatedSettings
   };
 }
 
+/** Commander action handler: calls `installLearningsHooks` and prints a formatted summary. */
 export async function runInstallHooksCommand(
   options: InstallHooksCommandOptions
 ): Promise<void> {
@@ -88,7 +92,7 @@ export async function runInstallHooksCommand(
   console.log(chalk.green('✅ Claude hook integration installed'));
   console.log(
     chalk.gray(
-      'Installed hooks: UserPromptSubmit, PostToolUse(Edit|Write|MultiEdit), Stop'
+      'Installed hooks: UserPromptSubmit, PostToolUse(Edit|Write|MultiEdit)'
     )
   );
   console.log(chalk.gray(`Settings file: ${result.settingsPath}`));
@@ -105,12 +109,16 @@ export async function runInstallHooksCommand(
   );
 }
 
+/**
+ * Reads `.claude/settings.json`, merges the two hook entries (replacing any existing
+ * ivan-learnings hooks by script name), and writes the file only if the content changed.
+ * Returns true when the file was written.
+ */
 function upsertClaudeSettings(
   settingsPath: string,
   scriptPaths: {
     userPromptScriptPath: string;
     postEditScriptPath: string;
-    stopScriptPath: string;
   }
 ): boolean {
   const existingSettings = readClaudeSettings(settingsPath);
@@ -122,7 +130,6 @@ function upsertClaudeSettings(
 
   const userPromptCommand = buildHookCommand(scriptPaths.userPromptScriptPath);
   const postEditCommand = buildHookCommand(scriptPaths.postEditScriptPath);
-  const stopCommand = buildHookCommand(scriptPaths.stopScriptPath);
 
   nextSettings.hooks = {
     ...existingHooks,
@@ -140,13 +147,6 @@ function upsertClaudeSettings(
         hooks: [{ type: 'command', command: postEditCommand, timeout: 10 }]
       },
       ['ivan-learnings-post-edit.sh']
-    ),
-    Stop: upsertHookEntry(
-      existingHooks.Stop ?? [],
-      {
-        hooks: [{ type: 'command', command: stopCommand, timeout: 10 }]
-      },
-      ['ivan-learnings-stop.sh']
     )
   };
 
@@ -161,6 +161,10 @@ function upsertClaudeSettings(
   return true;
 }
 
+/**
+ * Removes any existing hook entries whose command contains one of `scriptNameMarkers`,
+ * then appends `nextEntry`.  This ensures exactly one ivan-learnings entry per hook type.
+ */
 function upsertHookEntry(
   existingEntries: ClaudeHookMatcherConfig[],
   nextEntry: ClaudeHookMatcherConfig,
@@ -177,6 +181,7 @@ function upsertHookEntry(
   return filtered;
 }
 
+/** Reads and parses `.claude/settings.json`; returns an empty object if the file is absent or empty. */
 function readClaudeSettings(settingsPath: string): ClaudeSettingsFile {
   if (!fs.existsSync(settingsPath)) {
     return {};
@@ -195,10 +200,12 @@ function readClaudeSettings(settingsPath: string): ClaudeSettingsFile {
   return parsed as ClaudeSettingsFile;
 }
 
+/** Wraps a script path in a `bash <path>` invocation string for the Claude settings JSON. */
 function buildHookCommand(scriptPath: string): string {
   return `bash ${shellQuote(scriptPath)}`;
 }
 
+/** Generates the `UserPromptSubmit` hook script that queries learnings using the user's prompt text. */
 function buildUserPromptScript(nodeExecutable: string, ivanEntry: string): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
@@ -233,6 +240,7 @@ printf 'Local learnings relevant to this prompt:\\n%s\\n' "$output"
 `;
 }
 
+/** Generates the `PostToolUse` hook script that queries learnings after each Edit/Write/MultiEdit tool call. */
 function buildPostEditScript(nodeExecutable: string, ivanEntry: string): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
@@ -270,40 +278,7 @@ printf 'Local learnings relevant after edit:\\n%s\\n' "$output"
 `;
 }
 
-function buildStopScript(nodeExecutable: string, ivanEntry: string): string {
-  return `#!/usr/bin/env bash
-set -euo pipefail
-
-node_bin=${shellQuote(nodeExecutable)}
-ivan_entry=${shellQuote(ivanEntry)}
-
-payload="$(mktemp)"
-cat > "$payload"
-
-project_dir="\${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' "$payload")}"
-log_dir="$project_dir/.claude/hooks/logs"
-mkdir -p "$log_dir"
-cp "$payload" "$log_dir/stop.$(date +%s).json"
-
-repo="$(jq -r '.cwd // empty' "$payload")"
-stop_hook_active="$(jq -r '.hook_event_name // empty' "$payload")"
-
-if [[ -z "$repo" || -z "$stop_hook_active" ]]; then
-  exit 0
-fi
-
-if ! output="$("$node_bin" "$ivan_entry" learnings query --repo "$repo" --text "final turn summary" --limit 3 2>>"$log_dir/query.stderr" || true)"; then
-  exit 0
-fi
-
-if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
-  exit 0
-fi
-
-printf 'Local learnings relevant at stop:\\n%s\\n' "$output"
-`;
-}
-
+/** Returns the absolute path to the ivan CLI entry point by reading `process.argv[1]` or falling back to `import.meta.url`. */
 function resolveIvanEntryPoint(): string {
   const entryArg = process.argv[1];
   if (entryArg) {
@@ -313,6 +288,7 @@ function resolveIvanEntryPoint(): string {
   return path.resolve(new URL('../index.js', import.meta.url).pathname);
 }
 
+/** Single-quote-escapes a string for safe embedding in a bash script. */
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }

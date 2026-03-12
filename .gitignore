@@ -9,8 +9,6 @@ dist/
 .next/
 out/
 coverage/
-learnings.db
-learnings.db-*
 
 # TypeScript and tooling caches
 *.tsbuildinfo
@@ -38,3 +36,7 @@ pnpm-debug.log*
 *.swo
 *~
 .reference/
+
+# Claude Code local config — generated files and runtime logs, not for sharing
+.claude/hooks/logs/
+.claude/hooks/ivan-learnings-*.sh
