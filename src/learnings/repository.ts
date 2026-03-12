@@ -19,6 +19,7 @@ import type {
   RepositoryRecord
 } from './models.js';
 import type { LearningsError } from './errors.js';
+import { withOptionalFields } from './models.js';
 import { validateLearningsDataset } from './validator.js';
 import {
   buildLearningEmbedding,
@@ -645,21 +646,4 @@ function toPersistenceError(
     operation,
     message: error instanceof Error ? error.message : String(error)
   });
-}
-
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result: Record<string, unknown> = {
-    ...(base as Record<string, unknown>)
-  };
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
 }

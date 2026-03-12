@@ -4,6 +4,7 @@ import { createDeterministicId, slugify } from './ids.js';
 import { isLowSignalReviewText } from './heuristics.js';
 import { writeLearningRecords } from './learning-writer.js';
 import type { EvidenceRecord, LearningRecord } from './models.js';
+import { withOptionalFields } from './models.js';
 import { loadCanonicalRecords } from './parser.js';
 import { initLearningsStore } from './init-command.js';
 
@@ -463,21 +464,4 @@ function normalizeCandidateText(value: string): string {
     .replace(/^\s*major:\s*/i, '')
     .replace(/^\s*trivial:\s*/i, '')
     .trim();
-}
-
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result: Record<string, unknown> = {
-    ...(base as Record<string, unknown>)
-  };
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
 }

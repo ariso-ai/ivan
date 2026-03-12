@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import { ConfigManager } from '../config.js';
 import { GitHubAPIClient } from '../services/github-api-client.js';
+import { withOptionalFields } from './models.js';
 
 export interface GitHubActor {
   login: string;
@@ -461,21 +462,4 @@ async function fetchCliEvidence(
 
 function toActor(actor?: { login: string }): GitHubActor | undefined {
   return actor ? { login: actor.login } : undefined;
-}
-
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result: Record<string, unknown> = {
-    ...(base as Record<string, unknown>)
-  };
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
 }

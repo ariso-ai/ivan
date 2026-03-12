@@ -147,3 +147,20 @@ export const LearningViewSchema = Schema.Struct({
   evidence: Schema.Array(LearningEvidenceViewSchema)
 });
 export type LearningView = typeof LearningViewSchema.Type;
+
+export function withOptionalFields<T extends object>(
+  base: T,
+  optionalFields: Record<string, unknown>
+): T {
+  const result: Record<string, unknown> = {
+    ...(base as Record<string, unknown>)
+  };
+
+  for (const [key, value] of Object.entries(optionalFields)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result as T;
+}

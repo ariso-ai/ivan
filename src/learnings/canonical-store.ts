@@ -19,6 +19,7 @@ import type {
 } from './models.js';
 import type { LearningsError } from './errors.js';
 import { GitMetadata } from './git-metadata.js';
+import { withOptionalFields } from './models.js';
 
 type JsonlRecord = Record<string, unknown>;
 
@@ -357,55 +358,47 @@ export const CanonicalStoreLive = Layer.effect(
 
     const readEvidenceRecords = Effect.fn('CanonicalStore.readEvidenceRecords')(
       function* (repoPath: string) {
-        const evidenceRoot = path.join(repoPath, 'learnings', 'evidence');
-        const exists = yield* fs.exists(evidenceRoot);
-        if (!exists) {
-          return [] as EvidenceRecord[];
-        }
-
-        const entries = (yield* fs.readDirectory(evidenceRoot))
-          .filter((entry) => entry.endsWith('.jsonl'))
-          .sort((left, right) => left.localeCompare(right));
-        const records: EvidenceRecord[] = [];
-
-        for (const entry of entries) {
-          const filePath = path.join(evidenceRoot, entry);
-          records.push(
-            ...(yield* readJsonlFile(filePath, repoPath, (sourcePath, record) =>
-              parseEvidenceRecord(sourcePath, record)
-            ))
-          );
-        }
-
-        return records;
+        return yield* readJsonlDirectory(
+          path.join(repoPath, 'learnings', 'evidence'),
+          repoPath,
+          parseEvidenceRecord
+        );
       }
     );
 
     const readLearningRecords = Effect.fn('CanonicalStore.readLearningRecords')(
       function* (repoPath: string) {
-        const lessonsRoot = path.join(repoPath, 'learnings', 'lessons');
-        const exists = yield* fs.exists(lessonsRoot);
+        return yield* readJsonlDirectory(
+          path.join(repoPath, 'learnings', 'lessons'),
+          repoPath,
+          parseLearningRecord
+        );
+      }
+    );
+
+    const readJsonlDirectory = <T>(
+      directory: string,
+      repoPath: string,
+      parser: (sourcePath: string, record: JsonlRecord) => T
+    ) =>
+      Effect.gen(function* () {
+        const exists = yield* fs.exists(directory);
         if (!exists) {
-          return [] as LearningRecord[];
+          return [] as T[];
         }
 
-        const entries = (yield* fs.readDirectory(lessonsRoot))
+        const entries = (yield* fs.readDirectory(directory))
           .filter((entry) => entry.endsWith('.jsonl'))
           .sort((left, right) => left.localeCompare(right));
-        const records: LearningRecord[] = [];
+        const records: T[] = [];
 
         for (const entry of entries) {
-          const filePath = path.join(lessonsRoot, entry);
-          records.push(
-            ...(yield* readJsonlFile(filePath, repoPath, (sourcePath, record) =>
-              parseLearningRecord(sourcePath, record)
-            ))
-          );
+          const filePath = path.join(directory, entry);
+          records.push(...(yield* readJsonlFile(filePath, repoPath, parser)));
         }
 
         return records;
-      }
-    );
+      });
 
     const readJsonlFile = <T>(
       filePath: string,
@@ -788,23 +781,6 @@ function getStringArray(record: JsonlRecord, key: string): string[] {
   }
 
   return value.map((item) => String(item).trim()).filter(Boolean);
-}
-
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result: Record<string, unknown> = {
-    ...(base as Record<string, unknown>)
-  };
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
 }
 
 function toStoreError(operation: string, error: unknown) {
