@@ -126,30 +126,6 @@ export function ensureGitignoreCoverage(repoPath: string): boolean {
   return true;
 }
 
-/** Removes legacy repository-registry paths from prior schema versions, if present. */
-export function removeLegacyRepositoriesDirectory(repoPath: string): void {
-  const legacyRegistryFile = path.join(repoPath, 'learnings', 'repositories.jsonl');
-  if (fs.existsSync(legacyRegistryFile)) {
-    fs.rmSync(legacyRegistryFile, { force: true });
-  }
-
-  const legacyDirectory = path.join(repoPath, 'learnings', 'repositories');
-  if (!fs.existsSync(legacyDirectory)) {
-    return;
-  }
-
-  const entries = fs.readdirSync(legacyDirectory);
-  if (entries.length === 0) {
-    fs.rmdirSync(legacyDirectory);
-    return;
-  }
-
-  for (const entry of entries) {
-    fs.rmSync(path.join(legacyDirectory, entry), { force: true, recursive: true });
-  }
-  fs.rmdirSync(legacyDirectory);
-}
-
 /** Throws a descriptive error if `repoPath` does not exist or is not a directory. */
 function assertDirectoryExists(repoPath: string): void {
   if (!fs.existsSync(repoPath)) {

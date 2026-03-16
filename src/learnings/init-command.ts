@@ -6,7 +6,6 @@ import {
   ensureCanonicalJsonlFiles,
   ensureGitignoreCoverage,
   ensureLearningsDirectories,
-  removeLegacyRepositoriesDirectory,
   resolveLearningsRepositoryContext
 } from './repository.js';
 
@@ -16,7 +15,7 @@ interface InitCommandOptions {
 
 /**
  * Initialises the learnings store for `repoPath`: creates the `.ivan/` directory and canonical files,
- * removes legacy registry paths, and ensures `.ivan/db.sqlite` is gitignored.
+ * and ensures `.ivan/db.sqlite` is gitignored.
  */
 export function initLearningsStore(repoPath: string): {
   repositoryId: string;
@@ -27,7 +26,6 @@ export function initLearningsStore(repoPath: string): {
   const context = resolveLearningsRepositoryContext(repoPath);
   const createdDirectories = ensureLearningsDirectories(context);
   const createdFiles = ensureCanonicalJsonlFiles(context.repoPath);
-  removeLegacyRepositoriesDirectory(context.repoPath);
   const gitignoreUpdated = ensureGitignoreCoverage(context.repoPath);
 
   return {
