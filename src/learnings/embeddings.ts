@@ -17,12 +17,10 @@ export interface LearningEmbedding {
 }
 
 /**
- * Produces a 256-dim embedding for a learning by concatenating its kind, title,
- * statement, rationale, applicability, and tags into a single text block.
+ * Returns the text string that would be fed to `embedText()` for a given learning.
+ * Exported so callers can hash the input independently without computing the embedding.
  */
-export function buildLearningEmbedding(
-  learning: LearningRecord
-): LearningEmbedding {
+export function buildEmbeddingInputString(learning: LearningRecord): string {
   const textParts = [
     learning.kind,
     learning.title,
@@ -32,10 +30,20 @@ export function buildLearningEmbedding(
     learning.tags.join(' ')
   ].filter(Boolean);
 
+  return textParts.join('\n');
+}
+
+/**
+ * Produces a 256-dim embedding for a learning by concatenating its kind, title,
+ * statement, rationale, applicability, and tags into a single text block.
+ */
+export function buildLearningEmbedding(
+  learning: LearningRecord
+): LearningEmbedding {
   return {
     model: 'local-hashed-v1',
     dimensions: EMBEDDING_DIMENSIONS,
-    vector: embedText(textParts.join('\n'))
+    vector: embedText(buildEmbeddingInputString(learning))
   };
 }
 

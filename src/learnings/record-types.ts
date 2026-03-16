@@ -106,6 +106,10 @@ export interface LearningRecord extends CanonicalRecord {
   status: string;
   evidence_ids: string[];
   tags: string[];
+  /** Cached 256-dim embedding vector from `local-hashed-v1`. */
+  embedding?: number[];
+  /** SHA-256 hex of the embedding input string; used to detect content changes. */
+  embeddingInputHash?: string;
 }
 
 /** The full in-memory view of all canonical JSONL data for one repo. */

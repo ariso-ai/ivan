@@ -17,7 +17,11 @@ import {
   getLearningsDbPath,
   openLearningsDatabase
 } from './database.js';
-import { buildLearningEmbedding, serializeVector } from './embeddings.js';
+import {
+  buildEmbeddingInputString,
+  buildLearningEmbedding,
+  serializeVector
+} from './embeddings.js';
 import {
   EVIDENCE_JSONL_RELATIVE_PATH,
   LESSONS_JSONL_RELATIVE_PATH,
@@ -32,6 +36,8 @@ export interface LearningsBuildResult {
   repositoryCount: number;
   evidenceCount: number;
   learningCount: number;
+  embeddingsCached?: number;
+  embeddingsGenerated?: number;
 }
 
 /**
@@ -44,6 +50,11 @@ export function rebuildLearningsDatabase(
   const dataset = loadCanonicalRecords(repoPath);
   validateLearningsDataset(dataset);
 
+  const { cached, generated, dirty } = resolveEmbeddings(dataset.learnings);
+  process.stderr.write(`Embeddings: ${cached} cached, ${generated} generated\n`);
+
+  if (dirty) writeBackEmbeddings(repoPath, dataset.learnings);
+
   const db = createFreshLearningsDatabase(repoPath);
 
   try {
@@ -55,7 +66,9 @@ export function rebuildLearningsDatabase(
       dbPath: getLearningsDbPath(repoPath),
       repositoryCount: dataset.repositories.length,
       evidenceCount: dataset.evidence.length,
-      learningCount: dataset.learnings.length
+      learningCount: dataset.learnings.length,
+      embeddingsCached: cached,
+      embeddingsGenerated: generated
     };
   } finally {
     db.close();
@@ -124,6 +137,85 @@ export function computeJsonlHash(repoPath: string): string {
   }
 
   return hash.digest('hex');
+}
+
+/**
+ * Checks each learning's cached embedding against a SHA-256 of the current embedding input string.
+ * Cache hits reuse the stored vector; cache misses compute a new embedding and mutate the record
+ * in-place. Returns hit/miss counts and whether any records were mutated (dirty).
+ */
+function resolveEmbeddings(
+  learnings: LearningRecord[]
+): { cached: number; generated: number; dirty: boolean } {
+  let cached = 0;
+  let generated = 0;
+  let dirty = false;
+
+  for (const learning of learnings) {
+    const inputString = buildEmbeddingInputString(learning);
+    const currentHash = createHash('sha256').update(inputString).digest('hex');
+
+    if (
+      learning.embeddingInputHash === currentHash &&
+      learning.embedding !== undefined
+    ) {
+      cached += 1;
+    } else {
+      const embedding = buildLearningEmbedding(learning);
+      learning.embedding = embedding.vector;
+      learning.embeddingInputHash = currentHash;
+      generated += 1;
+      dirty = true;
+    }
+  }
+
+  return { cached, generated, dirty };
+}
+
+/**
+ * Rewrites the lessons JSONL file, merging the in-memory `embedding` and `embeddingInputHash`
+ * fields back onto each line that matches by `id`. Non-learning lines are preserved as-is.
+ */
+function writeBackEmbeddings(
+  repoPath: string,
+  learnings: LearningRecord[]
+): void {
+  const filePath = resolveCanonicalLearningsPath(
+    path.resolve(repoPath),
+    'lessons.jsonl'
+  );
+
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const learningById = new Map<string, LearningRecord>();
+  for (const learning of learnings) {
+    learningById.set(learning.id, learning);
+  }
+
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+  const updatedLines: string[] = [];
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const id = typeof parsed['id'] === 'string' ? parsed['id'] : undefined;
+    const learning = id !== undefined ? learningById.get(id) : undefined;
+
+    if (learning !== undefined) {
+      parsed['embedding'] = learning.embedding;
+      parsed['embeddingInputHash'] = learning.embeddingInputHash;
+    }
+
+    updatedLines.push(JSON.stringify(parsed));
+  }
+
+  fs.writeFileSync(filePath, updatedLines.map((l) => `${l}\n`).join(''), 'utf8');
 }
 
 /**
@@ -259,17 +351,18 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   transaction();
 }
 
-/** Builds a local embedding for `learning` and inserts it into the `learning_embeddings` table. */
+/** Inserts the pre-resolved embedding from `learning.embedding` into the `learning_embeddings` table. */
 function writeLearningEmbedding(
   statement: Database.Statement,
   learning: LearningRecord
 ): void {
-  const embedding = buildLearningEmbedding(learning);
+  // embedding is always populated by resolveEmbeddings() before insertDataset() runs
+  const vector = learning.embedding!;
   statement.run(
     learning.id,
-    embedding.model,
-    embedding.dimensions,
-    serializeVector(embedding.vector),
+    'local-hashed-v1',
+    256,
+    serializeVector(vector),
     learning.updated_at
   );
 }

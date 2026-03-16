@@ -91,7 +91,9 @@ function readLearningRecords(repoPath: string): LearningRecord[] {
         title: getOptionalString(record, 'title'),
         rationale: getOptionalString(record, 'rationale'),
         applicability: getOptionalString(record, 'applicability'),
-        confidence: getOptionalNumber(record, 'confidence')
+        confidence: getOptionalNumber(record, 'confidence'),
+        embedding: getOptionalNumberArray(record, 'embedding'),
+        embeddingInputHash: getOptionalString(record, 'embeddingInputHash')
       }
     )
   );
@@ -174,6 +176,23 @@ function getOptionalNumber(
   }
 
   return parsed;
+}
+
+/** Returns a `number[]` from a JSON field, or `undefined` when the field is absent or null. */
+function getOptionalNumberArray(
+  record: JsonlRecord,
+  key: string
+): number[] | undefined {
+  const value = record[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.map((item) => (typeof item === 'number' ? item : Number(item)));
 }
 
 /** Returns a `string[]` from a JSON field, gracefully handling missing, scalar, or array values. */

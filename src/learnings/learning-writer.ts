@@ -76,7 +76,9 @@ function serializeLearningRecord(
     title: record.title,
     rationale: record.rationale,
     applicability: record.applicability,
-    confidence: record.confidence
+    confidence: record.confidence,
+    embedding: record.embedding,
+    embeddingInputHash: record.embeddingInputHash
   });
 }
 
