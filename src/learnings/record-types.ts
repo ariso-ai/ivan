@@ -49,55 +49,43 @@ export interface EvidenceRecord extends CanonicalRecord {
   occurred_at?: string;
   /**
    * Raw weight assigned by evidence type before boosts or penalties.
+   * See `weighting.ts` for the scoring functions that produce these values.
    *
-   * | source_type               | base_weight | Notes                                      |
-   * |---------------------------|-------------|--------------------------------------------|
-   * | pr_review (with text)     | 6           | Already a structured mini-distillation     |
-   * | pr_issue_comment (human)  | 5           | Often contains system-level reasoning      |
-   * | pr_review_reply (author)  | 4           | Author ack is a strong usefulness proxy    |
-   * | pr_review_comment (root)  | 3           | Local by nature; requires boosts           |
-   * | pr_review_reply (other)   | 2           | Engagement signal; mainly a boost carrier  |
-   * | pull_request (body para)  | 2           | Mostly context / risk / rollout notes      |
-   * | pr_review (state only)    | 1           | Structured but weak without rationale      |
-   * | pull_request (merge meta) | 1           | Corroboration only                         |
+   * | source_type / condition              | base_weight | Notes                              |
+   * |--------------------------------------|-------------|------------------------------------|
+   * | pr_review (CHANGES_REQUESTED)        | 6           | Actionable feedback                |
+   * | pr_review_thread (unresolved)        | 5           | Still-open issue                   |
+   * | pr_check (failure / error)           | 4           | CI failure signal                  |
+   * | pr_review_thread (resolved)          | 3           | Addressed inline thread            |
+   * | pr_issue_comment                     | 3           | General PR discussion              |
+   * | pr_review (APPROVED / COMMENTED)     | 2           | Verdict without actionable content |
+   * | pr_check (passing)                   | 1           | Low signal; not extracted          |
    */
   base_weight?: number;
   /**
-   * Final weight after applying boosts and penalties. Used to filter evidence during
-   * learning extraction (threshold: ≥ 12 to create a learning).
+   * Final weight after applying boosts and penalties.
+   * Evidence is extracted into a learning when `final_weight >= 3` (see `extractor.ts`).
+   * Confidence is derived as `0.35 + min(final_weight, 12) / 20` → [0.35, 0.95].
    *
-   * **Boosts**
-   * | Label                    | Δ    | Condition                                          |
-   * |--------------------------|------|----------------------------------------------------|
-   * | multi_participant        | +3   | 2+ distinct human participants in thread           |
-   * | author_acknowledgement   | +2   | Author explicitly acknowledges the comment         |
-   * | extra_replies            | +1–3 | Additional substantive replies (capped at +3)      |
-   * | addressed_change         | +6   | Code change plausibly linked to this comment       |
-   * | thread_resolved          | +2   | Thread marked resolved                             |
-   * | pr_merged                | +1   | PR was merged                                      |
-   * | generalizable_framing    | +2   | Uses "in general / prefer / avoid / guideline"     |
+   * **Boosts** (added to `base_weight`)
+   * | Label                  | Condition                                          |
+   * |------------------------|----------------------------------------------------|
+   * | `changes_requested`    | Review state is CHANGES_REQUESTED                  |
+   * | `approved`             | Review state is APPROVED                           |
+   * | `unresolved_thread`    | Review thread is not yet resolved                  |
+   * | `inline_code_comment`  | Thread is diff-anchored (has a file path)          |
    *
-   * **Penalties**
-   * | Label                    | Δ    | Condition                                          |
-   * |--------------------------|------|----------------------------------------------------|
-   * | bot_author               | −8   | Actor is a bot or automation account               |
-   * | nit_label                | −6   | Comment explicitly labeled `Nit:`                  |
-   * | style_only               | −4   | Style/formatting/typo with no generalizable lesson |
-   * | outdated_thread          | −3   | Thread is marked outdated                          |
-   * | pr_closed_unmerged       | −3   | PR was closed without merging                      |
-   *
-   * **Confidence buckets** (derived from `final_weight`)
-   * | Bucket  | Score     | Additional requirements                            |
-   * |---------|-----------|---------------------------------------------------|
-   * | high    | ≥ 14      | Addressed change signal + acknowledgement/multi    |
-   * | medium  | ≥ 10      | Engagement present; no strong code-change proof    |
-   * | low     | ≥ 8       | Lacks engagement or outcome signals                |
-   * | skip    | < 8       | Do not extract a learning                          |
+   * **Penalties** (subtracted from `base_weight`, floored at 0)
+   * | Label                  | Δ  | Condition                                        |
+   * |------------------------|----|--------------------------------------------------|
+   * | `low_signal_text`      | −2 | Body starts with `nit:`, `style:`, or `typo:`   |
+   * | `outdated_thread`      | —  | Thread marked outdated (label only, no Δ)        |
+   * | `review_comment_only`  | —  | Review state is COMMENTED (label only, no Δ)     |
    */
   final_weight?: number;
-  /** Labels that increased the signal value (e.g. `addressed_change`, `author_acknowledgement`). */
+  /** Labels that increased the signal value (e.g. `changes_requested`, `unresolved_thread`). */
   boosts: string[];
-  /** Labels that decreased the signal value (e.g. `nit_label`, `outdated_thread`). */
+  /** Labels that decreased the signal value (e.g. `low_signal_text`, `outdated_thread`). */
   penalties: string[];
 }
 
