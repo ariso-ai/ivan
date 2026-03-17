@@ -42,7 +42,7 @@ export async function ingestPullRequestEvidence(
     context.repositoryId,
     records
   );
-  const extraction = extractLearningsFromEvidence(context.repoPath);
+  const extraction = await extractLearningsFromEvidence(context.repoPath);
 
   return {
     repositoryId: context.repositoryId,

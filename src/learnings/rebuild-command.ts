@@ -18,7 +18,7 @@ export async function runRebuildCommand(
     return;
   }
 
-  const result = rebuildLearningsDatabase(options.repo);
+  const result = await rebuildLearningsDatabase(options.repo);
 
   console.log(chalk.green('✅ Learnings database rebuilt'));
   console.log(chalk.gray(`DB: ${result.dbPath}`));

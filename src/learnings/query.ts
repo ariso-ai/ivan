@@ -28,11 +28,11 @@ interface LearningRow {
  * Searches the learnings database for records relevant to `text`, hydrating each result
  * with its tags and evidence.  Opens the DB read-only and closes it before returning.
  */
-export function queryLearnings(
+export async function queryLearnings(
   repoPath: string,
   text: string,
   options: LearningsSearchOptions = {}
-): LearningsQueryResult[] {
+): Promise<LearningsQueryResult[]> {
   const searchText = text.trim();
   if (!searchText) {
     throw new Error('Query text must not be empty');
@@ -42,7 +42,7 @@ export function queryLearnings(
 
   try {
     const limit = options.limit ?? 5;
-    const rows = runLearningSearch(db, searchText, limit);
+    const rows = await runLearningSearch(db, searchText, limit);
     const tagStatement = db.prepare(
       `
         SELECT tag
@@ -122,12 +122,12 @@ export function queryLearnings(
  * Tries vector search, then FTS5, then LIKE in order, returning the first non-empty result set.
  * This cascade ensures useful results even for short or non-word queries.
  */
-function runLearningSearch(
+async function runLearningSearch(
   db: ReturnType<typeof openLearningsDatabase>,
   text: string,
   limit: number
-): LearningRow[] {
-  const vectorRows = runVectorSearch(db, text, limit);
+): Promise<LearningRow[]> {
+  const vectorRows = await runVectorSearch(db, text, limit);
   if (vectorRows.length > 0) {
     return vectorRows;
   }
@@ -199,12 +199,17 @@ function runLearningSearch(
  * Embeds `text` and runs a vec0 KNN cosine-distance query against `learning_vectors`,
  * filtering to active learnings only. Returns the top `limit` rows ordered by distance.
  */
-function runVectorSearch(
+async function runVectorSearch(
   db: ReturnType<typeof openLearningsDatabase>,
   text: string,
   limit: number
-): LearningRow[] {
-  const queryVector = Buffer.from(new Float32Array(embedText(text)).buffer);
+): Promise<LearningRow[]> {
+  let queryVector: Buffer;
+  try {
+    queryVector = Buffer.from(new Float32Array(await embedText(text)).buffer);
+  } catch {
+    return []; // OpenAI unavailable — fall through to FTS5
+  }
 
   return db
     .prepare(

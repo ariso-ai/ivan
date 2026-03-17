@@ -98,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_learning_tags_tag
 
 CREATE VIRTUAL TABLE IF NOT EXISTS learning_vectors USING vec0(
     learning_id TEXT PRIMARY KEY,
-    vector float[256] distance_metric=cosine
+    vector float[1536] distance_metric=cosine
 );
 
 CREATE TABLE IF NOT EXISTS meta (

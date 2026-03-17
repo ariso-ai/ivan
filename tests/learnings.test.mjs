@@ -1,15 +1,52 @@
-import { afterEach, describe, expect, test } from '@jest/globals';
+import { afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { rebuildLearningsDatabase } from '../dist/learnings/builder.js';
-import { buildEmbeddingInputString } from '../dist/learnings/embeddings.js';
-import { buildEvidenceRecordsFromPullRequest } from '../dist/learnings/evidence-writer.js';
-import { extractLearningRecords } from '../dist/learnings/extractor.js';
-import { loadCanonicalRecords } from '../dist/learnings/parser.js';
-import { queryLearnings } from '../dist/learnings/query.js';
+
+// Deterministic fake embedding: same input always yields the same 1536-dim unit vector.
+// Allows rebuild/query tests to run without hitting the OpenAI API.
+function deterministicEmbedding(text) {
+  const dim = 1536;
+  const vec = new Array(dim).fill(0);
+  for (let i = 0; i < text.length; i++) {
+    vec[i % dim] += text.charCodeAt(i);
+  }
+  const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
+  return vec.map((v) => v / mag);
+}
+
+// Must be called before any dynamic import that resolves openai
+jest.unstable_mockModule('openai', () => ({
+  default: class OpenAIMock {
+    embeddings = {
+      create: async ({ input }) => {
+        const texts = Array.isArray(input) ? input : [input];
+        return {
+          data: texts.map((text, index) => ({ index, embedding: deterministicEmbedding(text) }))
+        };
+      }
+    };
+  }
+}));
+
+// Dynamic imports must come after unstable_mockModule so the mock is in place
+let rebuildLearningsDatabase;
+let buildEmbeddingInputString;
+let buildEvidenceRecordsFromPullRequest;
+let extractLearningRecords;
+let loadCanonicalRecords;
+let queryLearnings;
+
+beforeAll(async () => {
+  ({ rebuildLearningsDatabase } = await import('../dist/learnings/builder.js'));
+  ({ buildEmbeddingInputString } = await import('../dist/learnings/embeddings.js'));
+  ({ buildEvidenceRecordsFromPullRequest } = await import('../dist/learnings/evidence-writer.js'));
+  ({ extractLearningRecords } = await import('../dist/learnings/extractor.js'));
+  ({ loadCanonicalRecords } = await import('../dist/learnings/parser.js'));
+  ({ queryLearnings } = await import('../dist/learnings/query.js'));
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,10 +80,10 @@ describe('learnings storage slice', () => {
     ]);
   });
 
-  test('rebuilds .ivan/db.sqlite and returns evidence-backed query results', () => {
+  test('rebuilds .ivan/db.sqlite and returns evidence-backed query results', async () => {
     const repoPath = copyFixtureRepo();
-    const result = rebuildLearningsDatabase(repoPath);
-    const queryResults = queryLearnings(repoPath, 'locks await', { limit: 2 });
+    const result = await rebuildLearningsDatabase(repoPath);
+    const queryResults = await queryLearnings(repoPath, 'locks await', { limit: 2 });
 
     expect(fs.existsSync(result.dbPath)).toBe(true);
     expect(result.repositoryCount).toBe(1);
@@ -147,12 +184,22 @@ describe('learnings storage slice', () => {
     );
   });
 
-  test('rebuild writes embedding cache to JSONL; second rebuild reuses cache entirely', () => {
+  test('rebuild writes embedding cache to JSONL; second rebuild reuses cache entirely', async () => {
     const repoPath = copyFixtureRepo();
     const lessonsPath = path.join(repoPath, '.ivan', 'lessons.jsonl');
 
+    // Strip any pre-cached embeddings from the fixture so we can test cold-cache generation
+    const raw = fs.readFileSync(lessonsPath, 'utf8');
+    const stripped = raw.trim().split('\n').map((line) => {
+      const rec = JSON.parse(line);
+      delete rec.embedding;
+      delete rec.embeddingInputHash;
+      return JSON.stringify(rec);
+    }).join('\n') + '\n';
+    fs.writeFileSync(lessonsPath, stripped, 'utf8');
+
     // First rebuild: no cached embeddings, should generate 1
-    const first = rebuildLearningsDatabase(repoPath);
+    const first = await rebuildLearningsDatabase(repoPath);
 
     expect(first.embeddingsGenerated).toBe(1);
     expect(first.embeddingsCached).toBe(0);
@@ -161,23 +208,23 @@ describe('learnings storage slice', () => {
     const afterFirst = fs.readFileSync(lessonsPath, 'utf8');
     const parsedFirst = JSON.parse(afterFirst.trim().split('\n')[0]);
     expect(Array.isArray(parsedFirst.embedding)).toBe(true);
-    expect(parsedFirst.embedding).toHaveLength(256);
+    expect(parsedFirst.embedding).toHaveLength(1536);
     expect(typeof parsedFirst.embeddingInputHash).toBe('string');
     expect(parsedFirst.embeddingInputHash).toHaveLength(64);
 
     // Second rebuild: all embeddings cached, 0 generated
-    const second = rebuildLearningsDatabase(repoPath);
+    const second = await rebuildLearningsDatabase(repoPath);
 
     expect(second.embeddingsCached).toBe(1);
     expect(second.embeddingsGenerated).toBe(0);
   });
 
-  test('modifying a learning statement triggers regeneration for only that record', () => {
+  test('modifying a learning statement triggers regeneration for only that record', async () => {
     const repoPath = copyFixtureRepo();
     const lessonsPath = path.join(repoPath, '.ivan', 'lessons.jsonl');
 
     // First rebuild to warm the cache
-    rebuildLearningsDatabase(repoPath);
+    await rebuildLearningsDatabase(repoPath);
 
     // Read back the cached hash
     const afterFirst = fs.readFileSync(lessonsPath, 'utf8');
@@ -192,7 +239,7 @@ describe('learnings storage slice', () => {
     fs.writeFileSync(lessonsPath, modified, 'utf8');
 
     // Second rebuild: hash mismatch → regenerate
-    const second = rebuildLearningsDatabase(repoPath);
+    const second = await rebuildLearningsDatabase(repoPath);
 
     expect(second.embeddingsGenerated).toBe(1);
     expect(second.embeddingsCached).toBe(0);
@@ -396,6 +443,7 @@ function copyFixtureRepo() {
 function execIvan(args) {
   return execFileSync('node', ['dist/index.js', ...args], {
     cwd: projectRoot,
-    encoding: 'utf8'
+    encoding: 'utf8',
+    env: { ...process.env, OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? 'sk-test' }
   });
 }

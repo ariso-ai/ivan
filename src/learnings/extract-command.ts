@@ -12,7 +12,7 @@ interface ExtractCommandOptions {
 export async function runExtractCommand(
   options: ExtractCommandOptions
 ): Promise<void> {
-  const result = extractLearningsFromEvidence(options.repo);
+  const result = await extractLearningsFromEvidence(options.repo);
 
   console.log(chalk.green('✅ Learnings extracted from evidence'));
   console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));

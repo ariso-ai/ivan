@@ -27,7 +27,7 @@ export interface ExtractionResult {
  * Top-level orchestrator: ensures the repo is initialised, runs extraction over all
  * evidence records, writes the resulting learnings to JSONL, and rebuilds the SQLite DB.
  */
-export function extractLearningsFromEvidence(repoPath: string): ExtractionResult {
+export async function extractLearningsFromEvidence(repoPath: string): Promise<ExtractionResult> {
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
 
@@ -38,7 +38,7 @@ export function extractLearningsFromEvidence(repoPath: string): ExtractionResult
     context.repositoryId,
     extractedRecords
   );
-  const rebuild = rebuildLearningsDatabase(context.repoPath);
+  const rebuild = await rebuildLearningsDatabase(context.repoPath);
 
   return {
     repositoryId: context.repositoryId,

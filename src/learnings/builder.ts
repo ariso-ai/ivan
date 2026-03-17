@@ -19,7 +19,9 @@ import {
 } from './database.js';
 import {
   buildEmbeddingInputString,
-  buildLearningEmbedding
+  EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
+  embedTexts
 } from './embeddings.js';
 import {
   EVIDENCE_JSONL_RELATIVE_PATH,
@@ -35,21 +37,21 @@ export interface LearningsBuildResult {
   repositoryCount: number;
   evidenceCount: number;
   learningCount: number;
-  embeddingsCached?: number;
-  embeddingsGenerated?: number;
+  embeddingsCached: number;
+  embeddingsGenerated: number;
 }
 
 /**
  * Validates all canonical JSONL records, then creates a fresh SQLite database,
  * bulk-inserts everything in one transaction, and populates the FTS tables.
  */
-export function rebuildLearningsDatabase(
+export async function rebuildLearningsDatabase(
   repoPath: string
-): LearningsBuildResult {
+): Promise<LearningsBuildResult> {
   const dataset = loadCanonicalRecords(repoPath);
   validateLearningsDataset(dataset);
 
-  const { cached, generated, dirty } = resolveEmbeddings(dataset.learnings);
+  const { cached, generated, dirty } = await resolveEmbeddings(dataset.learnings);
   process.stderr.write(`Embeddings: ${cached} cached, ${generated} generated\n`);
 
   if (dirty) writeBackEmbeddings(repoPath, dataset.learnings);
@@ -139,36 +141,45 @@ export function computeJsonlHash(repoPath: string): string {
 }
 
 /**
- * Checks each learning's cached embedding against a SHA-256 of the current embedding input string.
- * Cache hits reuse the stored vector; cache misses compute a new embedding and mutate the record
- * in-place. Returns hit/miss counts and whether any records were mutated (dirty).
+ * Checks each learning's cached embedding against a SHA-256 of the model version +
+ * embedding input string. Cache hits reuse the stored vector; cache misses are batched
+ * into a single OpenAI API call. Mutates records in-place. Returns hit/miss counts.
+ *
+ * Including EMBEDDING_MODEL in the hash ensures old caches (e.g. from the previous
+ * local hash function) are automatically invalidated when the model changes.
  */
-function resolveEmbeddings(
+async function resolveEmbeddings(
   learnings: LearningRecord[]
-): { cached: number; generated: number; dirty: boolean } {
+): Promise<{ cached: number; generated: number; dirty: boolean }> {
+  const dirty: Array<{ learning: LearningRecord; inputString: string; hash: string }> = [];
   let cached = 0;
-  let generated = 0;
-  let dirty = false;
 
   for (const learning of learnings) {
     const inputString = buildEmbeddingInputString(learning);
-    const currentHash = createHash('sha256').update(inputString).digest('hex');
+    const hash = createHash('sha256')
+      .update(`${EMBEDDING_MODEL}@${EMBEDDING_DIMENSIONS}\n`)
+      .update(inputString)
+      .digest('hex');
 
     if (
-      learning.embeddingInputHash === currentHash &&
-      learning.embedding !== undefined
+      learning.embeddingInputHash === hash &&
+      learning.embedding?.length === EMBEDDING_DIMENSIONS
     ) {
       cached += 1;
     } else {
-      const embedding = buildLearningEmbedding(learning);
-      learning.embedding = embedding.vector;
-      learning.embeddingInputHash = currentHash;
-      generated += 1;
-      dirty = true;
+      dirty.push({ learning, inputString, hash });
     }
   }
 
-  return { cached, generated, dirty };
+  if (dirty.length > 0) {
+    const vectors = await embedTexts(dirty.map((d) => d.inputString));
+    for (let i = 0; i < dirty.length; i++) {
+      dirty[i].learning.embedding = vectors[i];
+      dirty[i].learning.embeddingInputHash = dirty[i].hash;
+    }
+  }
+
+  return { cached, generated: dirty.length, dirty: dirty.length > 0 };
 }
 
 /**

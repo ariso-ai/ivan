@@ -19,7 +19,7 @@ export async function runQueryCommand(
     throw new Error('Query limit must be a positive integer');
   }
 
-  const results = queryLearnings(options.repo, options.text, { limit });
+  const results = await queryLearnings(options.repo, options.text, { limit });
 
   if (results.length === 0) {
     console.log(chalk.yellow('No learnings matched that query.'));
