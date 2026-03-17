@@ -66,10 +66,6 @@ export function embedText(text: string): number[] {
   return normalize(vector);
 }
 
-/** Serializes a float vector to a JSON string for storage in SQLite's `vector_json` column. */
-export function serializeVector(vector: number[]): string {
-  return JSON.stringify(vector);
-}
 
 /** Extracts lowercase alphanumeric words plus adjacent bigrams (`word_nextword`) from text. */
 function tokenize(text: string): string[] {

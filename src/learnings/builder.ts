@@ -19,8 +19,7 @@ import {
 } from './database.js';
 import {
   buildEmbeddingInputString,
-  buildLearningEmbedding,
-  serializeVector
+  buildLearningEmbedding
 } from './embeddings.js';
 import {
   EVIDENCE_JSONL_RELATIVE_PATH,
@@ -307,16 +306,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
     ) VALUES (?, ?, 'inferred', NULL, ?)
   `);
 
-  const insertLearningEmbedding = db.prepare(`
-    INSERT INTO learning_embeddings (
-      learning_id,
-      model,
-      dimensions,
-      vector_json,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?)
-  `);
-
   const insertLearningVector = db.prepare(`
     INSERT INTO learning_vectors (learning_id, vector) VALUES (?, ?)
   `);
@@ -332,7 +321,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
 
     for (const learning of sortRecords(dataset.learnings)) {
       writeLearning(insertLearning, learning);
-      writeLearningEmbedding(insertLearningEmbedding, learning);
       writeLearningVector(insertLearningVector, learning);
 
       for (const evidenceId of [...learning.evidence_ids].sort((a, b) =>
@@ -354,22 +342,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   });
 
   transaction();
-}
-
-/** Inserts the pre-resolved embedding from `learning.embedding` into the `learning_embeddings` table. */
-function writeLearningEmbedding(
-  statement: Database.Statement,
-  learning: LearningRecord
-): void {
-  // embedding is always populated by resolveEmbeddings() before insertDataset() runs
-  const vector = learning.embedding!;
-  statement.run(
-    learning.id,
-    'local-hashed-v1',
-    256,
-    serializeVector(vector),
-    learning.created_at
-  );
 }
 
 /** Inserts the pre-resolved embedding as a Float32Array buffer into the `learning_vectors` vec0 table. */
