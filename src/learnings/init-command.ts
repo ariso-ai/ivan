@@ -1,5 +1,5 @@
 // CLI handler for `ivan learnings init`.
-// Sets up the repo-local `.ivan/` structure and gitignores the derived SQLite file.
+// Sets up the repo-local `.ivan/` structure. The derived SQLite file is tracked in git.
 
 import chalk from 'chalk';
 import {
@@ -14,8 +14,7 @@ interface InitCommandOptions {
 }
 
 /**
- * Initialises the learnings store for `repoPath`: creates the `.ivan/` directory and canonical files,
- * and ensures `.ivan/db.sqlite` is gitignored.
+ * Initialises the learnings store for `repoPath`: creates the `.ivan/` directory and canonical files.
  */
 export function initLearningsStore(repoPath: string): {
   repositoryId: string;
@@ -59,11 +58,4 @@ export async function runInitCommand(
     }
   }
 
-  console.log(
-    chalk.gray(
-      result.gitignoreUpdated
-        ? 'Updated .gitignore with .ivan/db.sqlite exclusions'
-        : '.gitignore already covered .ivan/db.sqlite'
-    )
-  );
 }

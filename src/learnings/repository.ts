@@ -98,32 +98,12 @@ export function ensureCanonicalJsonlFiles(repoPath: string): string[] {
 }
 
 /**
- * Appends `.ivan/db.sqlite` and SQLite sidecar patterns to `.gitignore` if they are not already present.
- * Returns true if the file was modified, false if no changes were needed.
+ * No-op: `.ivan/db.sqlite` is intentionally tracked in git so the database is
+ * available to all collaborators without requiring a rebuild.
+ * Always returns false (no changes made).
  */
-export function ensureGitignoreCoverage(repoPath: string): boolean {
-  const gitignorePath = path.join(repoPath, '.gitignore');
-  const requiredPatterns = ['.ivan/db.sqlite', '.ivan/db.sqlite-*'];
-  const existingContent = fs.existsSync(gitignorePath)
-    ? fs.readFileSync(gitignorePath, 'utf8')
-    : '';
-  const normalized = existingContent.replace(/\r\n/g, '\n');
-  const existingLines = new Set(normalized.split('\n'));
-  const missingPatterns = requiredPatterns.filter(
-    (pattern) => !existingLines.has(pattern)
-  );
-
-  if (missingPatterns.length === 0) {
-    return false;
-  }
-
-  const nextContent =
-    normalized.trimEnd().length > 0
-      ? `${normalized.trimEnd()}\n\n# Derived learnings database\n${missingPatterns.join('\n')}\n`
-      : `# Derived learnings database\n${missingPatterns.join('\n')}\n`;
-
-  fs.writeFileSync(gitignorePath, nextContent);
-  return true;
+export function ensureGitignoreCoverage(_repoPath: string): boolean {
+  return false;
 }
 
 /** Throws a descriptive error if `repoPath` does not exist or is not a directory. */

@@ -71,9 +71,6 @@ describe('learnings storage slice', () => {
     expect(
       fs.existsSync(path.join(repoPath, '.ivan', 'lessons.jsonl'))
     ).toBe(true);
-    expect(
-      fs.readFileSync(path.join(repoPath, '.gitignore'), 'utf8')
-    ).toContain('.ivan/db.sqlite');
   });
 
   test('rebuild and query commands work end to end via CLI', () => {
