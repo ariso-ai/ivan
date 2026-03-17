@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { rebuildLearningsDatabase } from '../dist/learnings/builder.js';
+import { buildEmbeddingInputString } from '../dist/learnings/embeddings.js';
 import { buildEvidenceRecordsFromPullRequest } from '../dist/learnings/evidence-writer.js';
 import { extractLearningRecords } from '../dist/learnings/extractor.js';
 import { loadCanonicalRecords } from '../dist/learnings/parser.js';
@@ -130,6 +131,79 @@ describe('learnings storage slice', () => {
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toContain(
       'ivan-learnings-post-edit.sh'
     );
+  });
+
+  test('buildEmbeddingInputString produces expected concatenation', () => {
+    const learning = {
+      kind: 'engineering_lesson',
+      title: 'Avoid locks',
+      statement: 'Do not hold locks across awaits.',
+      rationale: 'Causes deadlocks.',
+      applicability: 'Async handlers.',
+      tags: ['async', 'locking']
+    };
+
+    const result = buildEmbeddingInputString(learning);
+
+    expect(result).toBe(
+      'engineering_lesson\nAvoid locks\nDo not hold locks across awaits.\nCauses deadlocks.\nAsync handlers.\nasync locking'
+    );
+  });
+
+  test('rebuild writes embedding cache to JSONL; second rebuild reuses cache entirely', () => {
+    const repoPath = copyFixtureRepo();
+    const lessonsPath = path.join(repoPath, '.ivan', 'lessons.jsonl');
+
+    // First rebuild: no cached embeddings, should generate 1
+    const first = rebuildLearningsDatabase(repoPath);
+
+    expect(first.embeddingsGenerated).toBe(1);
+    expect(first.embeddingsCached).toBe(0);
+
+    // JSONL should now contain embedding and embeddingInputHash
+    const afterFirst = fs.readFileSync(lessonsPath, 'utf8');
+    const parsedFirst = JSON.parse(afterFirst.trim().split('\n')[0]);
+    expect(Array.isArray(parsedFirst.embedding)).toBe(true);
+    expect(parsedFirst.embedding).toHaveLength(256);
+    expect(typeof parsedFirst.embeddingInputHash).toBe('string');
+    expect(parsedFirst.embeddingInputHash).toHaveLength(64);
+
+    // Second rebuild: all embeddings cached, 0 generated
+    const second = rebuildLearningsDatabase(repoPath);
+
+    expect(second.embeddingsCached).toBe(1);
+    expect(second.embeddingsGenerated).toBe(0);
+  });
+
+  test('modifying a learning statement triggers regeneration for only that record', () => {
+    const repoPath = copyFixtureRepo();
+    const lessonsPath = path.join(repoPath, '.ivan', 'lessons.jsonl');
+
+    // First rebuild to warm the cache
+    rebuildLearningsDatabase(repoPath);
+
+    // Read back the cached hash
+    const afterFirst = fs.readFileSync(lessonsPath, 'utf8');
+    const recordFirst = JSON.parse(afterFirst.trim().split('\n')[0]);
+    const originalHash = recordFirst.embeddingInputHash;
+
+    // Modify the statement in the JSONL directly
+    const modified = afterFirst.replace(
+      '"statement":"Avoid holding locks across awaits or other blocking operations."',
+      '"statement":"Never hold locks across awaits."'
+    );
+    fs.writeFileSync(lessonsPath, modified, 'utf8');
+
+    // Second rebuild: hash mismatch → regenerate
+    const second = rebuildLearningsDatabase(repoPath);
+
+    expect(second.embeddingsGenerated).toBe(1);
+    expect(second.embeddingsCached).toBe(0);
+
+    // New hash should differ from original
+    const afterSecond = fs.readFileSync(lessonsPath, 'utf8');
+    const recordSecond = JSON.parse(afterSecond.trim().split('\n')[0]);
+    expect(recordSecond.embeddingInputHash).not.toBe(originalHash);
   });
 
   test('maps GitHub PR evidence into deterministic canonical evidence records', () => {
