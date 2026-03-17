@@ -27,7 +27,9 @@ export interface ExtractionResult {
  * Top-level orchestrator: ensures the repo is initialised, runs extraction over all
  * evidence records, writes the resulting learnings to JSONL, and rebuilds the SQLite DB.
  */
-export async function extractLearningsFromEvidence(repoPath: string): Promise<ExtractionResult> {
+export async function extractLearningsFromEvidence(
+  repoPath: string
+): Promise<ExtractionResult> {
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
 
@@ -83,7 +85,9 @@ function shouldExtractEvidence(evidence: EvidenceRecord): boolean {
 
   if (
     evidence.source_type === 'pr_issue_comment' &&
-    /\b(before rewrite|after rewrite|agent instructions)\b/i.test(evidence.content)
+    /\b(before rewrite|after rewrite|agent instructions)\b/i.test(
+      evidence.content
+    )
   ) {
     return false;
   }
@@ -130,30 +134,35 @@ function buildLearningRecord(evidence: EvidenceRecord): LearningRecord | null {
   const now = evidence.updated_at;
   const title = inferTitle(statement);
 
-  return withOptionalFields<LearningRecord>({
-    type: 'learning',
-    sourcePath: LESSONS_JSONL_RELATIVE_PATH,
-    id: createDeterministicId(
-      'lrn',
-      evidence.repository_id,
-      evidence.id,
-      statement
-    ),
-    repository_id: evidence.repository_id,
-    kind,
-    statement,
-    status: 'active',
-    evidence_ids: evidenceIds,
-    tags: inferTags(statement, evidence),
-    created_at: now,
-    updated_at: now
-  }, {
-    source_type: 'github_pr_discourse',
-    title,
-    rationale,
-    applicability: inferApplicability(kind, evidence),
-    confidence: inferConfidence(evidence.final_weight ?? evidence.base_weight ?? 0)
-  });
+  return withOptionalFields<LearningRecord>(
+    {
+      type: 'learning',
+      sourcePath: LESSONS_JSONL_RELATIVE_PATH,
+      id: createDeterministicId(
+        'lrn',
+        evidence.repository_id,
+        evidence.id,
+        statement
+      ),
+      repository_id: evidence.repository_id,
+      kind,
+      statement,
+      status: 'active',
+      evidence_ids: evidenceIds,
+      tags: inferTags(statement, evidence),
+      created_at: now,
+      updated_at: now
+    },
+    {
+      source_type: 'github_pr_discourse',
+      title,
+      rationale,
+      applicability: inferApplicability(kind, evidence),
+      confidence: inferConfidence(
+        evidence.final_weight ?? evidence.base_weight ?? 0
+      )
+    }
+  );
 }
 
 /**
@@ -193,9 +202,7 @@ function extractStatement(content: string): string | null {
  * Specialised statement extractor for `pull_request`-type evidence.
  * Skips PR-prefix lines and "verify/changed files" boilerplate before picking the first usable sentence.
  */
-function extractPullRequestStatement(
-  evidence: EvidenceRecord
-): string | null {
+function extractPullRequestStatement(evidence: EvidenceRecord): string | null {
   const candidates = evidence.content
     .split(/\n+/)
     .flatMap((line) => sanitizeEvidenceContent(line).split(/(?<=[.?!])\s+/))
@@ -222,7 +229,10 @@ function extractPullRequestStatement(
  * Returns the text that follows the statement within the evidence content as the rationale.
  * Falls back to the full normalized content when the statement does not appear at the start.
  */
-function extractRationale(content: string, statement: string): string | undefined {
+function extractRationale(
+  content: string,
+  statement: string
+): string | undefined {
   const normalizedContent = sanitizeEvidenceContent(content);
   if (!normalizedContent) {
     return undefined;
@@ -252,7 +262,8 @@ function inferLearningKind(
   evidence: EvidenceRecord,
   statement: string
 ): string {
-  const haystack = `${statement} ${evidence.title ?? ''} ${evidence.file_path ?? ''}`.toLowerCase();
+  const haystack =
+    `${statement} ${evidence.title ?? ''} ${evidence.file_path ?? ''}`.toLowerCase();
 
   if (
     /\b(ivan|claude|hook|prompt|cli|command|settings|github|repo|worktree)\b/.test(
@@ -272,7 +283,9 @@ function inferTitle(statement: string): string | undefined {
     return undefined;
   }
 
-  return trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`;
+  return trimmed.length <= 72
+    ? trimmed
+    : `${trimmed.slice(0, 69).trimEnd()}...`;
 }
 
 /** Produces a one-sentence applicability hint based on kind and whether the evidence has a file path. */
@@ -356,14 +369,23 @@ function toImperativeStatement(candidate: string): string | null {
     [/\b(do not\b.+)$/i, (match) => match[1]],
     [/\b(don't\b.+)$/i, (match) => match[1]],
     [/^i(?:'d| would)? recommend\s+(.+)$/i, (match) => match[1]],
-    [/^i think\s+(.+?)\s+would be nice(?:\s+(.+))?$/i, (match) => {
-      const tail = match[2]?.trim();
-      const core = tail ? `${match[1]} ${tail}` : match[1];
-      return `Consider ${core}.`;
-    }],
+    [
+      /^i think\s+(.+?)\s+would be nice(?:\s+(.+))?$/i,
+      (match) => {
+        const tail = match[2]?.trim();
+        const core = tail ? `${match[1]} ${tail}` : match[1];
+        return `Consider ${core}.`;
+      }
+    ],
     [/^i think\s+(.+)$/i, (match) => match[1]],
-    [/^btw\s+i moved this here because\s+(.+)$/i, (match) => `Keep this here because ${match[1]}`],
-    [/^this is a bit odd,?\s+we shouldn't have\s+(.+)$/i, (match) => `Do not have ${match[1]}`],
+    [
+      /^btw\s+i moved this here because\s+(.+)$/i,
+      (match) => `Keep this here because ${match[1]}`
+    ],
+    [
+      /^this is a bit odd,?\s+we shouldn't have\s+(.+)$/i,
+      (match) => `Do not have ${match[1]}`
+    ],
     [/^also fixes?\s+(.+)$/i, (match) => match[1]],
     [/^needs to\s+(.+)$/i, (match) => match[1]],
     [/^need to\s+(.+)$/i, (match) => match[1]],
@@ -420,7 +442,9 @@ function extractEmphasizedStatement(content: string): string | null {
   const matches = content.matchAll(/\*\*([^*]+)\*\*/g);
   for (const match of matches) {
     const candidate = sentenceCase(
-      normalizeCandidateText(match[1]).replace(/[.?!]+$/, '').trim()
+      normalizeCandidateText(match[1])
+        .replace(/[.?!]+$/, '')
+        .trim()
     );
     if (isUsableCandidate(candidate)) {
       return candidate;

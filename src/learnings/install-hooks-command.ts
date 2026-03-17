@@ -119,8 +119,14 @@ function upsertClaudeSettings(
     hooks: { ...existingHooks }
   };
 
-  const userPromptCommand = buildHookCommand(repoPath, scriptPaths.userPromptScriptPath);
-  const postEditCommand = buildHookCommand(repoPath, scriptPaths.postEditScriptPath);
+  const userPromptCommand = buildHookCommand(
+    repoPath,
+    scriptPaths.userPromptScriptPath
+  );
+  const postEditCommand = buildHookCommand(
+    repoPath,
+    scriptPaths.postEditScriptPath
+  );
 
   const updatedHooks: Record<string, ClaudeHookMatcherConfig[]> = {
     ...existingHooks,
@@ -296,7 +302,6 @@ function removeStaleHookFiles(hooksDir: string): void {
     }
   }
 }
-
 
 function assertDirectoryExists(repoPath: string): void {
   if (!fs.existsSync(repoPath)) {

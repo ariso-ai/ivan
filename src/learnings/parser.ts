@@ -9,7 +9,11 @@ import {
   buildRepositoryRecord,
   resolveLearningsRepositoryContext
 } from './repository.js';
-import type { EvidenceRecord, LearningsDataset, LearningRecord } from './record-types.js';
+import type {
+  EvidenceRecord,
+  LearningsDataset,
+  LearningRecord
+} from './record-types.js';
 
 type JsonlRecord = Record<string, unknown>;
 
@@ -166,7 +170,7 @@ function getOptionalNumber(
     return undefined;
   }
 
-  if (typeof value === "number") {
+  if (typeof value === 'number') {
     return value;
   }
 

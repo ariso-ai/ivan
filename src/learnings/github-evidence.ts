@@ -151,7 +151,9 @@ async function fetchPatEvidence(
       ...(thread.isOutdated !== undefined && { isOutdated: thread.isOutdated }),
       comments: thread.comments.nodes.map((comment) => ({
         id: comment.id,
-        ...(comment.databaseId !== undefined && { databaseId: comment.databaseId }),
+        ...(comment.databaseId !== undefined && {
+          databaseId: comment.databaseId
+        }),
         body: comment.body,
         createdAt: comment.createdAt,
         ...(comment.author && { author: { login: comment.author.login } }),
@@ -348,7 +350,9 @@ async function fetchCliEvidence(
       id: review.id ?? `review-${pr.number}-${index + 1}`,
       body: review.body ?? '',
       state: review.state ?? 'COMMENTED',
-      ...(review.submittedAt !== undefined && { submittedAt: review.submittedAt }),
+      ...(review.submittedAt !== undefined && {
+        submittedAt: review.submittedAt
+      }),
       ...(review.author && { author: { login: review.author.login } }),
       ...(review.url !== undefined && { url: review.url })
     })),
@@ -358,7 +362,9 @@ async function fetchCliEvidence(
       ...(thread.isOutdated !== undefined && { isOutdated: thread.isOutdated }),
       comments: (thread.comments?.nodes ?? []).map((comment) => ({
         id: comment.id ?? '',
-        ...(comment.databaseId !== undefined && { databaseId: comment.databaseId }),
+        ...(comment.databaseId !== undefined && {
+          databaseId: comment.databaseId
+        }),
         body: comment.body ?? '',
         createdAt: comment.createdAt ?? '',
         ...(comment.author && { author: { login: comment.author.login } }),

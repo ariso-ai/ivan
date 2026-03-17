@@ -2,7 +2,10 @@
 // Drops and recreates `.ivan/db.sqlite` from the canonical JSONL files without touching GitHub.
 
 import chalk from 'chalk';
-import { isLearningsDatabaseStale, rebuildLearningsDatabase } from './builder.js';
+import {
+  isLearningsDatabaseStale,
+  rebuildLearningsDatabase
+} from './builder.js';
 
 interface RebuildCommandOptions {
   repo: string;

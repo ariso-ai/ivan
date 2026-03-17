@@ -57,5 +57,4 @@ export async function runInitCommand(
       console.log(chalk.gray(`  - ${filePath}`));
     }
   }
-
 }

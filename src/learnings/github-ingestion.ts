@@ -32,7 +32,10 @@ export async function ingestPullRequestEvidence(
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
 
-  const payload = await fetchGitHubPullRequestEvidence(context.repoPath, prNumber);
+  const payload = await fetchGitHubPullRequestEvidence(
+    context.repoPath,
+    prNumber
+  );
   const records = buildEvidenceRecordsFromPullRequest(
     context.repositoryId,
     payload

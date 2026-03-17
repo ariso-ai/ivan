@@ -345,7 +345,9 @@ export class GitHubAPIClient {
       title: prResponse.title,
       ...(prResponse.body !== undefined && { body: prResponse.body }),
       headRefName: prResponse.head.ref,
-      ...(prResponse.head.sha !== undefined && { headSha: prResponse.head.sha }),
+      ...(prResponse.head.sha !== undefined && {
+        headSha: prResponse.head.sha
+      }),
       url: prResponse.html_url,
       state: prResponse.state,
       ...(prResponse.user && { author: { login: prResponse.user.login } }),
@@ -360,7 +362,9 @@ export class GitHubAPIClient {
         id: String(review.id),
         body: review.body ?? '',
         state: review.state,
-        ...(review.submitted_at !== undefined && { submittedAt: review.submitted_at }),
+        ...(review.submitted_at !== undefined && {
+          submittedAt: review.submitted_at
+        }),
         ...(review.user && { author: { login: review.user.login } }),
         ...(review.html_url !== undefined && { url: review.html_url })
       })),

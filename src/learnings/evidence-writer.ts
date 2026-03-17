@@ -46,7 +46,10 @@ export function buildEvidenceRecordsFromPullRequest(
     pr_number: payload.pullRequest.number,
     title: payload.pullRequest.title,
     content: buildPullRequestSummaryBody(payload),
-    ...(payload.pullRequest.author?.login && { author_type: 'human', author_name: payload.pullRequest.author.login }),
+    ...(payload.pullRequest.author?.login && {
+      author_type: 'human',
+      author_name: payload.pullRequest.author.login
+    }),
     base_weight: 5,
     final_weight: 5,
     boosts: ['pr_summary'],
@@ -57,7 +60,10 @@ export function buildEvidenceRecordsFromPullRequest(
   });
 
   for (const comment of payload.issueComments) {
-    const id = createDeterministicId('ev', `${baseExternalId}:issue-comment:${comment.id}`);
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:issue-comment:${comment.id}`
+    );
     const weight = weightIssueComment(comment);
     const author = inferAuthorFields(comment.author?.login);
     records.push({
@@ -85,7 +91,10 @@ export function buildEvidenceRecordsFromPullRequest(
   }
 
   for (const review of payload.reviews) {
-    const id = createDeterministicId('ev', `${baseExternalId}:review:${review.id}`);
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:review:${review.id}`
+    );
     const weight = weightReview(review);
     const author = inferAuthorFields(review.author?.login);
     records.push({
@@ -108,7 +117,9 @@ export function buildEvidenceRecordsFromPullRequest(
       final_weight: weight.finalWeight,
       boosts: weight.boosts,
       penalties: weight.penalties,
-      ...(review.submittedAt !== undefined && { occurred_at: review.submittedAt }),
+      ...(review.submittedAt !== undefined && {
+        occurred_at: review.submittedAt
+      }),
       created_at: now,
       updated_at: now
     });
@@ -128,7 +139,10 @@ export function buildEvidenceRecordsFromPullRequest(
   }
 
   for (const check of payload.checks) {
-    const id = createDeterministicId('ev', `${baseExternalId}:check:${check.name}:${check.state}`);
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:check:${check.name}:${check.state}`
+    );
     const weight = weightCheck(check);
     records.push({
       type: 'evidence',
@@ -153,7 +167,9 @@ export function buildEvidenceRecordsFromPullRequest(
     });
   }
 
-  return records.sort((left, right) => left.source_type.localeCompare(right.source_type));
+  return records.sort((left, right) =>
+    left.source_type.localeCompare(right.source_type)
+  );
 }
 
 /**
@@ -223,7 +239,10 @@ function buildThreadEvidenceRecord(
   }
 
   const threadId = thread.id ?? firstComment.id;
-  const id = createDeterministicId('ev', `${baseExternalId}:thread:${threadId}`);
+  const id = createDeterministicId(
+    'ev',
+    `${baseExternalId}:thread:${threadId}`
+  );
   const weight = weightReviewThread(thread);
   const author = inferAuthorFields(firstComment.author?.login);
 
@@ -258,9 +277,13 @@ function buildThreadEvidenceRecord(
 }
 
 /** Assembles a human-readable summary of the PR (number + title + body + changed files) as the evidence content. */
-function buildPullRequestSummaryBody(payload: GitHubPullRequestEvidence): string {
+function buildPullRequestSummaryBody(
+  payload: GitHubPullRequestEvidence
+): string {
   const sections: string[] = [];
-  sections.push(`PR #${payload.pullRequest.number}: ${payload.pullRequest.title}`);
+  sections.push(
+    `PR #${payload.pullRequest.number}: ${payload.pullRequest.title}`
+  );
 
   if (payload.pullRequest.body.trim()) {
     sections.push(payload.pullRequest.body.trim());

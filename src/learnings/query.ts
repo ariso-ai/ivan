@@ -23,7 +23,6 @@ interface LearningRow {
   status: string;
 }
 
-
 /**
  * Searches the learnings database for records relevant to `text`, hydrating each result
  * with its tags and evidence.  Opens the DB read-only and closes it before returning.
@@ -80,30 +79,31 @@ export async function queryLearnings(
           content: string;
           final_weight: number | null;
         }>
-      ).map((evidenceRow): LearningsQueryEvidence =>
-        withOptionalFields<LearningsQueryEvidence>(
-          {
-            id: evidenceRow.id,
-            sourceType: evidenceRow.source_type,
-            content: evidenceRow.content
-          },
-          {
-            url: evidenceRow.url ?? undefined,
-            title: evidenceRow.title ?? undefined,
-            finalWeight: evidenceRow.final_weight ?? undefined
-          }
-        )
+      ).map(
+        (evidenceRow): LearningsQueryEvidence =>
+          withOptionalFields<LearningsQueryEvidence>(
+            {
+              id: evidenceRow.id,
+              sourceType: evidenceRow.source_type,
+              content: evidenceRow.content
+            },
+            {
+              url: evidenceRow.url ?? undefined,
+              title: evidenceRow.title ?? undefined,
+              finalWeight: evidenceRow.final_weight ?? undefined
+            }
+          )
       );
 
       return withOptionalFields<LearningsQueryResult>(
         {
-        id: row.id,
-        repositoryId: row.repository_id,
-        kind: row.kind,
-        statement: row.statement,
-        status: row.status,
-        tags,
-        evidence
+          id: row.id,
+          repositoryId: row.repository_id,
+          kind: row.kind,
+          statement: row.statement,
+          status: row.status,
+          tags,
+          evidence
         },
         {
           title: row.title ?? undefined,

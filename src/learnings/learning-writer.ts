@@ -17,7 +17,11 @@ export function writeLearningRecords(
   records: LearningRecord[]
 ): string[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'lessons.jsonl');
-  const normalizedRecords = mergeLearningRecords(filePath, repositoryId, records)
+  const normalizedRecords = mergeLearningRecords(
+    filePath,
+    repositoryId,
+    records
+  )
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((record) => ({
       ...record,
@@ -61,25 +65,28 @@ function mergeLearningRecords(
 function serializeLearningRecord(
   record: LearningRecord
 ): Omit<LearningRecord, 'type' | 'sourcePath'> {
-  return withOptionalFields<Omit<LearningRecord, 'type' | 'sourcePath'>>({
-    id: record.id,
-    repository_id: record.repository_id,
-    kind: record.kind,
-    statement: record.statement,
-    status: record.status,
-    evidence_ids: record.evidence_ids,
-    tags: record.tags,
-    created_at: record.created_at,
-    updated_at: record.updated_at
-  }, {
-    source_type: record.source_type,
-    title: record.title,
-    rationale: record.rationale,
-    applicability: record.applicability,
-    confidence: record.confidence,
-    embedding: record.embedding,
-    embeddingInputHash: record.embeddingInputHash
-  });
+  return withOptionalFields<Omit<LearningRecord, 'type' | 'sourcePath'>>(
+    {
+      id: record.id,
+      repository_id: record.repository_id,
+      kind: record.kind,
+      statement: record.statement,
+      status: record.status,
+      evidence_ids: record.evidence_ids,
+      tags: record.tags,
+      created_at: record.created_at,
+      updated_at: record.updated_at
+    },
+    {
+      source_type: record.source_type,
+      title: record.title,
+      rationale: record.rationale,
+      applicability: record.applicability,
+      confidence: record.confidence,
+      embedding: record.embedding,
+      embeddingInputHash: record.embeddingInputHash
+    }
+  );
 }
 
 /** Returns the canonical relative path for the lessons JSONL file (without a line number). */

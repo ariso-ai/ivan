@@ -51,8 +51,12 @@ export async function rebuildLearningsDatabase(
   const dataset = loadCanonicalRecords(repoPath);
   validateLearningsDataset(dataset);
 
-  const { cached, generated, dirty } = await resolveEmbeddings(dataset.learnings);
-  process.stderr.write(`Embeddings: ${cached} cached, ${generated} generated\n`);
+  const { cached, generated, dirty } = await resolveEmbeddings(
+    dataset.learnings
+  );
+  process.stderr.write(
+    `Embeddings: ${cached} cached, ${generated} generated\n`
+  );
 
   if (dirty) writeBackEmbeddings(repoPath, dataset.learnings);
 
@@ -151,7 +155,11 @@ export function computeJsonlHash(repoPath: string): string {
 async function resolveEmbeddings(
   learnings: LearningRecord[]
 ): Promise<{ cached: number; generated: number; dirty: boolean }> {
-  const dirty: Array<{ learning: LearningRecord; inputString: string; hash: string }> = [];
+  const dirty: Array<{
+    learning: LearningRecord;
+    inputString: string;
+    hash: string;
+  }> = [];
   let cached = 0;
 
   for (const learning of learnings) {
@@ -225,7 +233,11 @@ function writeBackEmbeddings(
     updatedLines.push(JSON.stringify(parsed));
   }
 
-  fs.writeFileSync(filePath, updatedLines.map((l) => `${l}\n`).join(''), 'utf8');
+  fs.writeFileSync(
+    filePath,
+    updatedLines.map((l) => `${l}\n`).join(''),
+    'utf8'
+  );
 }
 
 /**
@@ -361,10 +373,7 @@ function writeLearningVector(
   learning: LearningRecord
 ): void {
   const vector = learning.embedding!;
-  statement.run(
-    learning.id,
-    Buffer.from(new Float32Array(vector).buffer)
-  );
+  statement.run(learning.id, Buffer.from(new Float32Array(vector).buffer));
 }
 
 /** Executes the prepared `INSERT INTO repositories` statement for one record. */

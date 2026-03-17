@@ -6,7 +6,10 @@ import { Command } from 'commander';
 import { runExtractCommand } from './extract-command.js';
 import { initLearningsStore, runInitCommand } from './init-command.js';
 import { runIngestPrCommand } from './ingest-pr-command.js';
-import { installLearningsHooks, runInstallHooksCommand } from './install-hooks-command.js';
+import {
+  installLearningsHooks,
+  runInstallHooksCommand
+} from './install-hooks-command.js';
 import { queryLearnings } from './query.js';
 import { runQueryCommand } from './query-command.js';
 import { rebuildLearningsDatabase } from './builder.js';
@@ -30,9 +33,14 @@ export function registerLearningsCommands(program: Command): void {
 
   learnings
     .command('rebuild')
-    .description('Rebuild <repo>/.ivan/db.sqlite from canonical learnings records')
+    .description(
+      'Rebuild <repo>/.ivan/db.sqlite from canonical learnings records'
+    )
     .requiredOption('--repo <path>', 'Repository root path')
-    .option('--if-stale', 'Skip rebuild if .ivan/db.sqlite is already up to date')
+    .option(
+      '--if-stale',
+      'Skip rebuild if .ivan/db.sqlite is already up to date'
+    )
     .action(runRebuildCommand);
 
   learnings
@@ -51,7 +59,9 @@ export function registerLearningsCommands(program: Command): void {
 
   learnings
     .command('ingest-pr')
-    .description('Fetch GitHub PR evidence and write canonical evidence records')
+    .description(
+      'Fetch GitHub PR evidence and write canonical evidence records'
+    )
     .requiredOption('--repo <path>', 'Repository root path')
     .requiredOption('--pr <number>', 'Pull request number')
     .action(runIngestPrCommand);
