@@ -17,6 +17,7 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --config jest.config.cjs",
+    "test:e2e:learnings": "node scripts/test-learnings-e2e.mjs",
     "prepare": "npm run build && git config core.hooksPath .githooks"
   },
   "author": "Ariso AI",
