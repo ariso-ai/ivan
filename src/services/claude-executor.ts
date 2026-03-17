@@ -163,11 +163,11 @@ export class ClaudeExecutor implements IClaudeExecutor {
             // 3) Allow edit tools in headless mode:
             //    Use 'acceptEdits' for safer default; 'bypassPermissions' is most permissive.
             permissionMode: 'bypassPermissions',
-            allowedTools: allowedTools,
+            ...(allowedTools !== undefined && { allowedTools }),
             disallowedTools: allBlockedTools,
             model: model,
             // Resume from previous session if provided
-            resume: sessionId
+            ...(sessionId !== undefined && { resume: sessionId })
           }
         })) {
           // Handle different message types based on the SDK types

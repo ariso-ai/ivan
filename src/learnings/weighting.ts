@@ -117,9 +117,10 @@ export function inferAuthorFields(authorName?: string): {
   author_type?: string;
   author_name?: string;
 } {
+  const author_type = classifyAuthorType(authorName);
   return {
-    author_type: classifyAuthorType(authorName),
-    author_name: authorName
+    ...(author_type !== undefined && { author_type }),
+    ...(authorName !== undefined && { author_name: authorName })
   };
 }
 

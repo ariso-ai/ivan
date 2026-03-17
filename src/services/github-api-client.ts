@@ -120,7 +120,7 @@ export class GitHubAPIClient {
     const response = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined
+      ...(body !== undefined && { body: JSON.stringify(body) })
     });
 
     if (!response.ok) {
@@ -288,10 +288,10 @@ export class GitHubAPIClient {
       number: response.number,
       title: response.title,
       headRefName: response.head.ref,
-      headSha: response.head.sha,
+      ...(response.head.sha !== undefined && { headSha: response.head.sha }),
       url: response.html_url,
       state: response.state,
-      author: response.user ? { login: response.user.login } : undefined
+      ...(response.user && { author: { login: response.user.login } })
     };
   }
 
@@ -343,32 +343,32 @@ export class GitHubAPIClient {
     return {
       number: prResponse.number,
       title: prResponse.title,
-      body: prResponse.body,
+      ...(prResponse.body !== undefined && { body: prResponse.body }),
       headRefName: prResponse.head.ref,
-      headSha: prResponse.head.sha,
+      ...(prResponse.head.sha !== undefined && { headSha: prResponse.head.sha }),
       url: prResponse.html_url,
       state: prResponse.state,
-      author: prResponse.user ? { login: prResponse.user.login } : undefined,
+      ...(prResponse.user && { author: { login: prResponse.user.login } }),
       issueComments: issueComments.map((comment) => ({
         id: String(comment.id),
         body: comment.body,
         createdAt: comment.created_at,
-        author: comment.user ? { login: comment.user.login } : undefined,
-        url: comment.html_url
+        ...(comment.user && { author: { login: comment.user.login } }),
+        ...(comment.html_url !== undefined && { url: comment.html_url })
       })),
       reviews: reviewResponse.map((review) => ({
         id: String(review.id),
         body: review.body ?? '',
         state: review.state,
-        submittedAt: review.submitted_at,
-        author: review.user ? { login: review.user.login } : undefined,
-        url: review.html_url
+        ...(review.submitted_at !== undefined && { submittedAt: review.submitted_at }),
+        ...(review.user && { author: { login: review.user.login } }),
+        ...(review.html_url !== undefined && { url: review.html_url })
       })),
       files: files.map((file) => ({
         path: file.filename,
-        additions: file.additions,
-        deletions: file.deletions,
-        changeType: file.status
+        ...(file.additions !== undefined && { additions: file.additions }),
+        ...(file.deletions !== undefined && { deletions: file.deletions }),
+        ...(file.status !== undefined && { changeType: file.status })
       }))
     };
   }
@@ -404,13 +404,13 @@ export class GitHubAPIClient {
     >(endpoint);
 
     // Map to GitHubPRInfo format
-    const mappedPRs = prs.map((pr) => ({
+    const mappedPRs: GitHubPRInfo[] = prs.map((pr) => ({
       number: pr.number,
       title: pr.title,
       headRefName: pr.head.ref,
       url: pr.html_url,
       state: pr.state,
-      author: pr.user ? { login: pr.user.login } : undefined
+      ...(pr.user && { author: { login: pr.user.login } })
     }));
 
     // Filter by author if specified (REST API doesn't support this directly)
@@ -454,7 +454,7 @@ export class GitHubAPIClient {
         check.conclusion?.toUpperCase() ||
         check.status?.toUpperCase() ||
         'PENDING',
-      link: check.html_url
+      ...(check.html_url !== undefined && { link: check.html_url })
     }));
   }
 

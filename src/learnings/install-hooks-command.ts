@@ -47,31 +47,21 @@ export function installLearningsHooks(repoPath: string): {
 
   fs.mkdirSync(logsDir, { recursive: true });
 
-  const nodeExecutable = process.execPath;
-  const ivanEntry = resolveIvanEntryPoint();
-
   const userPromptScriptPath = path.join(
     hooksDir,
     'ivan-learnings-user-prompt.sh'
   );
   const postEditScriptPath = path.join(hooksDir, 'ivan-learnings-post-edit.sh');
 
-  fs.writeFileSync(
-    userPromptScriptPath,
-    buildUserPromptScript(nodeExecutable, ivanEntry),
-    'utf8'
-  );
-  fs.writeFileSync(
-    postEditScriptPath,
-    buildPostEditScript(nodeExecutable, ivanEntry),
-    'utf8'
-  );
+  fs.writeFileSync(userPromptScriptPath, buildUserPromptScript(), 'utf8');
+  fs.writeFileSync(postEditScriptPath, buildPostEditScript(), 'utf8');
 
   fs.chmodSync(userPromptScriptPath, 0o755);
   fs.chmodSync(postEditScriptPath, 0o755);
 
   const settingsPath = path.join(claudeDir, 'settings.json');
-  const updatedSettings = upsertClaudeSettings(settingsPath, {
+  removeStaleHookFiles(hooksDir);
+  const updatedSettings = upsertClaudeSettings(settingsPath, resolvedRepoPath, {
     userPromptScriptPath,
     postEditScriptPath
   });
@@ -116,6 +106,7 @@ export async function runInstallHooksCommand(
  */
 function upsertClaudeSettings(
   settingsPath: string,
+  repoPath: string,
   scriptPaths: {
     userPromptScriptPath: string;
     postEditScriptPath: string;
@@ -128,10 +119,10 @@ function upsertClaudeSettings(
     hooks: { ...existingHooks }
   };
 
-  const userPromptCommand = buildHookCommand(scriptPaths.userPromptScriptPath);
-  const postEditCommand = buildHookCommand(scriptPaths.postEditScriptPath);
+  const userPromptCommand = buildHookCommand(repoPath, scriptPaths.userPromptScriptPath);
+  const postEditCommand = buildHookCommand(repoPath, scriptPaths.postEditScriptPath);
 
-  nextSettings.hooks = {
+  const updatedHooks: Record<string, ClaudeHookMatcherConfig[]> = {
     ...existingHooks,
     UserPromptSubmit: upsertHookEntry(
       existingHooks.UserPromptSubmit ?? [],
@@ -149,6 +140,21 @@ function upsertClaudeSettings(
       ['ivan-learnings-post-edit.sh']
     )
   };
+
+  // Remove any stale Stop hook entries that reference ivan-learnings
+  if (updatedHooks.Stop) {
+    const filtered = updatedHooks.Stop.filter(
+      (entry) =>
+        !entry.hooks.some((hook) => hook.command.includes('ivan-learnings'))
+    );
+    if (filtered.length === 0) {
+      delete updatedHooks.Stop;
+    } else {
+      updatedHooks.Stop = filtered;
+    }
+  }
+
+  nextSettings.hooks = updatedHooks;
 
   const previous = JSON.stringify(existingSettings, null, 2);
   const next = `${JSON.stringify(nextSettings, null, 2)}\n`;
@@ -200,20 +206,25 @@ function readClaudeSettings(settingsPath: string): ClaudeSettingsFile {
   return parsed as ClaudeSettingsFile;
 }
 
-/** Wraps a script path in a `bash <path>` invocation string for the Claude settings JSON. */
-function buildHookCommand(scriptPath: string): string {
-  return `bash ${shellQuote(scriptPath)}`;
+/**
+ * Builds the hook command string using a `$CLAUDE_PROJECT_DIR`-relative path so that
+ * the committed settings.json works on any machine without hardcoded absolute paths.
+ */
+function buildHookCommand(repoPath: string, scriptPath: string): string {
+  const relative = path.relative(repoPath, scriptPath);
+  return `bash "$CLAUDE_PROJECT_DIR/${relative}"`;
 }
 
 /** Generates the `UserPromptSubmit` hook script that queries learnings using the user's prompt text. */
-function buildUserPromptScript(nodeExecutable: string, ivanEntry: string): string {
+function buildUserPromptScript(): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
-node_bin=${shellQuote(nodeExecutable)}
-ivan_entry=${shellQuote(ivanEntry)}
+script_dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+ivan_entry="$script_dir/../../dist/index.js"
 
 payload="$(mktemp)"
+trap 'rm -f "$payload"' EXIT
 cat > "$payload"
 
 project_dir="\${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' "$payload")}"
@@ -228,9 +239,7 @@ if [[ -z "$repo" || -z "$prompt" ]]; then
   exit 0
 fi
 
-if ! output="$("$node_bin" "$ivan_entry" learnings query --repo "$repo" --text "$prompt" --limit 3 2>>"$log_dir/query.stderr" || true)"; then
-  exit 0
-fi
+output="$(node "$ivan_entry" learnings query --repo "$repo" --text "$prompt" --limit 3 2>>"$log_dir/query.stderr")" || true
 
 if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
   exit 0
@@ -241,14 +250,15 @@ printf 'Local learnings relevant to this prompt:\\n%s\\n' "$output"
 }
 
 /** Generates the `PostToolUse` hook script that queries learnings after each Edit/Write/MultiEdit tool call. */
-function buildPostEditScript(nodeExecutable: string, ivanEntry: string): string {
+function buildPostEditScript(): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
-node_bin=${shellQuote(nodeExecutable)}
-ivan_entry=${shellQuote(ivanEntry)}
+script_dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+ivan_entry="$script_dir/../../dist/index.js"
 
 payload="$(mktemp)"
+trap 'rm -f "$payload"' EXIT
 cat > "$payload"
 
 project_dir="\${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' "$payload")}"
@@ -266,9 +276,7 @@ fi
 
 query_text="recent file changes after tool: $tool_name; input: $tool_input"
 
-if ! output="$("$node_bin" "$ivan_entry" learnings query --repo "$repo" --text "$query_text" --limit 3 2>>"$log_dir/query.stderr" || true)"; then
-  exit 0
-fi
+output="$(node "$ivan_entry" learnings query --repo "$repo" --text "$query_text" --limit 3 2>>"$log_dir/query.stderr")" || true
 
 if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
   exit 0
@@ -278,20 +286,17 @@ printf 'Local learnings relevant after edit:\\n%s\\n' "$output"
 `;
 }
 
-/** Returns the absolute path to the ivan CLI entry point by reading `process.argv[1]` or falling back to `import.meta.url`. */
-function resolveIvanEntryPoint(): string {
-  const entryArg = process.argv[1];
-  if (entryArg) {
-    return path.resolve(entryArg);
+/** Deletes stale hook files that are no longer managed by install-hooks (e.g. ivan-learnings-stop.sh). */
+function removeStaleHookFiles(hooksDir: string): void {
+  const stale = ['ivan-learnings-stop.sh'];
+  for (const name of stale) {
+    const filePath = path.join(hooksDir, name);
+    if (fs.existsSync(filePath)) {
+      fs.rmSync(filePath);
+    }
   }
-
-  return path.resolve(new URL('../index.js', import.meta.url).pathname);
 }
 
-/** Single-quote-escapes a string for safe embedding in a bash script. */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 function assertDirectoryExists(repoPath: string): void {
   if (!fs.existsSync(repoPath)) {

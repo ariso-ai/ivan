@@ -363,7 +363,7 @@ function writeLearningEmbedding(
     'local-hashed-v1',
     256,
     serializeVector(vector),
-    learning.updated_at
+    learning.created_at
   );
 }
 

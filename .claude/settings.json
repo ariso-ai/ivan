@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/.claude/hooks/ivan-learnings-user-prompt.sh'",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ivan-learnings-user-prompt.sh\"",
             "timeout": 10
           }
         ]
@@ -17,18 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/.claude/hooks/ivan-learnings-post-edit.sh'",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash '/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/.claude/hooks/ivan-learnings-stop.sh'",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ivan-learnings-post-edit.sh\"",
             "timeout": 10
           }
         ]

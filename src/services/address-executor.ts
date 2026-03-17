@@ -4,7 +4,6 @@ import inquirer from 'inquirer';
 import { JobManager } from './job-manager.js';
 import { ExecutorFactory } from './executor-factory.js';
 import type { IClaudeExecutor } from './executor-factory.js';
-import { ConfigManager } from '../config.js';
 import type { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
 import type {
@@ -12,7 +11,7 @@ import type {
   IPRService,
   IRepositoryManager
 } from './git-interfaces.js';
-import type {
+import {
   createGitManager,
   createPRService,
   createRepositoryManager
@@ -24,13 +23,11 @@ export class AddressExecutor {
   private repositoryManager: IRepositoryManager;
   private gitManager: IGitManager | null = null;
   private claudeExecutor: IClaudeExecutor | null = null;
-  private configManager: ConfigManager;
   private workingDir: string;
 
   constructor() {
     this.jobManager = new JobManager();
     this.repositoryManager = createRepositoryManager();
-    this.configManager = new ConfigManager();
     this.workingDir = '';
     this.prService = {} as IPRService;
   }

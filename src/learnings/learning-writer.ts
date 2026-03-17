@@ -91,7 +91,7 @@ function withOptionalFields<T extends object>(
   base: T,
   optionalFields: Record<string, unknown>
 ): T {
-  const result: Record<string, unknown> = { ...base };
+  const result = { ...base } as Record<string, unknown>;
 
   for (const [key, value] of Object.entries(optionalFields)) {
     if (value !== undefined) {

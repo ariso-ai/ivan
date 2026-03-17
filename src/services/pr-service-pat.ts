@@ -92,7 +92,7 @@ export class PRServicePAT implements IPRService {
       // Get all open PRs, optionally filtered by author
       const prs = await this.githubClient.listPRs(this.owner, this.repo, {
         state: 'open',
-        author: fromUser
+        ...(fromUser !== undefined && { author: fromUser })
       });
 
       const pullRequests: PullRequest[] = [];
@@ -185,7 +185,7 @@ export class PRServicePAT implements IPRService {
             body: firstComment.body,
             createdAt: firstComment.createdAt,
             path: firstComment.path,
-            line: firstComment.line
+            ...(firstComment.line !== undefined && { line: firstComment.line })
           });
         }
       }

@@ -934,28 +934,6 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
     }
   }
 
-  private async getUnaddressedComments(prNumber: number): Promise<
-    Array<{
-      id: string;
-      author: string;
-      body: string;
-      createdAt: string;
-      path?: string;
-      line?: number;
-    }>
-  > {
-    if (!this.prService) {
-      throw new Error('PR service not initialized');
-    }
-
-    try {
-      return await this.prService.getUnaddressedComments(prNumber);
-    } catch (error) {
-      console.error('Error fetching comments:', error);
-      return [];
-    }
-  }
-
   private async findCommentId(
     prNumber: number,
     author: string,

@@ -49,7 +49,8 @@ export function createDeterministicId(
 /** Returns true when `id` matches the `{prefix}_[a-z0-9][a-z0-9_-]*` pattern (or the generic 2–8-char prefix form). */
 export function isStableRecordId(id: string, prefix?: string): boolean {
   if (prefix) {
-    return new RegExp(`^${prefix}_[a-z0-9][a-z0-9_-]*$`).test(id);
+    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`^${escapedPrefix}_[a-z0-9][a-z0-9_-]*$`).test(id);
   }
 
   return GENERIC_ID_PATTERN.test(id);
