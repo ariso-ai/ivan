@@ -3,11 +3,7 @@
 // trying each tier until results are found.
 
 import { openLearningsDatabase } from './database.js';
-import {
-  cosineSimilarity,
-  deserializeVector,
-  embedText
-} from './embeddings.js';
+import { embedText } from './embeddings.js';
 import type {
   LearningsQueryEvidence,
   LearningsQueryResult,
@@ -27,10 +23,6 @@ interface LearningRow {
   status: string;
 }
 
-/** Extends `LearningRow` with the serialized embedding vector for cosine scoring. */
-interface VectorLearningRow extends LearningRow {
-  vector_json: string;
-}
 
 /**
  * Searches the learnings database for records relevant to `text`, hydrating each result
@@ -204,16 +196,17 @@ function runLearningSearch(
 }
 
 /**
- * Embeds `text`, loads all active learning vectors, computes cosine similarity,
- * filters results below 0.12, and returns the top `limit` rows by score then confidence.
+ * Embeds `text` and runs a vec0 KNN cosine-distance query against `learning_vectors`,
+ * filtering to active learnings only. Returns the top `limit` rows ordered by distance.
  */
 function runVectorSearch(
   db: ReturnType<typeof openLearningsDatabase>,
   text: string,
   limit: number
 ): LearningRow[] {
-  const queryVector = embedText(text);
-  const rows = db
+  const queryVector = Buffer.from(new Float32Array(embedText(text)).buffer);
+
+  return db
     .prepare(
       `
         SELECT
@@ -225,32 +218,16 @@ function runVectorSearch(
           l.rationale,
           l.applicability,
           l.confidence,
-          l.status,
-          le.vector_json
-        FROM learning_embeddings le
-        INNER JOIN learnings l ON l.id = le.learning_id
-        WHERE l.status = 'active'
+          l.status
+        FROM learning_vectors lv
+        INNER JOIN learnings l ON l.id = lv.learning_id
+        WHERE lv.vector MATCH ?
+          AND k = ?
+          AND l.status = 'active'
+        ORDER BY distance
       `
     )
-    .all() as VectorLearningRow[];
-
-  const scoredRows = rows
-    .map((row) => ({
-      row,
-      score: cosineSimilarity(queryVector, deserializeVector(row.vector_json))
-    }))
-    .filter((candidate) => candidate.score >= 0.12)
-    .sort((left, right) => {
-      return (
-        right.score - left.score ||
-        (right.row.confidence ?? 0) - (left.row.confidence ?? 0) ||
-        right.row.id.localeCompare(left.row.id)
-      );
-    })
-    .slice(0, limit)
-    .map((candidate) => candidate.row);
-
-  return scoredRows;
+    .all(queryVector, limit) as LearningRow[];
 }
 
 /**

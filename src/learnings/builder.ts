@@ -317,6 +317,10 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
     ) VALUES (?, ?, ?, ?, ?)
   `);
 
+  const insertLearningVector = db.prepare(`
+    INSERT INTO learning_vectors (learning_id, vector) VALUES (?, ?)
+  `);
+
   const transaction = db.transaction(() => {
     for (const repository of sortRecords(dataset.repositories)) {
       writeRepository(insertRepository, repository);
@@ -329,6 +333,7 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
     for (const learning of sortRecords(dataset.learnings)) {
       writeLearning(insertLearning, learning);
       writeLearningEmbedding(insertLearningEmbedding, learning);
+      writeLearningVector(insertLearningVector, learning);
 
       for (const evidenceId of [...learning.evidence_ids].sort((a, b) =>
         a.localeCompare(b)
@@ -364,6 +369,18 @@ function writeLearningEmbedding(
     256,
     serializeVector(vector),
     learning.created_at
+  );
+}
+
+/** Inserts the pre-resolved embedding as a Float32Array buffer into the `learning_vectors` vec0 table. */
+function writeLearningVector(
+  statement: Database.Statement,
+  learning: LearningRecord
+): void {
+  const vector = learning.embedding!;
+  statement.run(
+    learning.id,
+    Buffer.from(new Float32Array(vector).buffer)
   );
 }
 

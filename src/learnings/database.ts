@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
 import { URL } from 'url';
 import { LEARNINGS_DB_RELATIVE_PATH } from './paths.js';
 
@@ -31,6 +32,7 @@ export function createFreshLearningsDatabase(
   removeLearningsDatabaseFiles(dbPath);
 
   const db = new Database(dbPath);
+  sqliteVec.load(db);
   db.pragma('journal_mode = DELETE');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA_SQL);
@@ -57,6 +59,7 @@ export function openLearningsDatabase(
     readonly: options.readonly ?? false,
     fileMustExist: true
   });
+  sqliteVec.load(db);
   db.pragma('foreign_keys = ON');
 
   return db;

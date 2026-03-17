@@ -66,43 +66,9 @@ export function embedText(text: string): number[] {
   return normalize(vector);
 }
 
-/** Returns the cosine similarity (0–1) between two embedding vectors. Returns 0 if either is a zero vector. */
-export function cosineSimilarity(left: number[], right: number[]): number {
-  const size = Math.min(left.length, right.length);
-  let dot = 0;
-  let leftMagnitude = 0;
-  let rightMagnitude = 0;
-
-  for (let index = 0; index < size; index += 1) {
-    const leftValue = left[index] ?? 0;
-    const rightValue = right[index] ?? 0;
-    dot += leftValue * rightValue;
-    leftMagnitude += leftValue * leftValue;
-    rightMagnitude += rightValue * rightValue;
-  }
-
-  if (leftMagnitude === 0 || rightMagnitude === 0) {
-    return 0;
-  }
-
-  return dot / Math.sqrt(leftMagnitude * rightMagnitude);
-}
-
 /** Serializes a float vector to a JSON string for storage in SQLite's `vector_json` column. */
 export function serializeVector(vector: number[]): string {
   return JSON.stringify(vector);
-}
-
-/** Deserializes a JSON string back to a float array, filtering out any non-finite values. */
-export function deserializeVector(serialized: string): number[] {
-  const parsed = JSON.parse(serialized) as unknown;
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-
-  return parsed
-    .map((value) => (typeof value === 'number' ? value : Number(value)))
-    .filter((value) => Number.isFinite(value));
 }
 
 /** Extracts lowercase alphanumeric words plus adjacent bigrams (`word_nextword`) from text. */
