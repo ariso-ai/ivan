@@ -29,17 +29,14 @@ export function resolveLearningsRepositoryContext(
   const repositorySlug = slugify(repositoryName);
   const repositoryId = createRepositoryId(repositorySlug);
 
-  return withOptionalFields<LearningsRepositoryContext>(
-    {
-      repoPath: resolvedRepoPath,
-      repositoryId,
-      repositorySlug,
-      repositoryName
-    },
-    {
-      remoteUrl: readRemoteUrl(resolvedRepoPath)
-    }
-  );
+  const remoteUrl = readRemoteUrl(resolvedRepoPath);
+  return {
+    repoPath: resolvedRepoPath,
+    repositoryId,
+    repositorySlug,
+    repositoryName,
+    ...(remoteUrl !== undefined ? { remoteUrl } : {})
+  };
 }
 
 /** Constructs the synthetic repository record used to populate the derived SQLite database. */
@@ -48,22 +45,18 @@ export function buildRepositoryRecord(
 ): RepositoryRecord {
   const now = new Date().toISOString();
 
-  return withOptionalFields<RepositoryRecord>(
-    {
-      type: 'repository',
-      sourcePath: '.ivan#derived',
-      id: context.repositoryId,
-      slug: context.repositorySlug,
-      name: context.repositoryName,
-      local_path: context.repoPath,
-      is_active: true,
-      created_at: now,
-      updated_at: now
-    },
-    {
-      remote_url: context.remoteUrl
-    }
-  );
+  return {
+    type: 'repository',
+    sourcePath: '.ivan#derived',
+    id: context.repositoryId,
+    slug: context.repositorySlug,
+    name: context.repositoryName,
+    local_path: context.repoPath,
+    is_active: true,
+    created_at: now,
+    updated_at: now,
+    ...(context.remoteUrl !== undefined ? { remote_url: context.remoteUrl } : {})
+  };
 }
 
 /** Creates `.ivan/` if it doesn't exist; returns the list of paths actually created. */
@@ -82,6 +75,7 @@ export function ensureLearningsDirectories(
 /** Creates empty canonical JSONL files when they do not already exist. */
 export function ensureCanonicalJsonlFiles(repoPath: string): string[] {
   const files = [
+    resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl'),
     resolveCanonicalLearningsPath(repoPath, 'lessons.jsonl')
   ];
   const created: string[] = [];
@@ -97,25 +91,12 @@ export function ensureCanonicalJsonlFiles(repoPath: string): string[] {
 }
 
 /**
- * Ensures `.ivan/evidence.jsonl` is listed in the repo's `.gitignore`.
- * Evidence is kept locally for re-extraction but must not be committed to git.
- * Returns true if the gitignore was modified.
+ * No-op: `.ivan/db.sqlite` is intentionally tracked in git so the database is
+ * available to all collaborators without requiring a rebuild.
+ * Always returns false (no changes made).
  */
-export function ensureGitignoreCoverage(repoPath: string): boolean {
-  const gitignorePath = path.join(repoPath, '.gitignore');
-  const entry = '.ivan/evidence.jsonl';
-
-  const existing = fs.existsSync(gitignorePath)
-    ? fs.readFileSync(gitignorePath, 'utf8')
-    : '';
-
-  if (existing.split('\n').some((line) => line.trim() === entry)) {
-    return false;
-  }
-
-  const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
-  fs.writeFileSync(gitignorePath, `${existing}${separator}${entry}\n`, 'utf8');
-  return true;
+export function ensureGitignoreCoverage(_repoPath: string): boolean {
+  return false;
 }
 
 /** Throws a descriptive error if `repoPath` does not exist or is not a directory. */
@@ -148,17 +129,3 @@ function readRemoteUrl(repoPath: string): string | undefined {
   }
 }
 
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result = { ...base } as Record<string, unknown>;
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
-}

@@ -6,6 +6,7 @@ import {
   LESSONS_JSONL_RELATIVE_PATH,
   resolveCanonicalLearningsPath
 } from './paths.js';
+import { omitUndefined } from './parser.js';
 import type { LearningRecord } from './record-types.js';
 
 /**
@@ -65,19 +66,17 @@ function mergeLearningRecords(
 function serializeLearningRecord(
   record: LearningRecord
 ): Omit<LearningRecord, 'type' | 'sourcePath'> {
-  return withOptionalFields<Omit<LearningRecord, 'type' | 'sourcePath'>>(
-    {
-      id: record.id,
-      repository_id: record.repository_id,
-      kind: record.kind,
-      statement: record.statement,
-      status: record.status,
-      evidence_ids: record.evidence_ids,
-      tags: record.tags,
-      created_at: record.created_at,
-      updated_at: record.updated_at
-    },
-    {
+  return {
+    id: record.id,
+    repository_id: record.repository_id,
+    kind: record.kind,
+    statement: record.statement,
+    status: record.status,
+    evidence_ids: record.evidence_ids,
+    tags: record.tags,
+    created_at: record.created_at,
+    updated_at: record.updated_at,
+    ...omitUndefined({
       source_type: record.source_type,
       title: record.title,
       rationale: record.rationale,
@@ -85,8 +84,8 @@ function serializeLearningRecord(
       confidence: record.confidence,
       embedding: record.embedding,
       embeddingInputHash: record.embeddingInputHash
-    }
-  );
+    })
+  };
 }
 
 /** Returns the canonical relative path for the lessons JSONL file (without a line number). */
@@ -94,17 +93,3 @@ function learningSourcePath(): string {
   return LESSONS_JSONL_RELATIVE_PATH;
 }
 
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result = { ...base } as Record<string, unknown>;
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
-}

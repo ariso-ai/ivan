@@ -32,75 +32,67 @@ export function loadCanonicalRecords(repoPath: string): LearningsDataset {
 /** Reads `.ivan/evidence.jsonl` and parses it into `EvidenceRecord[]`. */
 function readEvidenceRecords(repoPath: string): EvidenceRecord[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
-  return readJsonlFile(filePath, repoPath, (sourcePath, record) =>
-    withOptionalFields<EvidenceRecord>(
-      {
-        type: 'evidence',
-        sourcePath,
-        id: getRequiredString(record, 'id', sourcePath),
-        repository_id: getRequiredString(record, 'repository_id', sourcePath),
-        source_system: getRequiredString(record, 'source_system', sourcePath),
-        source_type: getRequiredString(record, 'source_type', sourcePath),
-        content: getRequiredString(record, 'content', sourcePath),
-        boosts: getStringArray(record, 'boosts'),
-        penalties: getStringArray(record, 'penalties'),
-        created_at: getRequiredString(record, 'created_at', sourcePath),
-        updated_at: getRequiredString(record, 'updated_at', sourcePath)
-      },
-      {
-        external_id: getOptionalString(record, 'external_id'),
-        parent_external_id: getOptionalString(record, 'parent_external_id'),
-        url: getOptionalString(record, 'url'),
-        pr_number: getOptionalNumber(record, 'pr_number'),
-        review_id: getOptionalString(record, 'review_id'),
-        thread_id: getOptionalString(record, 'thread_id'),
-        comment_id: getOptionalString(record, 'comment_id'),
-        author_type: getOptionalString(record, 'author_type'),
-        author_name: getOptionalString(record, 'author_name'),
-        author_role: getOptionalString(record, 'author_role'),
-        title: getOptionalString(record, 'title'),
-        file_path: getOptionalString(record, 'file_path'),
-        line_start: getOptionalNumber(record, 'line_start'),
-        line_end: getOptionalNumber(record, 'line_end'),
-        review_state: getOptionalString(record, 'review_state'),
-        resolution_state: getOptionalString(record, 'resolution_state'),
-        occurred_at: getOptionalString(record, 'occurred_at'),
-        base_weight: getOptionalNumber(record, 'base_weight'),
-        final_weight: getOptionalNumber(record, 'final_weight')
-      }
-    )
-  );
+  return readJsonlFile(filePath, repoPath, (sourcePath, record) => ({
+    type: 'evidence' as const,
+    sourcePath,
+    id: getRequiredString(record, 'id', sourcePath),
+    repository_id: getRequiredString(record, 'repository_id', sourcePath),
+    source_system: getRequiredString(record, 'source_system', sourcePath),
+    source_type: getRequiredString(record, 'source_type', sourcePath),
+    content: getRequiredString(record, 'content', sourcePath),
+    boosts: getStringArray(record, 'boosts'),
+    penalties: getStringArray(record, 'penalties'),
+    created_at: getRequiredString(record, 'created_at', sourcePath),
+    updated_at: getRequiredString(record, 'updated_at', sourcePath),
+    ...omitUndefined({
+      external_id: getOptionalString(record, 'external_id'),
+      parent_external_id: getOptionalString(record, 'parent_external_id'),
+      url: getOptionalString(record, 'url'),
+      pr_number: getOptionalNumber(record, 'pr_number'),
+      review_id: getOptionalString(record, 'review_id'),
+      thread_id: getOptionalString(record, 'thread_id'),
+      comment_id: getOptionalString(record, 'comment_id'),
+      author_type: getOptionalString(record, 'author_type'),
+      author_name: getOptionalString(record, 'author_name'),
+      author_role: getOptionalString(record, 'author_role'),
+      title: getOptionalString(record, 'title'),
+      file_path: getOptionalString(record, 'file_path'),
+      line_start: getOptionalNumber(record, 'line_start'),
+      line_end: getOptionalNumber(record, 'line_end'),
+      review_state: getOptionalString(record, 'review_state'),
+      resolution_state: getOptionalString(record, 'resolution_state'),
+      occurred_at: getOptionalString(record, 'occurred_at'),
+      base_weight: getOptionalNumber(record, 'base_weight'),
+      final_weight: getOptionalNumber(record, 'final_weight')
+    })
+  }) as EvidenceRecord);
 }
 
 /** Reads `.ivan/lessons.jsonl` and parses it into `LearningRecord[]`. */
 function readLearningRecords(repoPath: string): LearningRecord[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'lessons.jsonl');
-  return readJsonlFile(filePath, repoPath, (sourcePath, record) =>
-    withOptionalFields<LearningRecord>(
-      {
-        type: 'learning',
-        sourcePath,
-        id: getRequiredString(record, 'id', sourcePath),
-        repository_id: getRequiredString(record, 'repository_id', sourcePath),
-        kind: getRequiredString(record, 'kind', sourcePath),
-        statement: getRequiredString(record, 'statement', sourcePath),
-        status: getOptionalString(record, 'status') ?? 'active',
-        evidence_ids: getStringArray(record, 'evidence_ids'),
-        tags: getStringArray(record, 'tags'),
-        created_at: getRequiredString(record, 'created_at', sourcePath),
-        updated_at: getRequiredString(record, 'updated_at', sourcePath)
-      },
-      {
-        source_type: getOptionalString(record, 'source_type'),
-        title: getOptionalString(record, 'title'),
-        rationale: getOptionalString(record, 'rationale'),
-        applicability: getOptionalString(record, 'applicability'),
-        confidence: getOptionalNumber(record, 'confidence'),
-        embedding: getOptionalNumberArray(record, 'embedding'),
-        embeddingInputHash: getOptionalString(record, 'embeddingInputHash')
-      }
-    )
-  );
+  return readJsonlFile(filePath, repoPath, (sourcePath, record) => ({
+    type: 'learning' as const,
+    sourcePath,
+    id: getRequiredString(record, 'id', sourcePath),
+    repository_id: getRequiredString(record, 'repository_id', sourcePath),
+    kind: getRequiredString(record, 'kind', sourcePath),
+    statement: getRequiredString(record, 'statement', sourcePath),
+    status: getOptionalString(record, 'status') ?? 'active',
+    evidence_ids: getStringArray(record, 'evidence_ids'),
+    tags: getStringArray(record, 'tags'),
+    created_at: getRequiredString(record, 'created_at', sourcePath),
+    updated_at: getRequiredString(record, 'updated_at', sourcePath),
+    ...omitUndefined({
+      source_type: getOptionalString(record, 'source_type'),
+      title: getOptionalString(record, 'title'),
+      rationale: getOptionalString(record, 'rationale'),
+      applicability: getOptionalString(record, 'applicability'),
+      confidence: getOptionalNumber(record, 'confidence'),
+      embedding: getOptionalNumberArray(record, 'embedding'),
+      embeddingInputHash: getOptionalString(record, 'embeddingInputHash')
+    })
+  }) as LearningRecord);
 }
 
 /**
@@ -239,17 +231,13 @@ export function sortByPathThenId(
   );
 }
 
-export function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result = { ...base } as Record<string, unknown>;
-
-  for (const [key, value] of Object.entries(optionalFields)) {
+/** Returns a copy of `obj` with all `undefined` values removed. */
+export function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const result: Partial<T> = {};
+  for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      result[key] = value;
+      (result as Record<string, unknown>)[key] = value;
     }
   }
-
-  return result as T;
+  return result;
 }

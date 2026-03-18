@@ -4,7 +4,7 @@
 
 import { openLearningsDatabase } from './database.js';
 import { embedText } from './embeddings.js';
-import { withOptionalFields } from './parser.js';
+import { omitUndefined } from './parser.js';
 import type {
   LearningsQueryEvidence,
   LearningsQueryResult,
@@ -81,39 +81,32 @@ export async function queryLearnings(
           content: string;
           final_weight: number | null;
         }>
-      ).map(
-        (evidenceRow): LearningsQueryEvidence =>
-          withOptionalFields<LearningsQueryEvidence>(
-            {
-              id: evidenceRow.id,
-              sourceType: evidenceRow.source_type,
-              content: evidenceRow.content
-            },
-            {
-              url: evidenceRow.url ?? undefined,
-              title: evidenceRow.title ?? undefined,
-              finalWeight: evidenceRow.final_weight ?? undefined
-            }
-          )
-      );
+      ).map((evidenceRow) => ({
+        id: evidenceRow.id,
+        sourceType: evidenceRow.source_type,
+        content: evidenceRow.content,
+        ...omitUndefined({
+          url: evidenceRow.url ?? undefined,
+          title: evidenceRow.title ?? undefined,
+          finalWeight: evidenceRow.final_weight ?? undefined
+        })
+      }) as LearningsQueryEvidence);
 
-      return withOptionalFields<LearningsQueryResult>(
-        {
-          id: row.id,
-          repositoryId: row.repository_id,
-          kind: row.kind,
-          statement: row.statement,
-          status: row.status,
-          tags,
-          evidence
-        },
-        {
+      return {
+        id: row.id,
+        repositoryId: row.repository_id,
+        kind: row.kind,
+        statement: row.statement,
+        status: row.status,
+        tags,
+        evidence,
+        ...omitUndefined({
           title: row.title ?? undefined,
           rationale: row.rationale ?? undefined,
           applicability: row.applicability ?? undefined,
           confidence: row.confidence ?? undefined
-        }
-      );
+        })
+      } as LearningsQueryResult;
     });
   } finally {
     db.close();

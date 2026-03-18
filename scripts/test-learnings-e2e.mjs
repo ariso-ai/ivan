@@ -59,8 +59,7 @@ function verifyPristineLifecycleFlow(repoPath) {
   assertPristineState(repoPath);
 
   runIvan(['learnings', 'init', '--repo', repoPath]);
-  // evidence.jsonl is gitignored — not created by init, only by ingest-pr
-  assertNotExists(path.join(repoPath, '.ivan', 'evidence.jsonl'));
+  assertExists(path.join(repoPath, '.ivan', 'evidence.jsonl'));
   assertExists(path.join(repoPath, '.ivan', 'lessons.jsonl'));
 
   runIvan(['learnings', 'install-hooks', '--repo', repoPath]);

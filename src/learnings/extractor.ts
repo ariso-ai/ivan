@@ -297,7 +297,7 @@ export function extractLearningRecords(
 function isEligibleForExtraction(evidence: EvidenceRecord): boolean {
   if (
     evidence.author_type === 'bot' ||
-    /(coderabbit(?:ai)?|copilot|assistant|github-actions)/i.test(
+    /(coderabbit(?:ai)?|copilot|assistant|github-actions|ari|ivan|codex)/i.test(
       evidence.author_name ?? ''
     )
   ) {

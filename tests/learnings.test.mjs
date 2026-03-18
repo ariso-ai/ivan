@@ -126,12 +126,11 @@ describe('learnings storage slice', () => {
     execIvan(['learnings', 'init', '--repo', repoPath]);
 
     expect(
+      fs.existsSync(path.join(repoPath, '.ivan', 'evidence.jsonl'))
+    ).toBe(true);
+    expect(
       fs.existsSync(path.join(repoPath, '.ivan', 'lessons.jsonl'))
     ).toBe(true);
-    // evidence.jsonl is gitignored, not created by init
-    expect(
-      fs.existsSync(path.join(repoPath, '.ivan', 'evidence.jsonl'))
-    ).toBe(false);
   });
 
   test('rebuild and query commands work end to end via CLI', () => {

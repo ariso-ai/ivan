@@ -27,10 +27,12 @@ Repository ID: repo_your-project-name
 Created directories:
   - /path/to/your-project/.ivan
 Created files:
+  - /path/to/your-project/.ivan/evidence.jsonl
   - /path/to/your-project/.ivan/lessons.jsonl
+Updated .gitignore with .ivan/db.sqlite exclusions
 ```
 
-Notice the new `.ivan/` directory. `init` also adds `.ivan/evidence.jsonl` to your `.gitignore` — evidence is kept locally for re-extraction but is not committed to the repository.
+Notice the new `.ivan/` directory and a new line in `.gitignore`. The SQLite database is excluded from version control because it is a derived artifact; you can always rebuild it.
 
 ---
 
@@ -74,6 +76,6 @@ You will see up to five learnings relevant to "error handling", each with its st
 
 ## What you built
 
-You have a fully functional local learnings store. `lessons.jsonl` is version-controlled and human-readable. `evidence.jsonl` is gitignored — it lives locally so you can re-run extraction without hitting GitHub again, but it is never committed. `db.sqlite` is a derived, queryable index you regenerate any time with `ivan learnings rebuild --repo .`.
+You have a fully functional local learnings store. The JSONL files under `.ivan/` are version-controlled and human-readable; the `.ivan/db.sqlite` SQLite file is a fast, queryable index you regenerate any time with `ivan learnings rebuild --repo .`.
 
 **Next**: Follow the [how-to guide for installing Claude Code hooks](how-to-install-claude-hooks.md) to have relevant learnings surface automatically inside every Claude session.

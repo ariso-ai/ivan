@@ -33,7 +33,7 @@ export function classifyAuthorType(authorName?: string): string | undefined {
     return undefined;
   }
 
-  return /(bot|github-actions|coderabbit(?:ai)?|copilot|assistant)/i.test(
+  return /(bot|github-actions|coderabbit(?:ai)?|copilot|assistant|ari|ivan|codex)/i.test(
     authorName
   )
     ? 'bot'
