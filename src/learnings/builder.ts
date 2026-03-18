@@ -28,7 +28,7 @@ import {
   LESSONS_JSONL_RELATIVE_PATH,
   resolveCanonicalLearningsPath
 } from './paths.js';
-import { loadCanonicalRecords } from './parser.js';
+import { loadCanonicalRecords, sortByPathThenId } from './parser.js';
 import { validateLearningsDataset } from './validator.js';
 
 /** Counts and path returned after a successful database rebuild. */
@@ -187,15 +187,24 @@ async function resolveEmbeddings(
     }
   }
 
+  let generated = 0;
+
   if (dirty.length > 0) {
-    const vectors = await embedTexts(dirty.map((d) => d.inputString));
-    for (let i = 0; i < dirty.length; i++) {
-      dirty[i].learning.embedding = vectors[i];
-      dirty[i].learning.embeddingInputHash = dirty[i].hash;
+    try {
+      const vectors = await embedTexts(dirty.map((d) => d.inputString));
+      for (let i = 0; i < dirty.length; i++) {
+        dirty[i].learning.embedding = vectors[i];
+        dirty[i].learning.embeddingInputHash = dirty[i].hash;
+      }
+      generated = dirty.length;
+    } catch (err) {
+      process.stderr.write(
+        `Warning: could not generate embeddings (${(err as Error).message}). Vector search will be unavailable for this rebuild.\n`
+      );
     }
   }
 
-  return { cached, generated: dirty.length, dirty: dirty.length > 0 };
+  return { cached, generated, dirty: generated > 0 };
 }
 
 /**
@@ -241,11 +250,9 @@ function writeBackEmbeddings(
     updatedLines.push(JSON.stringify(parsed));
   }
 
-  fs.writeFileSync(
-    filePath,
-    updatedLines.map((l) => `${l}\n`).join(''),
-    'utf8'
-  );
+  const tmpPath = `${filePath}.tmp`;
+  fs.writeFileSync(tmpPath, updatedLines.map((l) => `${l}\n`).join(''), 'utf8');
+  fs.renameSync(tmpPath, filePath);
 }
 
 /**
@@ -342,17 +349,19 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   `);
 
   const transaction = db.transaction(() => {
-    for (const repository of sortRecords(dataset.repositories)) {
+    for (const repository of [...dataset.repositories].sort(sortByPathThenId)) {
       writeRepository(insertRepository, repository);
     }
 
-    for (const evidence of sortRecords(dataset.evidence)) {
+    for (const evidence of [...dataset.evidence].sort(sortByPathThenId)) {
       writeEvidence(insertEvidence, evidence);
     }
 
-    for (const learning of sortRecords(dataset.learnings)) {
+    for (const learning of [...dataset.learnings].sort(sortByPathThenId)) {
       writeLearning(insertLearning, learning);
-      writeLearningVector(insertLearningVector, learning);
+      if (learning.embedding && learning.embedding.length > 0) {
+        writeLearningVector(insertLearningVector, learning);
+      }
 
       for (const evidenceId of [...learning.evidence_ids].sort((a, b) =>
         a.localeCompare(b)
@@ -380,8 +389,12 @@ function writeLearningVector(
   statement: Database.Statement,
   learning: LearningRecord
 ): void {
-  const vector = learning.embedding!;
-  statement.run(learning.id, Buffer.from(new Float32Array(vector).buffer));
+  if (!learning.embedding || learning.embedding.length === 0) {
+    throw new Error(
+      `Learning ${learning.id} is missing its embedding — call resolveEmbeddings before insertDataset`
+    );
+  }
+  statement.run(learning.id, Buffer.from(new Float32Array(learning.embedding).buffer));
 }
 
 /** Executes the prepared `INSERT INTO repositories` statement for one record. */
@@ -501,13 +514,3 @@ function storeJsonlHash(db: Database.Database, hash: string): void {
   ).run('jsonl_hash', hash, new Date().toISOString());
 }
 
-/** Sorts records by `sourcePath` then `id` to produce deterministic insertion order. */
-function sortRecords<T extends { id: string; sourcePath: string }>(
-  records: T[]
-): T[] {
-  return [...records].sort(
-    (left, right) =>
-      left.sourcePath.localeCompare(right.sourcePath) ||
-      left.id.localeCompare(right.id)
-  );
-}

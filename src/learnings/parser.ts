@@ -229,7 +229,7 @@ function sortDataset(dataset: LearningsDataset): LearningsDataset {
 }
 
 /** Comparator that orders by `sourcePath` first, then `id`, both lexicographically. */
-function sortByPathThenId(
+export function sortByPathThenId(
   left: { sourcePath: string; id: string },
   right: { sourcePath: string; id: string }
 ): number {
@@ -239,7 +239,7 @@ function sortByPathThenId(
   );
 }
 
-function withOptionalFields<T extends object>(
+export function withOptionalFields<T extends object>(
   base: T,
   optionalFields: Record<string, unknown>
 ): T {

@@ -4,6 +4,7 @@
 
 import { openLearningsDatabase } from './database.js';
 import { embedText } from './embeddings.js';
+import { withOptionalFields } from './parser.js';
 import type {
   LearningsQueryEvidence,
   LearningsQueryResult,
@@ -248,7 +249,7 @@ async function runVectorSearch(
 function buildFtsExpression(text: string): string | null {
   const terms = Array.from(
     new Set(
-      (text.toLowerCase().match(/[a-z0-9_]+/g) ?? []).filter(
+      (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
         (term) => term.length > 1
       )
     )
@@ -259,19 +260,4 @@ function buildFtsExpression(text: string): string | null {
   }
 
   return terms.join(' ');
-}
-
-function withOptionalFields<T extends object>(
-  base: T,
-  optionalFields: Record<string, unknown>
-): T {
-  const result = { ...base } as Record<string, unknown>;
-
-  for (const [key, value] of Object.entries(optionalFields)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
 }

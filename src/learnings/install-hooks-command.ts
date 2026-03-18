@@ -304,7 +304,7 @@ function removeStaleHookFiles(hooksDir: string): void {
   for (const name of stale) {
     const filePath = path.join(hooksDir, name);
     if (fs.existsSync(filePath)) {
-      fs.rmSync(filePath);
+      fs.unlinkSync(filePath);
     }
   }
 }
