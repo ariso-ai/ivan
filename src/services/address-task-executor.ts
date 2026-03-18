@@ -3,12 +3,11 @@ import ora from 'ora';
 import type { Ora } from 'ora';
 import { execSync } from 'child_process';
 import { JobManager } from './job-manager.js';
-import { ExecutorFactory } from './executor-factory.js';
-import type { IClaudeExecutor } from './executor-factory.js';
+import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
 import { OpenAIService } from './openai-service.js';
 import { ConfigManager } from '../config.js';
-import type { Task } from '../database.js';
-import type { IGitManager, IPRService } from './git-interfaces.js';
+import { Task } from '../database.js';
+import { IGitManager, IPRService } from './git-interfaces.js';
 import { createGitManager, createPRService } from './service-factory.js';
 import { GitHubAPIClient } from './github-api-client.js';
 

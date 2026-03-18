@@ -6,7 +6,6 @@ import {
   LESSONS_JSONL_RELATIVE_PATH,
   resolveCanonicalLearningsPath
 } from './paths.js';
-import { omitUndefined } from './parser.js';
 import type { LearningRecord } from './record-types.js';
 
 /**
@@ -42,15 +41,13 @@ function serializeLearningRecord(
     tags: record.tags,
     created_at: record.created_at,
     updated_at: record.updated_at,
-    ...omitUndefined({
-      source_type: record.source_type,
-      title: record.title,
-      rationale: record.rationale,
-      applicability: record.applicability,
-      confidence: record.confidence,
-      embedding: record.embedding,
-      embeddingInputHash: record.embeddingInputHash
-    })
+    source_type: record.source_type,
+    title: record.title,
+    rationale: record.rationale,
+    applicability: record.applicability,
+    confidence: record.confidence,
+    embedding: record.embedding,
+    embeddingInputHash: record.embeddingInputHash
   };
 }
 
