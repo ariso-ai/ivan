@@ -24,7 +24,6 @@ import {
   embedTexts
 } from './embeddings.js';
 import {
-  EVIDENCE_JSONL_RELATIVE_PATH,
   LESSONS_JSONL_RELATIVE_PATH,
   resolveCanonicalLearningsPath
 } from './paths.js';
@@ -115,9 +114,10 @@ export function isLearningsDatabaseStale(repoPath: string): boolean {
 }
 
 /**
- * Computes a SHA-256 digest over the sorted paths and contents of all canonical
- * JSONL files (`evidence.jsonl`, `lessons.jsonl`). Returns an empty string when
- * the `.ivan` directory does not exist.
+ * Computes a SHA-256 digest over `lessons.jsonl`. Evidence is excluded: it is
+ * gitignored, varies per-machine, and lessons are always rewritten downstream
+ * of evidence by `extract`, so lessons alone are the stable staleness signal.
+ * Returns an empty string when `.ivan/` does not exist.
  */
 export function computeJsonlHash(repoPath: string): string {
   const resolved = path.resolve(repoPath);
@@ -129,10 +129,7 @@ export function computeJsonlHash(repoPath: string): string {
 
   const files: string[] = [];
 
-  for (const relativePath of [
-    EVIDENCE_JSONL_RELATIVE_PATH,
-    LESSONS_JSONL_RELATIVE_PATH
-  ]) {
+  for (const relativePath of [LESSONS_JSONL_RELATIVE_PATH]) {
     const file = path.join(resolved, relativePath);
     if (fs.existsSync(file)) {
       files.push(file);

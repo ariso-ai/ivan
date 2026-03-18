@@ -82,7 +82,6 @@ export function ensureLearningsDirectories(
 /** Creates empty canonical JSONL files when they do not already exist. */
 export function ensureCanonicalJsonlFiles(repoPath: string): string[] {
   const files = [
-    resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl'),
     resolveCanonicalLearningsPath(repoPath, 'lessons.jsonl')
   ];
   const created: string[] = [];
@@ -98,12 +97,25 @@ export function ensureCanonicalJsonlFiles(repoPath: string): string[] {
 }
 
 /**
- * No-op: `.ivan/db.sqlite` is intentionally tracked in git so the database is
- * available to all collaborators without requiring a rebuild.
- * Always returns false (no changes made).
+ * Ensures `.ivan/evidence.jsonl` is listed in the repo's `.gitignore`.
+ * Evidence is kept locally for re-extraction but must not be committed to git.
+ * Returns true if the gitignore was modified.
  */
-export function ensureGitignoreCoverage(_repoPath: string): boolean {
-  return false;
+export function ensureGitignoreCoverage(repoPath: string): boolean {
+  const gitignorePath = path.join(repoPath, '.gitignore');
+  const entry = '.ivan/evidence.jsonl';
+
+  const existing = fs.existsSync(gitignorePath)
+    ? fs.readFileSync(gitignorePath, 'utf8')
+    : '';
+
+  if (existing.split('\n').some((line) => line.trim() === entry)) {
+    return false;
+  }
+
+  const separator = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+  fs.writeFileSync(gitignorePath, `${existing}${separator}${entry}\n`, 'utf8');
+  return true;
 }
 
 /** Throws a descriptive error if `repoPath` does not exist or is not a directory. */
