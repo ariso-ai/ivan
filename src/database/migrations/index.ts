@@ -12,7 +12,6 @@ import { migration as addRepositoryIdToJobsAndTasks } from './010_add_repository
 import { migration as addCommentIdToTasks } from './013_add_comment_id_to_tasks.js';
 import { migration as addOriginalDescriptionColumn } from './014_add_original_description_column.js';
 import { migration as createLearningsTables } from './015_create_learnings_tables.js';
-import { migration as slimEvidenceTable } from './016_slim_evidence_table.js';
 
 export const migrations: Migration[] = [
   createJobsTable,
@@ -29,4 +28,4 @@ export const migrations: Migration[] = [
   addOriginalDescriptionColumn
 ];
 
-export const learningsMigrations: Migration[] = [createLearningsTables, slimEvidenceTable];
+export const learningsMigrations: Migration[] = [createLearningsTables];

@@ -121,9 +121,7 @@ export function buildEvidenceSignalsFromPullRequest(
       final_weight: weight.finalWeight,
       boosts: weight.boosts,
       penalties: weight.penalties,
-      ...(review.submittedAt !== undefined && {
-        occurred_at: review.submittedAt
-      }),
+      occurred_at: review.submittedAt,
       created_at: now,
       updated_at: now
     });
@@ -167,10 +165,10 @@ export function buildEvidenceSignalsFromPullRequest(
     const context: EvidenceContext = {
       title: buildThreadTitle(firstComment.path, firstComment.line),
       content: firstComment.body.trim(),
-      ...(firstComment.path !== undefined && { file_path: firstComment.path }),
-      ...(firstComment.line !== undefined && { line_start: firstComment.line }),
-      ...(firstComment.line !== undefined && { line_end: firstComment.line }),
-      ...(firstComment.diffHunk !== undefined && { diff_hunk: firstComment.diffHunk })
+      file_path: firstComment.path,
+      line_start: firstComment.line,
+      line_end: firstComment.line,
+      diff_hunk: firstComment.diffHunk
     };
     contextCache.set(id, context);
   }

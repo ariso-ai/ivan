@@ -141,34 +141,32 @@ async function fetchPatEvidence(
       url: pr.url,
       state: pr.state,
       headRefName: pr.headRefName,
-      ...(pr.headSha !== undefined && { headSha: pr.headSha }),
-      ...(pr.author && { author: pr.author })
+      headSha: pr.headSha,
+      author: pr.author
     },
     issueComments: pr.issueComments,
     reviews: pr.reviews,
     reviewThreads: reviewThreads.map((thread) => ({
-      ...(thread.id !== undefined && { id: thread.id }),
+      id: thread.id,
       isResolved: thread.isResolved,
-      ...(thread.isOutdated !== undefined && { isOutdated: thread.isOutdated }),
+      isOutdated: thread.isOutdated,
       comments: thread.comments.nodes.map((comment) => ({
         id: comment.id,
-        ...(comment.databaseId !== undefined && {
-          databaseId: comment.databaseId
-        }),
+        databaseId: comment.databaseId,
         body: comment.body,
         createdAt: comment.createdAt,
-        ...(comment.author && { author: { login: comment.author.login } }),
-        ...(comment.path !== undefined && { path: comment.path }),
-        ...(comment.line !== undefined && { line: comment.line }),
-        ...(comment.url !== undefined && { url: comment.url }),
-        ...(comment.diffHunk !== undefined && { diffHunk: comment.diffHunk })
+        author: comment.author ? { login: comment.author.login } : undefined,
+        path: comment.path,
+        line: comment.line,
+        url: comment.url,
+        diffHunk: comment.diffHunk
       }))
     })),
     files: pr.files,
     checks: checks.map((check) => ({
       name: check.name,
       state: check.state,
-      ...(check.link !== undefined && { link: check.link })
+      link: check.link
     }))
   };
 }
@@ -381,54 +379,50 @@ async function fetchCliEvidence(
       url: pr.url,
       state: pr.state,
       headRefName: pr.headRefName,
-      ...(headSha !== undefined && { headSha }),
-      ...(pr.author && { author: { login: pr.author.login } })
+      headSha,
+      author: pr.author ? { login: pr.author.login } : undefined
     },
     issueComments: (pr.comments ?? []).map((comment, index) => ({
       id: comment.id ?? `issue-comment-${pr.number}-${index + 1}`,
       body: comment.body ?? '',
       createdAt: comment.createdAt ?? '',
-      ...(comment.author && { author: { login: comment.author.login } }),
-      ...(comment.url !== undefined && { url: comment.url })
+      author: comment.author ? { login: comment.author.login } : undefined,
+      url: comment.url
     })),
     reviews: (pr.reviews ?? []).map((review, index) => ({
       id: review.id ?? `review-${pr.number}-${index + 1}`,
       body: review.body ?? '',
       state: review.state ?? 'COMMENTED',
-      ...(review.submittedAt !== undefined && {
-        submittedAt: review.submittedAt
-      }),
-      ...(review.author && { author: { login: review.author.login } }),
-      ...(review.url !== undefined && { url: review.url })
+      submittedAt: review.submittedAt,
+      author: review.author ? { login: review.author.login } : undefined,
+      url: review.url
     })),
     reviewThreads: reviewThreads.map((thread) => ({
-      ...(thread.id !== undefined && { id: thread.id }),
+      id: thread.id,
       isResolved: thread.isResolved ?? false,
-      ...(thread.isOutdated !== undefined && { isOutdated: thread.isOutdated }),
+      isOutdated: thread.isOutdated,
       comments: (thread.comments?.nodes ?? []).map((comment) => ({
         id: comment.id ?? '',
-        ...(comment.databaseId !== undefined && {
-          databaseId: comment.databaseId
-        }),
+        databaseId: comment.databaseId,
         body: comment.body ?? '',
         createdAt: comment.createdAt ?? '',
-        ...(comment.author && { author: { login: comment.author.login } }),
-        ...(comment.path !== undefined && { path: comment.path }),
-        ...(comment.line !== undefined && { line: comment.line }),
-        ...(comment.url !== undefined && { url: comment.url }),
-        ...(comment.diffHunk !== undefined && { diffHunk: comment.diffHunk })
+        author: comment.author ? { login: comment.author.login } : undefined,
+        path: comment.path,
+        line: comment.line,
+        url: comment.url,
+        diffHunk: comment.diffHunk
       }))
     })),
     files: (pr.files ?? []).map((file) => ({
       path: file.path,
-      ...(file.additions !== undefined && { additions: file.additions }),
-      ...(file.deletions !== undefined && { deletions: file.deletions }),
-      ...(file.changeType !== undefined && { changeType: file.changeType })
+      additions: file.additions,
+      deletions: file.deletions,
+      changeType: file.changeType
     })),
     checks: checks.map((check) => ({
       name: check.name,
       state: check.state,
-      ...(check.link !== undefined && { link: check.link })
+      link: check.link
     }))
   };
 }
