@@ -1,6 +1,6 @@
-// Builds and persists EvidenceRecord JSONL files from raw GitHub PR payloads.
-// Records are deterministically identified and upserted (new data overwrites old)
-// so re-ingesting a PR is safe and idempotent.
+// Builds and persists EvidenceSignal JSONL files from raw GitHub PR payloads.
+// Signals are lean pointer records (identity + scoring metadata + canonical URL).
+// Content flows in-memory through the pipeline via EvidenceContextCache and is never persisted.
 
 import fs from 'fs';
 import { createDeterministicId } from './id.js';
@@ -8,11 +8,12 @@ import {
   EVIDENCE_JSONL_RELATIVE_PATH,
   resolveCanonicalLearningsPath
 } from './paths.js';
-import type { EvidenceRecord } from './record-types.js';
 import type {
-  GitHubPullRequestEvidence,
-  GitHubReviewThreadEvidence
-} from './github-evidence.js';
+  EvidenceSignal,
+  EvidenceContext,
+  EvidenceContextCache
+} from './record-types.js';
+import type { GitHubPullRequestEvidence } from './github-evidence.js';
 import {
   inferAuthorFields,
   weightCheck,
@@ -21,42 +22,54 @@ import {
   weightReviewThread
 } from './weighting.js';
 
+/** Result of building signals from a PR payload. */
+export interface BuildSignalsResult {
+  signals: EvidenceSignal[];
+  contextCache: EvidenceContextCache;
+}
+
 /**
- * Converts a `GitHubPullRequestEvidence` payload into a flat list of `EvidenceRecord` objects—
- * one per PR summary, issue comment, review, review thread, and CI check.
- * Each record is weighted and sorted by `source_type` for deterministic JSONL output.
+ * Converts a `GitHubPullRequestEvidence` payload into lean `EvidenceSignal` objects
+ * and a parallel `EvidenceContextCache` mapping signal IDs to their in-memory content.
  */
-export function buildEvidenceRecordsFromPullRequest(
+export function buildEvidenceSignalsFromPullRequest(
   payload: GitHubPullRequestEvidence
-): EvidenceRecord[] {
-  const records: EvidenceRecord[] = [];
+): BuildSignalsResult {
+  const signals: EvidenceSignal[] = [];
+  const contextCache: EvidenceContextCache = new Map();
   const now = new Date().toISOString();
   const baseExternalId = `github:${payload.repository.owner}/${payload.repository.name}:pr:${payload.pullRequest.number}`;
+  const parentUrl = payload.pullRequest.url;
 
-  records.push({
-    type: 'evidence',
-    sourcePath: evidenceSourcePath(),
-    id: createDeterministicId('ev', `${baseExternalId}:summary`),
-    source_system: 'github',
-    source_type: 'pull_request',
-    external_id: baseExternalId,
-    url: payload.pullRequest.url,
-    pr_number: payload.pullRequest.number,
-    title: payload.pullRequest.title,
-    content: buildPullRequestSummaryBody(payload),
-    ...(payload.pullRequest.author?.login && {
-      author_type: 'human',
-      author_name: payload.pullRequest.author.login
-    }),
-    base_weight: 5,
-    final_weight: 5,
-    boosts: ['pr_summary'],
-    penalties: [],
-    occurred_at: now,
-    created_at: now,
-    updated_at: now
-  });
+  // PR summary
+  {
+    const id = createDeterministicId('ev', `${baseExternalId}:summary`);
+    signals.push({
+      type: 'evidence',
+      sourcePath: evidenceSourcePath(),
+      id,
+      source_system: 'github',
+      source_type: 'pull_request',
+      external_url: payload.pullRequest.url,
+      ...(payload.pullRequest.author?.login && {
+        author_type: 'human',
+        author_name: payload.pullRequest.author.login
+      }),
+      base_weight: 5,
+      final_weight: 5,
+      boosts: ['pr_summary'],
+      penalties: [],
+      occurred_at: now,
+      created_at: now,
+      updated_at: now
+    });
+    contextCache.set(id, {
+      title: payload.pullRequest.title,
+      content: buildPullRequestSummaryBody(payload)
+    });
+  }
 
+  // Issue comments
   for (const comment of payload.issueComments) {
     const id = createDeterministicId(
       'ev',
@@ -64,18 +77,14 @@ export function buildEvidenceRecordsFromPullRequest(
     );
     const weight = weightIssueComment(comment);
     const author = inferAuthorFields(comment.author?.login);
-    records.push({
+    signals.push({
       type: 'evidence',
       sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_issue_comment',
-      external_id: `${baseExternalId}:issue-comment:${comment.id}`,
-      parent_external_id: baseExternalId,
-      ...(comment.url !== undefined && { url: comment.url }),
-      pr_number: payload.pullRequest.number,
-      title: `PR issue comment by ${comment.author?.login ?? 'unknown'}`,
-      content: comment.body.trim(),
+      external_url: comment.url,
+      parent_url: parentUrl,
       ...author,
       base_weight: weight.baseWeight,
       final_weight: weight.finalWeight,
@@ -85,8 +94,13 @@ export function buildEvidenceRecordsFromPullRequest(
       created_at: now,
       updated_at: now
     });
+    contextCache.set(id, {
+      title: `PR issue comment by ${comment.author?.login ?? 'unknown'}`,
+      content: comment.body.trim()
+    });
   }
 
+  // Reviews
   for (const review of payload.reviews) {
     const id = createDeterministicId(
       'ev',
@@ -94,20 +108,14 @@ export function buildEvidenceRecordsFromPullRequest(
     );
     const weight = weightReview(review);
     const author = inferAuthorFields(review.author?.login);
-    records.push({
+    signals.push({
       type: 'evidence',
       sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_review',
-      external_id: `${baseExternalId}:review:${review.id}`,
-      parent_external_id: baseExternalId,
-      ...(review.url !== undefined && { url: review.url }),
-      pr_number: payload.pullRequest.number,
-      review_id: review.id,
-      title: `Review ${review.state} by ${review.author?.login ?? 'unknown'}`,
-      content: review.body.trim() || review.state,
-      review_state: review.state,
+      external_url: review.url,
+      parent_url: parentUrl,
       ...author,
       base_weight: weight.baseWeight,
       final_weight: weight.finalWeight,
@@ -119,38 +127,69 @@ export function buildEvidenceRecordsFromPullRequest(
       created_at: now,
       updated_at: now
     });
+    contextCache.set(id, {
+      title: `Review ${review.state} by ${review.author?.login ?? 'unknown'}`,
+      content: review.body.trim() || review.state
+    });
   }
 
+  // Review threads
   for (const thread of payload.reviewThreads) {
-    const threadRecord = buildThreadEvidenceRecord(
-      payload,
-      thread,
-      baseExternalId,
-      now
+    const firstComment = thread.comments[0];
+    if (!firstComment) continue;
+
+    const threadId = thread.id ?? firstComment.id;
+    const id = createDeterministicId(
+      'ev',
+      `${baseExternalId}:thread:${threadId}`
     );
-    if (threadRecord) {
-      records.push(threadRecord);
-    }
+    const weight = weightReviewThread(thread);
+    const author = inferAuthorFields(firstComment.author?.login);
+
+    signals.push({
+      type: 'evidence',
+      sourcePath: evidenceSourcePath(),
+      id,
+      source_system: 'github',
+      source_type: 'pr_review_thread',
+      external_url: firstComment.url,
+      parent_url: parentUrl,
+      ...author,
+      base_weight: weight.baseWeight,
+      final_weight: weight.finalWeight,
+      boosts: weight.boosts,
+      penalties: weight.penalties,
+      occurred_at: firstComment.createdAt,
+      created_at: now,
+      updated_at: now
+    });
+
+    const context: EvidenceContext = {
+      title: buildThreadTitle(firstComment.path, firstComment.line),
+      content: firstComment.body.trim(),
+      ...(firstComment.path !== undefined && { file_path: firstComment.path }),
+      ...(firstComment.line !== undefined && { line_start: firstComment.line }),
+      ...(firstComment.line !== undefined && { line_end: firstComment.line }),
+      ...(firstComment.diffHunk !== undefined && { diff_hunk: firstComment.diffHunk })
+    };
+    contextCache.set(id, context);
   }
 
+  // Checks
   for (const check of payload.checks) {
     const id = createDeterministicId(
       'ev',
       `${baseExternalId}:check:${check.name}:${check.state}`
     );
     const weight = weightCheck(check);
-    records.push({
+    signals.push({
       type: 'evidence',
       sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_check',
-      external_id: `${baseExternalId}:check:${check.name}`,
-      parent_external_id: baseExternalId,
-      ...(check.link !== undefined && { url: check.link }),
-      pr_number: payload.pullRequest.number,
-      title: `Check ${check.state}: ${check.name}`,
-      content: `${check.name} -> ${check.state}`,
+      external_url: check.link,
+      parent_url: parentUrl,
       base_weight: weight.baseWeight,
       final_weight: weight.finalWeight,
       boosts: weight.boosts,
@@ -159,112 +198,90 @@ export function buildEvidenceRecordsFromPullRequest(
       created_at: now,
       updated_at: now
     });
+    contextCache.set(id, {
+      title: `Check ${check.state}: ${check.name}`,
+      content: `${check.name} -> ${check.state}`
+    });
   }
 
-  return records.sort((left, right) =>
-    left.source_type.localeCompare(right.source_type)
-  );
+  return {
+    signals: signals.sort((left, right) =>
+      left.source_type.localeCompare(right.source_type)
+    ),
+    contextCache
+  };
 }
 
 /**
- * Upserts `records` into `.ivan/evidence.jsonl`, merging with existing data
- * by id (new records win).
- * Returns the `{filePath}#L{n}` source paths for every record written.
+ * Upserts `signals` into `.ivan/evidence.jsonl`, merging with existing data
+ * by id (new signals win).
+ * Returns the `{filePath}#L{n}` source paths for every signal written.
  */
-export function writeEvidenceRecords(
+export function writeEvidenceSignals(
   repoPath: string,
-  records: EvidenceRecord[]
+  signals: EvidenceSignal[]
 ): string[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
-  const mergedRecords = mergeEvidenceRecords(filePath, records)
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((record) => ({
-      ...record,
-      sourcePath: evidenceSourcePath()
-    }));
+  const merged = mergeEvidenceSignals(filePath, signals)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((signal) => ({ ...signal, sourcePath: evidenceSourcePath() }));
 
-  const nextContent = mergedRecords
-    .map((record) => `${JSON.stringify(serializeEvidenceRecord(record))}\n`)
+  const content = merged
+    .map((signal) => `${JSON.stringify(serializeEvidenceSignal(signal))}\n`)
     .join('');
-  fs.writeFileSync(filePath, nextContent, 'utf8');
+  fs.writeFileSync(filePath, content, 'utf8');
 
-  return mergedRecords.map((record, index) => `${filePath}#L${index + 1}`);
+  return merged.map((_signal, index) => `${filePath}#L${index + 1}`);
 }
 
-/** Loads any existing JSONL at `filePath` into an id-keyed map, then upserts `records` on top. */
-function mergeEvidenceRecords(
+/** Loads any existing JSONL at `filePath` into an id-keyed map, then upserts `signals` on top. */
+function mergeEvidenceSignals(
   filePath: string,
-  records: EvidenceRecord[]
-): EvidenceRecord[] {
-  const byId = new Map<string, EvidenceRecord>();
+  signals: EvidenceSignal[]
+): EvidenceSignal[] {
+  const byId = new Map<string, EvidenceSignal>();
 
   if (fs.existsSync(filePath)) {
     const lines = fs.readFileSync(filePath, 'utf8').split('\n');
     for (const rawLine of lines) {
       const line = rawLine.trim();
-      if (!line) {
-        continue;
-      }
+      if (!line) continue;
 
-      const parsed = JSON.parse(line) as EvidenceRecord;
+      const parsed = JSON.parse(line) as EvidenceSignal;
       byId.set(parsed.id, parsed);
     }
   }
 
-  for (const record of records) {
-    byId.set(record.id, record);
+  for (const signal of signals) {
+    byId.set(signal.id, signal);
   }
 
   return [...byId.values()];
 }
 
-/** Constructs an `EvidenceRecord` from the first comment of a review thread; returns null if the thread has no comments. */
-function buildThreadEvidenceRecord(
-  payload: GitHubPullRequestEvidence,
-  thread: GitHubReviewThreadEvidence,
-  baseExternalId: string,
-  now: string
-): EvidenceRecord | null {
-  const firstComment = thread.comments[0];
-  if (!firstComment) {
-    return null;
-  }
-
-  const threadId = thread.id ?? firstComment.id;
-  const id = createDeterministicId(
-    'ev',
-    `${baseExternalId}:thread:${threadId}`
-  );
-  const weight = weightReviewThread(thread);
-  const author = inferAuthorFields(firstComment.author?.login);
-
+/** Produces a plain-object representation of an `EvidenceSignal` for JSON serialization. */
+function serializeEvidenceSignal(signal: EvidenceSignal): Record<string, unknown> {
   return {
-    type: 'evidence',
-    sourcePath: evidenceSourcePath(),
-    id,
-    source_system: 'github',
-    source_type: 'pr_review_thread',
-    external_id: `${baseExternalId}:thread:${threadId}`,
-    parent_external_id: baseExternalId,
-    ...(firstComment.url !== undefined && { url: firstComment.url }),
-    pr_number: payload.pullRequest.number,
-    thread_id: threadId,
-    comment_id: String(firstComment.databaseId ?? firstComment.id),
-    title: buildThreadTitle(firstComment.path, firstComment.line),
-    content: firstComment.body.trim(),
-    ...(firstComment.path !== undefined && { file_path: firstComment.path }),
-    ...(firstComment.line !== undefined && { line_start: firstComment.line }),
-    ...(firstComment.line !== undefined && { line_end: firstComment.line }),
-    resolution_state: thread.isResolved ? 'resolved' : 'unresolved',
-    ...author,
-    base_weight: weight.baseWeight,
-    final_weight: weight.finalWeight,
-    boosts: weight.boosts,
-    penalties: weight.penalties,
-    occurred_at: firstComment.createdAt,
-    created_at: now,
-    updated_at: now
+    id: signal.id,
+    source_system: signal.source_system,
+    source_type: signal.source_type,
+    external_url: signal.external_url,
+    parent_url: signal.parent_url,
+    author_name: signal.author_name,
+    author_type: signal.author_type,
+    occurred_at: signal.occurred_at,
+    base_weight: signal.base_weight,
+    final_weight: signal.final_weight,
+    boosts: signal.boosts,
+    penalties: signal.penalties,
+    created_at: signal.created_at,
+    updated_at: signal.updated_at
   };
+}
+
+/** Returns the canonical relative path for the evidence JSONL file (without a line number). */
+function evidenceSourcePath(): string {
+  return EVIDENCE_JSONL_RELATIVE_PATH;
 }
 
 /** Assembles a human-readable summary of the PR (number + title + body + changed files) as the evidence content. */
@@ -289,49 +306,6 @@ function buildPullRequestSummaryBody(
   }
 
   return sections.join('\n\n');
-}
-
-/**
- * Produces a plain-object representation of an `EvidenceRecord` for JSON serialization.
- * Omits `type` and `sourcePath` (derived fields not stored in JSONL).
- */
-function serializeEvidenceRecord(
-  record: EvidenceRecord
-): Record<string, unknown> {
-  return {
-    id: record.id,
-    source_system: record.source_system,
-    source_type: record.source_type,
-    external_id: record.external_id,
-    parent_external_id: record.parent_external_id,
-    url: record.url,
-    pr_number: record.pr_number,
-    review_id: record.review_id,
-    thread_id: record.thread_id,
-    comment_id: record.comment_id,
-    author_type: record.author_type,
-    author_name: record.author_name,
-    author_role: record.author_role,
-    title: record.title,
-    file_path: record.file_path,
-    line_start: record.line_start,
-    line_end: record.line_end,
-    review_state: record.review_state,
-    resolution_state: record.resolution_state,
-    occurred_at: record.occurred_at,
-    base_weight: record.base_weight,
-    final_weight: record.final_weight,
-    boosts: record.boosts,
-    penalties: record.penalties,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
-    content: record.content.trim()
-  };
-}
-
-/** Returns the canonical relative path for the evidence JSONL file (without a line number). */
-function evidenceSourcePath(): string {
-  return EVIDENCE_JSONL_RELATIVE_PATH;
 }
 
 /** Formats a human-readable title for a review thread, including file path and line number when available. */

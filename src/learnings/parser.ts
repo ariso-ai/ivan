@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { resolveCanonicalLearningsPath } from './paths.js';
 import type {
-  EvidenceRecord,
+  EvidenceSignal,
   LearningsDataset,
   LearningRecord
 } from './record-types.js';
@@ -17,13 +17,13 @@ type JsonlRecord = Record<string, unknown>;
 export function loadCanonicalRecords(repoPath: string): LearningsDataset {
   const resolvedRepoPath = path.resolve(repoPath);
   return sortDataset({
-    evidence: readEvidenceRecords(resolvedRepoPath),
+    evidence: readEvidenceSignals(resolvedRepoPath),
     learnings: readLearningRecords(resolvedRepoPath)
   });
 }
 
-/** Reads `.ivan/evidence.jsonl` and parses it into `EvidenceRecord[]`. */
-function readEvidenceRecords(repoPath: string): EvidenceRecord[] {
+/** Reads `.ivan/evidence.jsonl` and parses it into `EvidenceSignal[]`. */
+function readEvidenceSignals(repoPath: string): EvidenceSignal[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
   return readJsonlFile(filePath, repoPath, (sourcePath, record) => ({
     type: 'evidence' as const,
@@ -31,33 +31,20 @@ function readEvidenceRecords(repoPath: string): EvidenceRecord[] {
     id: getRequiredString(record, 'id', sourcePath),
     source_system: getRequiredString(record, 'source_system', sourcePath),
     source_type: getRequiredString(record, 'source_type', sourcePath),
-    content: getRequiredString(record, 'content', sourcePath),
     boosts: getStringArray(record, 'boosts'),
     penalties: getStringArray(record, 'penalties'),
     created_at: getRequiredString(record, 'created_at', sourcePath),
     updated_at: getRequiredString(record, 'updated_at', sourcePath),
     ...omitUndefined({
-      external_id: getOptionalString(record, 'external_id'),
-      parent_external_id: getOptionalString(record, 'parent_external_id'),
-      url: getOptionalString(record, 'url'),
-      pr_number: getOptionalNumber(record, 'pr_number'),
-      review_id: getOptionalString(record, 'review_id'),
-      thread_id: getOptionalString(record, 'thread_id'),
-      comment_id: getOptionalString(record, 'comment_id'),
+      external_url: getOptionalString(record, 'external_url') ?? getOptionalString(record, 'url'),
+      parent_url: getOptionalString(record, 'parent_url'),
       author_type: getOptionalString(record, 'author_type'),
       author_name: getOptionalString(record, 'author_name'),
-      author_role: getOptionalString(record, 'author_role'),
-      title: getOptionalString(record, 'title'),
-      file_path: getOptionalString(record, 'file_path'),
-      line_start: getOptionalNumber(record, 'line_start'),
-      line_end: getOptionalNumber(record, 'line_end'),
-      review_state: getOptionalString(record, 'review_state'),
-      resolution_state: getOptionalString(record, 'resolution_state'),
       occurred_at: getOptionalString(record, 'occurred_at'),
       base_weight: getOptionalNumber(record, 'base_weight'),
       final_weight: getOptionalNumber(record, 'final_weight')
     })
-  }) as EvidenceRecord);
+  }) as EvidenceSignal);
 }
 
 /** Reads `.ivan/lessons.jsonl` and parses it into `LearningRecord[]`. */

@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import type {
-  EvidenceRecord,
+  EvidenceSignal,
   LearningsDataset,
   LearningRecord
 } from './record-types.js';
@@ -261,23 +261,10 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
       id,
       source_system,
       source_type,
-      external_id,
-      parent_external_id,
-      url,
-      pr_number,
-      review_id,
-      thread_id,
-      comment_id,
+      external_url,
+      parent_url,
       author_type,
       author_name,
-      author_role,
-      title,
-      content,
-      file_path,
-      line_start,
-      line_end,
-      review_state,
-      resolution_state,
       occurred_at,
       base_weight,
       final_weight,
@@ -285,7 +272,7 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
       penalties_json,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertLearning = db.prepare(`
@@ -377,29 +364,16 @@ function writeLearningVector(
 /** Executes the prepared `INSERT INTO evidence` statement, serializing boosts/penalties arrays as JSON. */
 function writeEvidence(
   statement: Database.Statement,
-  evidence: EvidenceRecord
+  evidence: EvidenceSignal
 ): void {
   statement.run(
     evidence.id,
     evidence.source_system,
     evidence.source_type,
-    evidence.external_id ?? null,
-    evidence.parent_external_id ?? null,
-    evidence.url ?? null,
-    evidence.pr_number ?? null,
-    evidence.review_id ?? null,
-    evidence.thread_id ?? null,
-    evidence.comment_id ?? null,
+    evidence.external_url ?? null,
+    evidence.parent_url ?? null,
     evidence.author_type ?? null,
     evidence.author_name ?? null,
-    evidence.author_role ?? null,
-    evidence.title ?? null,
-    evidence.content,
-    evidence.file_path ?? null,
-    evidence.line_start ?? null,
-    evidence.line_end ?? null,
-    evidence.review_state ?? null,
-    evidence.resolution_state ?? null,
     evidence.occurred_at ?? null,
     evidence.base_weight ?? null,
     evidence.final_weight ?? null,
@@ -430,17 +404,11 @@ function writeLearning(
   );
 }
 
-/** Clears and re-populates both FTS5 virtual tables (`evidence_fts`, `learnings_fts`) from their base tables. */
+/** Clears and re-populates FTS5 virtual tables from their base tables. */
 function populateFtsTables(db: Database.Database): void {
+  // evidence_fts no longer populated -- signals have no content
   db.exec('DELETE FROM evidence_fts');
   db.exec('DELETE FROM learnings_fts');
-
-  db.exec(`
-    INSERT INTO evidence_fts (id, source_type, title, content)
-    SELECT id, source_type, COALESCE(title, ''), content
-    FROM evidence
-    ORDER BY id
-  `);
 
   db.exec(`
     INSERT INTO learnings_fts (id, kind, title, statement, rationale, applicability)

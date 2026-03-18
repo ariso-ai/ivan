@@ -12,7 +12,39 @@ export interface CanonicalRecord {
   updated_at: string;
 }
 
-/** One atomic piece of feedback or signal from GitHub (PR, review thread, issue comment, check). */
+/** Lean pointer record persisted to evidence.jsonl. Contains identity + scoring metadata only. */
+export interface EvidenceSignal extends CanonicalRecord {
+  type: 'evidence';
+  source_system: string;
+  source_type: string;
+  external_url?: string;
+  parent_url?: string;
+  author_name?: string;
+  author_type?: string;
+  occurred_at?: string;
+  base_weight?: number;
+  final_weight?: number;
+  boosts: string[];
+  penalties: string[];
+}
+
+/** In-memory content for an evidence signal. Never written to disk. */
+export interface EvidenceContext {
+  title?: string;
+  content: string;
+  diff_hunk?: string;
+  file_path?: string;
+  line_start?: number;
+  line_end?: number;
+}
+
+/** Maps evidence signal id to its in-memory content. */
+export type EvidenceContextCache = Map<string, EvidenceContext>;
+
+/**
+ * @deprecated Use `EvidenceSignal` for JSONL persistence and `EvidenceContext` for content.
+ * Will be removed after database schema migration.
+ */
 export interface EvidenceRecord extends CanonicalRecord {
   type: 'evidence';
   source_system: string;
@@ -102,6 +134,6 @@ export interface LearningRecord extends CanonicalRecord {
 
 /** The full in-memory view of all canonical JSONL data for one repo. */
 export interface LearningsDataset {
-  evidence: EvidenceRecord[];
+  evidence: EvidenceSignal[];
   learnings: LearningRecord[];
 }

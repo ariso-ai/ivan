@@ -41,6 +41,7 @@ export interface GitHubReviewThread {
       path?: string;
       line?: number;
       url?: string;
+      diffHunk?: string;
     }>;
   };
 }
@@ -491,6 +492,7 @@ export class GitHubAPIClient {
                     path
                     line
                     url
+                    diffHunk
                   }
                 }
               }

@@ -39,6 +39,7 @@ export interface GitHubReviewThreadCommentEvidence {
   path?: string;
   line?: number;
   url?: string;
+  diffHunk?: string;
 }
 
 /** A PR review thread containing one or more comments; may be resolved or outdated. */
@@ -159,7 +160,8 @@ async function fetchPatEvidence(
         ...(comment.author && { author: { login: comment.author.login } }),
         ...(comment.path !== undefined && { path: comment.path }),
         ...(comment.line !== undefined && { line: comment.line }),
-        ...(comment.url !== undefined && { url: comment.url })
+        ...(comment.url !== undefined && { url: comment.url }),
+        ...(comment.diffHunk !== undefined && { diffHunk: comment.diffHunk })
       }))
     })),
     files: pr.files,
@@ -243,6 +245,7 @@ async function fetchCliEvidence(
         path?: string;
         line?: number;
         url?: string;
+        diffHunk?: string;
         author?: { login: string };
       }>;
     };
@@ -308,6 +311,7 @@ async function fetchCliEvidence(
                   path
                   line
                   url
+                  diffHunk
                   author {
                     login
                   }
@@ -411,7 +415,8 @@ async function fetchCliEvidence(
         ...(comment.author && { author: { login: comment.author.login } }),
         ...(comment.path !== undefined && { path: comment.path }),
         ...(comment.line !== undefined && { line: comment.line }),
-        ...(comment.url !== undefined && { url: comment.url })
+        ...(comment.url !== undefined && { url: comment.url }),
+        ...(comment.diffHunk !== undefined && { diffHunk: comment.diffHunk })
       }))
     })),
     files: (pr.files ?? []).map((file) => ({

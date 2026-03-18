@@ -1,5 +1,5 @@
-// Converts raw evidence records into actionable learning records via LLM extraction.
-// Pipeline: cheap pre-filter gates → batch to GPT-4o-mini → parse structured JSON output.
+// Converts raw evidence signals into actionable learning records via LLM extraction.
+// Pipeline: cheap pre-filter gates -> batch to GPT-4o-mini -> parse structured JSON output.
 
 import OpenAI from 'openai';
 import type { LearningsBuildResult } from './builder.js';
@@ -8,11 +8,17 @@ import { createDeterministicId } from './id.js';
 import { writeLearningRecords } from './learning-writer.js';
 import { LESSONS_JSONL_RELATIVE_PATH } from './paths.js';
 import { loadCanonicalRecords } from './parser.js';
-import type { EvidenceRecord, LearningRecord } from './record-types.js';
+import type {
+  EvidenceSignal,
+  EvidenceContextCache,
+  LearningRecord
+} from './record-types.js';
 import {
   ensureLearningsDirectories,
   resolveLearningsRepositoryContext
 } from './repository.js';
+import { fetchGitHubPullRequestEvidence } from './github-evidence.js';
+import { buildEvidenceSignalsFromPullRequest } from './evidence-writer.js';
 
 export interface ExtractionResult {
   writtenLearningCount: number;
@@ -24,7 +30,7 @@ const BATCH_SIZE = 15;
 
 /**
  * JSON Schema passed to OpenAI structured outputs (strict: true).
- * The model is constrained to emit exactly this shape — no runtime type-guards needed below.
+ * The model is constrained to emit exactly this shape -- no runtime type-guards needed below.
  * rationale / applicability are nullable so the model can omit them cleanly.
  */
 const EXTRACTION_SCHEMA = {
@@ -118,10 +124,10 @@ Write statements in sentence case (capitalise the first word only).
 
 ## Classification (kind)
 
-"repo_convention" — statement references project-specific tools or patterns:
+"repo_convention" -- statement references project-specific tools or patterns:
   ivan, claude, hook, prompt, CLI, command, settings, GitHub workflow, worktree
 
-"engineering_lesson" — general software engineering patterns applicable beyond this repo.
+"engineering_lesson" -- general software engineering patterns applicable beyond this repo.
 
 ## Tags
 
@@ -130,14 +136,17 @@ Match tags to the semantic content of the statement. Use multiple tags when appr
 
 ## Confidence
 
-Derive from the provided weight (integer 1–12); clamp result to [0.35, 0.95]:
-  weight 6+ → 0.85–0.95
-  weight 4–5 → 0.65–0.80
-  weight 3   → 0.50–0.60
+Derive from the provided weight (integer 1-12); clamp result to [0.35, 0.95]:
+  weight 6+ -> 0.85-0.95
+  weight 4-5 -> 0.65-0.80
+  weight 3   -> 0.50-0.60
 
 Return one item per evidence item in the same order as the input.
 Set lesson to null when the evidence is not worth a lesson.
-Set rationale and applicability to null when not applicable.`;
+Set rationale and applicability to null when not applicable.
+
+Some evidence items include a "diff context" block showing the code change being discussed.
+Use this context to understand what specific code pattern the reviewer is commenting on.`;
 
 /**
  * Extracts actionable learning records from evidence via the OpenAI API.
@@ -156,12 +165,16 @@ export class LearningsExtractor {
    * Runs the full extract pipeline for a repo: loads evidence, calls the LLM,
    * writes learning records to JSONL, and rebuilds the SQLite index.
    */
-  async extractLearningsFromEvidence(repoPath: string): Promise<ExtractionResult> {
+  async extractLearningsFromEvidence(
+    repoPath: string,
+    contextCache?: EvidenceContextCache
+  ): Promise<ExtractionResult> {
     const context = resolveLearningsRepositoryContext(repoPath);
     ensureLearningsDirectories(context);
 
     const dataset = loadCanonicalRecords(context.repoPath);
-    const extractedRecords = await this.extractLearningRecords(dataset.evidence);
+    const resolvedCache = contextCache ?? await refetchContextCache(context.repoPath, dataset.evidence);
+    const extractedRecords = await this.extractLearningRecords(dataset.evidence, resolvedCache);
     const writtenPaths = writeLearningRecords(context.repoPath, extractedRecords);
     const rebuild = await rebuildLearningsDatabase(context.repoPath);
 
@@ -177,36 +190,42 @@ export class LearningsExtractor {
    * Returns records sorted by id for deterministic JSONL output.
    */
   async extractLearningRecords(
-    evidenceRecords: EvidenceRecord[]
+    signals: EvidenceSignal[],
+    contextCache: EvidenceContextCache
   ): Promise<LearningRecord[]> {
-    const eligible = evidenceRecords.filter(isEligibleForExtraction);
+    const eligible = signals.filter(isEligibleForExtraction);
     if (eligible.length === 0) return [];
 
     const all: LearningRecord[] = [];
     for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
       const batch = eligible.slice(i, i + BATCH_SIZE);
-      all.push(...(await this.extractBatch(batch)));
+      all.push(...(await this.extractBatch(batch, contextCache)));
     }
 
     return all.sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  private async extractBatch(batch: EvidenceRecord[]): Promise<LearningRecord[]> {
+  private async extractBatch(
+    batch: EvidenceSignal[],
+    contextCache: EvidenceContextCache
+  ): Promise<LearningRecord[]> {
     const userContent = batch
-      .map((ev, i) =>
-        [
+      .map((signal, i) => {
+        const ctx = contextCache.get(signal.id);
+        return [
           `## Evidence ${i + 1}`,
-          `evidence_id: ${ev.id}`,
-          `source_type: ${ev.source_type}`,
-          `weight: ${ev.final_weight ?? ev.base_weight ?? 0}`,
-          `author: ${ev.author_name ?? 'unknown'}`,
-          ev.title != null ? `title: ${ev.title}` : null,
-          ev.file_path != null ? `file: ${ev.file_path}` : null,
-          `\n${ev.content}`
+          `evidence_id: ${signal.id}`,
+          `source_type: ${signal.source_type}`,
+          `weight: ${signal.final_weight ?? signal.base_weight ?? 0}`,
+          `author: ${signal.author_name ?? 'unknown'}`,
+          ctx?.title != null ? `title: ${ctx.title}` : null,
+          ctx?.file_path != null ? `file: ${ctx.file_path}` : null,
+          ctx?.diff_hunk != null ? `\ndiff context:\n\`\`\`\n${ctx.diff_hunk}\n\`\`\`` : null,
+          ctx?.content != null ? `\n${ctx.content}` : '\n[content unavailable]'
         ]
           .filter(Boolean)
-          .join('\n')
-      )
+          .join('\n');
+      })
       .join('\n\n---\n\n');
 
     const response = await this.getClient().chat.completions.create({
@@ -271,43 +290,82 @@ const _sharedExtractor = new LearningsExtractor();
 
 /** Runs the full extract pipeline using the shared extractor instance. */
 export function extractLearningsFromEvidence(
-  repoPath: string
+  repoPath: string,
+  contextCache?: EvidenceContextCache
 ): Promise<ExtractionResult> {
-  return _sharedExtractor.extractLearningsFromEvidence(repoPath);
+  return _sharedExtractor.extractLearningsFromEvidence(repoPath, contextCache);
 }
 
 /** Extracts learning records from evidence using the shared extractor instance. */
 export function extractLearningRecords(
-  evidenceRecords: EvidenceRecord[]
+  signals: EvidenceSignal[],
+  contextCache: EvidenceContextCache
 ): Promise<LearningRecord[]> {
-  return _sharedExtractor.extractLearningRecords(evidenceRecords);
+  return _sharedExtractor.extractLearningRecords(signals, contextCache);
 }
 
 /**
  * Fast pre-filter that eliminates obvious non-lessons before incurring an LLM call.
  * Bots, CI checks, sub-threshold weights, and explicitly penalised items are all dropped here.
  */
-function isEligibleForExtraction(evidence: EvidenceRecord): boolean {
+function isEligibleForExtraction(signal: EvidenceSignal): boolean {
   if (
-    evidence.author_type === 'bot' ||
+    signal.author_type === 'bot' ||
     /(coderabbit(?:ai)?|copilot|assistant|github-actions|ari|ivan|codex)/i.test(
-      evidence.author_name ?? ''
+      signal.author_name ?? ''
     )
   ) {
     return false;
   }
 
-  if (evidence.source_type === 'pr_check') {
+  if (signal.source_type === 'pr_check') {
     return false;
   }
 
-  if ((evidence.final_weight ?? 0) < 3) {
+  if ((signal.final_weight ?? 0) < 3) {
     return false;
   }
 
-  if (evidence.penalties.includes('low_signal_text')) {
+  if (signal.penalties.includes('low_signal_text')) {
     return false;
   }
 
   return true;
+}
+
+/**
+ * Re-fetches content from GitHub for all evidence signals by grouping them by
+ * parent PR URL and rebuilding the context cache from fresh payloads.
+ */
+async function refetchContextCache(
+  repoPath: string,
+  signals: EvidenceSignal[]
+): Promise<EvidenceContextCache> {
+  const cache: EvidenceContextCache = new Map();
+
+  // Group signals by parent_url to identify unique PRs
+  const prGroups = new Map<string, EvidenceSignal[]>();
+  for (const signal of signals) {
+    const prUrl = signal.parent_url ?? signal.external_url;
+    if (!prUrl) continue;
+    if (!prGroups.has(prUrl)) prGroups.set(prUrl, []);
+    prGroups.get(prUrl)!.push(signal);
+  }
+
+  for (const [prUrl] of prGroups) {
+    // Parse PR number from URL: https://github.com/owner/repo/pull/42
+    const match = prUrl.match(/\/pull\/(\d+)/);
+    if (!match) continue;
+    const prNumber = parseInt(match[1], 10);
+
+    const payload = await fetchGitHubPullRequestEvidence(repoPath, prNumber);
+    const { contextCache: freshCache } = buildEvidenceSignalsFromPullRequest(payload);
+
+    // Merge fresh context into the overall cache
+    for (const [id, ctx] of freshCache) {
+      cache.set(id, ctx);
+    }
+  }
+
+  return cache;
 }

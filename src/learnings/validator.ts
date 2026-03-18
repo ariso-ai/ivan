@@ -41,10 +41,6 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
     }
     evidenceIds.add(evidence.id);
 
-    if (!evidence.content.trim()) {
-      issues.push(`${evidence.sourcePath}: evidence content must not be empty`);
-    }
-
     const evidenceSourceFile = evidence.sourcePath.split('#')[0];
     if (evidenceSourceFile !== EVIDENCE_JSONL_RELATIVE_PATH) {
       issues.push(
