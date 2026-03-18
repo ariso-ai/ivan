@@ -406,8 +406,6 @@ function writeLearning(
 
 /** Clears and re-populates FTS5 virtual tables from their base tables. */
 function populateFtsTables(db: Database.Database): void {
-  // evidence_fts no longer populated -- signals have no content
-  db.exec('DELETE FROM evidence_fts');
   db.exec('DELETE FROM learnings_fts');
 
   db.exec(`
