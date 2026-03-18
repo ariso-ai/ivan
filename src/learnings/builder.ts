@@ -5,16 +5,16 @@
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import { sql, type Kysely } from 'kysely';
 import type {
-  EvidenceSignal,
   LearningsDataset,
   LearningRecord
 } from './record-types.js';
 import {
   createFreshLearningsDatabase,
   getLearningsDbPath,
-  openLearningsDatabase
+  openLearningsDatabase,
+  type LearningsDatabase
 } from './database.js';
 import {
   buildEmbeddingInputString,
@@ -43,8 +43,8 @@ const EMBEDDING_BATCH_MAX_ITEMS = 64;
 const EMBEDDING_BATCH_MAX_CHARS = 200_000;
 
 /**
- * Validates all canonical JSONL records, then creates a fresh SQLite database,
- * bulk-inserts everything in one transaction, and populates the FTS tables.
+ * Validates all canonical JSONL records, then creates a fresh SQLite database
+ * and bulk-inserts everything in one transaction.
  */
 export async function rebuildLearningsDatabase(
   repoPath: string
@@ -61,13 +61,12 @@ export async function rebuildLearningsDatabase(
 
   const dbPath = getLearningsDbPath(repoPath);
   const tmpPath = `${dbPath}.tmp`;
-  const db = createFreshLearningsDatabase(repoPath, tmpPath);
+  const db = await createFreshLearningsDatabase(repoPath, tmpPath);
 
   try {
-    insertDataset(db, dataset);
-    populateFtsTables(db);
-    storeJsonlHash(db, computeJsonlHash(repoPath));
-    db.close();
+    await insertDataset(db, dataset);
+    await storeJsonlHash(db, computeJsonlHash(repoPath));
+    await db.destroy();
     fs.renameSync(tmpPath, dbPath);
 
     return {
@@ -78,7 +77,7 @@ export async function rebuildLearningsDatabase(
       embeddingsGenerated: generated
     };
   } catch (err) {
-    db.close();
+    await db.destroy();
     if (fs.existsSync(tmpPath)) {
       fs.unlinkSync(tmpPath);
     }
@@ -91,7 +90,7 @@ export async function rebuildLearningsDatabase(
  * the current hash of the canonical JSONL files. Used by the pre-commit hook to skip
  * unnecessary rebuilds.
  */
-export function isLearningsDatabaseStale(repoPath: string): boolean {
+export async function isLearningsDatabaseStale(repoPath: string): Promise<boolean> {
   const dbPath = getLearningsDbPath(repoPath);
   if (!fs.existsSync(dbPath)) {
     return true;
@@ -102,12 +101,14 @@ export function isLearningsDatabaseStale(repoPath: string): boolean {
   try {
     const db = openLearningsDatabase(repoPath, { readonly: true });
     try {
-      const row = db
-        .prepare('SELECT value FROM meta WHERE key = ?')
-        .get('jsonl_hash') as { value: string } | undefined;
+      const row = await db
+        .selectFrom('meta')
+        .select('value')
+        .where('key', '=', 'jsonl_hash')
+        .executeTakeFirst();
       return !row || row.value !== currentHash;
     } finally {
-      db.close();
+      await db.destroy();
     }
   } catch {
     return true;
@@ -155,9 +156,6 @@ export function computeJsonlHash(repoPath: string): string {
  * embedding input string. Cache hits reuse the stored vector; cache misses are generated
  * in bounded batches so a large rebuild does not exceed provider request limits.
  * Mutates records in-place. Returns hit/miss counts.
- *
- * Including EMBEDDING_MODEL in the hash ensures old caches (e.g. from the previous
- * local hash function) are automatically invalidated when the model changes.
  */
 async function resolveEmbeddings(
   learnings: LearningRecord[]
@@ -279,7 +277,6 @@ function writeBackEmbeddings(
     updatedLines.push(JSON.stringify(parsed));
   }
 
-  // write to a temporary file and rename to avoid partial writes
   const tmpPath = `${filePath}.tmp`;
   fs.writeFileSync(tmpPath, updatedLines.map((l) => `${l}\n`).join(''), 'utf8');
   fs.renameSync(tmpPath, filePath);
@@ -287,172 +284,107 @@ function writeBackEmbeddings(
 
 /**
  * Inserts all evidence, learnings, embeddings, and tag/evidence join rows
- * in a single SQLite transaction for atomicity and performance.
+ * in a single transaction for atomicity and performance.
  */
-function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
-  const insertEvidence = db.prepare(`
-    INSERT INTO evidence (
-      id,
-      source_system,
-      source_type,
-      external_url,
-      parent_url,
-      author_type,
-      author_name,
-      occurred_at,
-      base_weight,
-      final_weight,
-      boosts_json,
-      penalties_json,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const insertLearning = db.prepare(`
-    INSERT INTO learnings (
-      id,
-      kind,
-      source_type,
-      title,
-      statement,
-      rationale,
-      applicability,
-      confidence,
-      status,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const insertLearningEvidence = db.prepare(`
-    INSERT INTO learning_evidence (
-      learning_id,
-      evidence_id,
-      relationship_type,
-      contribution_weight,
-      extraction_reason,
-      created_at
-    ) VALUES (?, ?, 'supports', ?, ?, ?)
-  `);
-
-  const insertLearningTag = db.prepare(`
-    INSERT INTO learning_tags (
-      learning_id,
-      tag,
-      source,
-      weight,
-      created_at
-    ) VALUES (?, ?, 'inferred', NULL, ?)
-  `);
-
-  const insertLearningVector = db.prepare(`
-    INSERT INTO learning_vectors (learning_id, vector) VALUES (?, ?)
-  `);
-
-  const transaction = db.transaction(() => {
+async function insertDataset(
+  db: Kysely<LearningsDatabase>,
+  dataset: LearningsDataset
+): Promise<void> {
+  await db.transaction().execute(async (trx) => {
     for (const evidence of [...dataset.evidence].sort(sortByPathThenId)) {
-      writeEvidence(insertEvidence, evidence);
+      await trx
+        .insertInto('evidence')
+        .values({
+          id: evidence.id,
+          source_system: evidence.source_system,
+          source_type: evidence.source_type,
+          external_url: evidence.external_url ?? null,
+          parent_url: evidence.parent_url ?? null,
+          author_type: evidence.author_type ?? null,
+          author_name: evidence.author_name ?? null,
+          occurred_at: evidence.occurred_at ?? null,
+          base_weight: evidence.base_weight ?? null,
+          final_weight: evidence.final_weight ?? null,
+          boosts_json: JSON.stringify(evidence.boosts),
+          penalties_json: JSON.stringify(evidence.penalties),
+          created_at: evidence.created_at,
+          updated_at: evidence.updated_at
+        })
+        .execute();
     }
 
     for (const learning of [...dataset.learnings].sort(sortByPathThenId)) {
-      writeLearning(insertLearning, learning);
+      await trx
+        .insertInto('learnings')
+        .values({
+          id: learning.id,
+          kind: learning.kind,
+          source_type: learning.source_type ?? null,
+          title: learning.title ?? null,
+          statement: learning.statement,
+          rationale: learning.rationale ?? null,
+          applicability: learning.applicability ?? null,
+          confidence: learning.confidence ?? null,
+          status: learning.status,
+          created_at: learning.created_at,
+          updated_at: learning.updated_at
+        })
+        .execute();
+
       if (learning.embedding && learning.embedding.length > 0) {
-        writeLearningVector(insertLearningVector, learning);
+        const vectorBuffer = Buffer.from(
+          new Float32Array(learning.embedding).buffer
+        );
+        await sql`INSERT INTO learning_vectors (learning_id, vector) VALUES (${learning.id}, ${vectorBuffer})`.execute(
+          trx
+        );
       }
 
       for (const evidenceId of [...learning.evidence_ids].sort((a, b) =>
         a.localeCompare(b)
       )) {
-        insertLearningEvidence.run(
-          learning.id,
-          evidenceId,
-          null,
-          `Linked from ${learning.sourcePath}`,
-          learning.created_at
-        );
+        await trx
+          .insertInto('learning_evidence')
+          .values({
+            learning_id: learning.id,
+            evidence_id: evidenceId,
+            relationship_type: 'supports',
+            contribution_weight: null,
+            extraction_reason: `Linked from ${learning.sourcePath}`,
+            created_at: learning.created_at
+          })
+          .execute();
       }
 
       for (const tag of [...learning.tags].sort((a, b) => a.localeCompare(b))) {
-        insertLearningTag.run(learning.id, tag, learning.created_at);
+        await trx
+          .insertInto('learning_tags')
+          .values({
+            learning_id: learning.id,
+            tag,
+            source: 'inferred',
+            weight: null,
+            created_at: learning.created_at
+          })
+          .execute();
       }
     }
   });
-
-  transaction();
-}
-
-/** Inserts the pre-resolved embedding as a Float32Array buffer into the `learning_vectors` vec0 table. */
-function writeLearningVector(
-  statement: Database.Statement,
-  learning: LearningRecord
-): void {
-  if (!learning.embedding || learning.embedding.length === 0) {
-    throw new Error(
-      `Learning ${learning.id} is missing its embedding — call resolveEmbeddings before insertDataset`
-    );
-  }
-  statement.run(learning.id, Buffer.from(new Float32Array(learning.embedding).buffer));
-}
-
-/** Executes the prepared `INSERT INTO evidence` statement, serializing boosts/penalties arrays as JSON. */
-function writeEvidence(
-  statement: Database.Statement,
-  evidence: EvidenceSignal
-): void {
-  statement.run(
-    evidence.id,
-    evidence.source_system,
-    evidence.source_type,
-    evidence.external_url ?? null,
-    evidence.parent_url ?? null,
-    evidence.author_type ?? null,
-    evidence.author_name ?? null,
-    evidence.occurred_at ?? null,
-    evidence.base_weight ?? null,
-    evidence.final_weight ?? null,
-    JSON.stringify(evidence.boosts),
-    JSON.stringify(evidence.penalties),
-    evidence.created_at,
-    evidence.updated_at
-  );
-}
-
-/** Executes the prepared `INSERT INTO learnings` statement for one record. */
-function writeLearning(
-  statement: Database.Statement,
-  learning: LearningRecord
-): void {
-  statement.run(
-    learning.id,
-    learning.kind,
-    learning.source_type ?? null,
-    learning.title ?? null,
-    learning.statement,
-    learning.rationale ?? null,
-    learning.applicability ?? null,
-    learning.confidence ?? null,
-    learning.status,
-    learning.created_at,
-    learning.updated_at
-  );
-}
-
-/** Clears and re-populates FTS5 virtual tables from their base tables. */
-function populateFtsTables(db: Database.Database): void {
-  db.exec('DELETE FROM learnings_fts');
-
-  db.exec(`
-    INSERT INTO learnings_fts (id, kind, title, statement, rationale, applicability)
-    SELECT id, kind, COALESCE(title, ''), statement, COALESCE(rationale, ''), COALESCE(applicability, '')
-    FROM learnings
-    ORDER BY id
-  `);
 }
 
 /** Writes the JSONL content hash into the `meta` table so staleness checks can compare it later. */
-function storeJsonlHash(db: Database.Database, hash: string): void {
-  db.prepare(
-    'INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES (?, ?, ?)'
-  ).run('jsonl_hash', hash, new Date().toISOString());
+async function storeJsonlHash(
+  db: Kysely<LearningsDatabase>,
+  hash: string
+): Promise<void> {
+  await db
+    .insertInto('meta')
+    .values({ key: 'jsonl_hash', value: hash, updated_at: new Date().toISOString() })
+    .onConflict((oc) =>
+      oc.column('key').doUpdateSet({
+        value: hash,
+        updated_at: new Date().toISOString()
+      })
+    )
+    .execute();
 }

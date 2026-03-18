@@ -16,57 +16,12 @@ export interface CanonicalRecord {
 export interface EvidenceSignal extends CanonicalRecord {
   type: 'evidence';
   source_system: string;
+  /** Narrows the evidence kind: `pull_request`, `pr_review_thread`, `pr_review`, `pr_issue_comment`, `pr_check`. */
   source_type: string;
   external_url?: string;
   parent_url?: string;
   author_name?: string;
   author_type?: string;
-  occurred_at?: string;
-  base_weight?: number;
-  final_weight?: number;
-  boosts: string[];
-  penalties: string[];
-}
-
-/** In-memory content for an evidence signal. Never written to disk. */
-export interface EvidenceContext {
-  title?: string;
-  content: string;
-  diff_hunk?: string;
-  file_path?: string;
-  line_start?: number;
-  line_end?: number;
-}
-
-/** Maps evidence signal id to its in-memory content. */
-export type EvidenceContextCache = Map<string, EvidenceContext>;
-
-/**
- * @deprecated Use `EvidenceSignal` for JSONL persistence and `EvidenceContext` for content.
- * Will be removed after database schema migration.
- */
-export interface EvidenceRecord extends CanonicalRecord {
-  type: 'evidence';
-  source_system: string;
-  /** Narrows the evidence kind: `pull_request`, `pr_review_thread`, `pr_review`, `pr_issue_comment`, `pr_check`. */
-  source_type: string;
-  external_id?: string;
-  parent_external_id?: string;
-  url?: string;
-  pr_number?: number;
-  review_id?: string;
-  thread_id?: string;
-  comment_id?: string;
-  author_type?: string;
-  author_name?: string;
-  author_role?: string;
-  title?: string;
-  content: string;
-  file_path?: string;
-  line_start?: number;
-  line_end?: number;
-  review_state?: string;
-  resolution_state?: string;
   occurred_at?: string;
   /**
    * Raw weight assigned by evidence type before boosts or penalties.
@@ -109,6 +64,19 @@ export interface EvidenceRecord extends CanonicalRecord {
   /** Labels that decreased the signal value (e.g. `low_signal_text`, `outdated_thread`). */
   penalties: string[];
 }
+
+/** In-memory content for an evidence signal. Never written to disk. */
+export interface EvidenceContext {
+  title?: string;
+  content: string;
+  diff_hunk?: string;
+  file_path?: string;
+  line_start?: number;
+  line_end?: number;
+}
+
+/** Maps evidence signal id to its in-memory content. */
+export type EvidenceContextCache = Map<string, EvidenceContext>;
 
 /** An extracted engineering insight derived from one or more evidence records. */
 export interface LearningRecord extends CanonicalRecord {

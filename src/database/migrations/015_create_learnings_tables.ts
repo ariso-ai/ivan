@@ -58,10 +58,6 @@ export const migration: Migration = {
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 )`,
-    `CREATE INDEX IF NOT EXISTS idx_evidence_type
-    ON evidence(source_type, occurred_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_evidence_weight
-    ON evidence(final_weight)`,
     `CREATE INDEX IF NOT EXISTS idx_learnings_status
     ON learnings(status, updated_at)`,
     `CREATE INDEX IF NOT EXISTS idx_learning_evidence_evidence
@@ -71,15 +67,6 @@ export const migration: Migration = {
     `CREATE VIRTUAL TABLE IF NOT EXISTS learning_vectors USING vec0(
     learning_id TEXT PRIMARY KEY,
     vector float[1536] distance_metric=cosine
-)`,
-    `CREATE VIRTUAL TABLE IF NOT EXISTS learnings_fts USING fts5(
-    id UNINDEXED,
-    kind UNINDEXED,
-    title,
-    statement,
-    rationale,
-    applicability,
-    tokenize = 'porter unicode61'
 )`
   ]
 };

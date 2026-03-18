@@ -16,7 +16,7 @@ interface RebuildCommandOptions {
 export async function runRebuildCommand(
   options: RebuildCommandOptions
 ): Promise<void> {
-  if (options.ifStale && !isLearningsDatabaseStale(options.repo)) {
+  if (options.ifStale && !(await isLearningsDatabaseStale(options.repo))) {
     console.log(chalk.gray('.ivan/db.sqlite is up to date'));
     return;
   }

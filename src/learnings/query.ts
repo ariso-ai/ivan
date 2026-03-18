@@ -1,17 +1,17 @@
-// Full-text and vector search over the learnings SQLite database.
-// Search strategy: vector cosine similarity → FTS5 BM25 → LIKE fallback,
-// trying each tier until results are found.
+// Vector search over the learnings SQLite database.
 
-import { openLearningsDatabase } from './database.js';
+import { sql } from 'kysely';
+import { openLearningsDatabase, type LearningsDatabase } from './database.js';
 import { embedText } from './embeddings.js';
 import type {
   LearningsQueryEvidence,
   LearningsQueryResult,
   LearningsSearchOptions
 } from './types.js';
+import type { Kysely } from 'kysely';
 
-/** Raw SQLite row shape returned by learning search queries. */
-interface LearningRow {
+/** Raw row shape returned by the vec0 KNN query. */
+interface VectorLearningRow {
   id: string;
   title: string | null;
   kind: string;
@@ -20,9 +20,6 @@ interface LearningRow {
   applicability: string | null;
   confidence: number | null;
   status: string;
-}
-
-interface VectorLearningRow extends LearningRow {
   distance: number;
 }
 
@@ -47,153 +44,54 @@ export async function queryLearnings(
   try {
     const rawLimit = options.limit ?? 5;
     const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 5;
-    const rows = await runLearningSearch(db, searchText, limit);
-    const tagStatement = db.prepare(
-      `
-        SELECT tag
-        FROM learning_tags
-        WHERE learning_id = ?
-        ORDER BY tag
-      `
-    );
-    const evidenceStatement = db.prepare(
-      `
-        SELECT
-          e.id,
-          e.external_url,
-          e.source_type,
-          e.final_weight
-        FROM learning_evidence le
-        INNER JOIN evidence e ON e.id = le.evidence_id
-        WHERE le.learning_id = ?
-        ORDER BY COALESCE(le.contribution_weight, e.final_weight, 0) DESC, e.id ASC
-      `
-    );
+    const vectorRows = await runVectorSearch(db, searchText, limit);
 
-    return rows.map((row) => {
-      const tags = (tagStatement.all(row.id) as Array<{ tag: string }>).map(
-        (tagRow) => tagRow.tag
-      );
-      const evidence = (
-        evidenceStatement.all(row.id) as Array<{
-          id: string;
-          external_url: string | null;
-          source_type: string;
-          final_weight: number | null;
-        }>
-      ).map((evidenceRow): LearningsQueryEvidence => ({
-        id: evidenceRow.id,
-        sourceType: evidenceRow.source_type,
-        url: evidenceRow.external_url ?? undefined,
-        finalWeight: evidenceRow.final_weight ?? undefined
-      }));
+    return await Promise.all(
+      vectorRows.map(async ({ distance: _distance, ...row }) => {
+        const tagRows = await db
+          .selectFrom('learning_tags')
+          .select('tag')
+          .where('learning_id', '=', row.id)
+          .orderBy('tag', 'asc')
+          .execute();
 
-      return {
-        id: row.id,
-        kind: row.kind,
-        statement: row.statement,
-        status: row.status,
-        tags,
-        evidence,
-        title: row.title ?? undefined,
-        rationale: row.rationale ?? undefined,
-        applicability: row.applicability ?? undefined,
-        confidence: row.confidence ?? undefined
-      };
-    });
+        const evidenceRows = await db
+          .selectFrom('learning_evidence as le')
+          .innerJoin('evidence as e', 'e.id', 'le.evidence_id')
+          .select(['e.id', 'e.external_url', 'e.source_type', 'e.final_weight'])
+          .where('le.learning_id', '=', row.id)
+          .orderBy(sql`COALESCE(le.contribution_weight, e.final_weight, 0)`, 'desc')
+          .orderBy('e.id', 'asc')
+          .execute();
+
+        const evidence: LearningsQueryEvidence[] = evidenceRows.map((e) => ({
+          id: e.id,
+          sourceType: e.source_type,
+          url: e.external_url ?? undefined,
+          finalWeight: e.final_weight ?? undefined
+        }));
+
+        return {
+          id: row.id,
+          kind: row.kind,
+          statement: row.statement,
+          status: row.status,
+          tags: tagRows.map((t) => t.tag),
+          evidence,
+          title: row.title ?? undefined,
+          rationale: row.rationale ?? undefined,
+          applicability: row.applicability ?? undefined,
+          confidence: row.confidence ?? undefined
+        };
+      })
+    );
   } finally {
-    db.close();
+    await db.destroy();
   }
 }
 
-/**
- * Tries vector search, then FTS5, then LIKE in order, returning the first non-empty result set.
- * This cascade ensures useful results even for short or non-word queries.
- */
-async function runLearningSearch(
-  db: ReturnType<typeof openLearningsDatabase>,
-  text: string,
-  limit: number
-): Promise<LearningRow[]> {
-  const vectorRows = await runVectorSearch(db, text, limit);
-  if (vectorRows.length > 0) {
-    return vectorRows.map(({ distance: _distance, ...row }) => row);
-  }
-
-  const ftsExpression = buildFtsExpression(text);
-
-  if (ftsExpression) {
-    const ftsRows = db
-      .prepare(
-        `
-          SELECT
-            l.id,
-            l.title,
-            l.kind,
-            l.statement,
-            l.rationale,
-            l.applicability,
-            l.confidence,
-            l.status,
-            bm25(learnings_fts) AS rank
-          FROM learnings_fts
-          INNER JOIN learnings l ON l.id = learnings_fts.id
-          WHERE learnings_fts MATCH ?
-            AND l.status = 'active'
-          ORDER BY rank ASC, COALESCE(l.confidence, 0) DESC, l.updated_at DESC
-          LIMIT ?
-        `
-      )
-      .all(ftsExpression, limit) as Array<LearningRow & { rank: number }>;
-
-    if (ftsRows.length > 0) {
-      return ftsRows;
-    }
-  }
-
-  const escapedText = text.replace(/[%_\\]/g, '\\$&');
-  const likePattern = `%${escapedText}%`;
-  return db
-    .prepare(
-      `
-        SELECT
-          id,
-          title,
-          kind,
-          statement,
-          rationale,
-          applicability,
-          confidence,
-          status
-        FROM learnings
-        WHERE status = 'active'
-          AND (
-            statement LIKE ? ESCAPE '\\'
-            OR COALESCE(title, '') LIKE ? ESCAPE '\\'
-            OR COALESCE(rationale, '') LIKE ? ESCAPE '\\'
-            OR COALESCE(applicability, '') LIKE ? ESCAPE '\\'
-          )
-        ORDER BY COALESCE(confidence, 0) DESC, updated_at DESC
-        LIMIT ?
-      `
-    )
-    .all(
-      likePattern,
-      likePattern,
-      likePattern,
-      likePattern,
-      limit
-    ) as LearningRow[];
-}
-
-/**
- * Embeds `text` and runs a vec0 KNN cosine-distance query against `learning_vectors`,
- * filtering to active learnings only. Returns the top `limit` rows when the best
- * neighbors clear the minimum semantic relevance threshold; otherwise returns [] so
- * lexical search tiers can handle exact or out-of-domain matches.
- */
 async function runVectorSearch(
-  db: ReturnType<typeof openLearningsDatabase>,
+  db: Kysely<LearningsDatabase>,
   text: string,
   limit: number
 ): Promise<VectorLearningRow[]> {
@@ -201,53 +99,29 @@ async function runVectorSearch(
   try {
     queryVector = Buffer.from(new Float32Array(await embedText(text)).buffer);
   } catch {
-    return []; // OpenAI unavailable — fall through to FTS5
+    return [];
   }
 
-  const rows = db
-    .prepare(
-      `
-        SELECT
-          l.id,
-          l.title,
-          l.kind,
-          l.statement,
-          l.rationale,
-          l.applicability,
-          l.confidence,
-          l.status,
-          distance
-        FROM learning_vectors lv
-        INNER JOIN learnings l ON l.id = lv.learning_id
-        WHERE lv.vector MATCH ?
-          AND k = ?
-          AND l.status = 'active'
-        ORDER BY distance
-      `
-    )
-    .all(queryVector, limit) as VectorLearningRow[];
+  const { rows } = await sql<VectorLearningRow>`
+    SELECT
+      l.id,
+      l.title,
+      l.kind,
+      l.statement,
+      l.rationale,
+      l.applicability,
+      l.confidence,
+      l.status,
+      distance
+    FROM learning_vectors lv
+    INNER JOIN learnings l ON l.id = lv.learning_id
+    WHERE lv.vector MATCH ${queryVector}
+      AND k = ${limit}
+      AND l.status = 'active'
+    ORDER BY distance
+  `.execute(db);
 
   return rows.filter(
     (row) => Number.isFinite(row.distance) && 1 - row.distance >= MIN_VECTOR_SIMILARITY
   );
-}
-
-/**
- * Converts query text into a space-separated FTS5 MATCH expression by extracting
- * unique lowercase terms longer than one character.  Returns null if no valid terms exist.
- */
-function buildFtsExpression(text: string): string | null {
-  const terms = Array.from(
-    new Set(
-      (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
-        (term) => term.length > 1
-      )
-    )
-  );
-
-  if (terms.length === 0) {
-    return null;
-  }
-
-  return terms.join(' ');
 }
