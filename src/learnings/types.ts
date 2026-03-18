@@ -6,15 +6,7 @@ export interface LearningsSearchOptions {
   limit?: number;
 }
 
-/** A single piece of source evidence attached to a query result. */
-export interface LearningsQueryEvidence {
-  id: string;
-  url?: string;
-  sourceType: string;
-  finalWeight?: number;
-}
-
-/** A fully hydrated learning returned by `queryLearnings`, including its evidence and tags. */
+/** A fully hydrated learning returned by `queryLearnings`. */
 export interface LearningsQueryResult {
   id: string;
   title?: string;
@@ -24,6 +16,5 @@ export interface LearningsQueryResult {
   applicability?: string;
   confidence?: number;
   status: string;
-  tags: string[];
-  evidence: LearningsQueryEvidence[];
+  source_url?: string;
 }

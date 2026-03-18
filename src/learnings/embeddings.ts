@@ -24,8 +24,7 @@ export function buildEmbeddingInputString(learning: LearningRecord): string {
     learning.title,
     learning.statement,
     learning.rationale,
-    learning.applicability,
-    learning.tags.join(' ')
+    learning.applicability
   ].filter(Boolean);
 
   return textParts.join('\n');

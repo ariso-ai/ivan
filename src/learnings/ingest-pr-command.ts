@@ -21,8 +21,5 @@ export async function runIngestPrCommand(
   const result = await ingestPullRequestEvidence(options.repo, prNumber);
 
   console.log(chalk.green('✅ GitHub PR evidence ingested'));
-  console.log(
-    chalk.gray(`Evidence records written: ${result.writtenEvidenceCount}`)
-  );
-  console.log(chalk.gray(`Rebuilt DB: ${result.rebuild.dbPath}`));
+  console.log(chalk.gray(`DB: ${result.rebuild.dbPath}`));
 }

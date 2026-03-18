@@ -36,9 +36,6 @@ export async function runQueryCommand(
     if (result.confidence !== undefined) {
       metadata.push(`confidence=${result.confidence.toFixed(2)}`);
     }
-    if (result.tags.length > 0) {
-      metadata.push(`tags=${result.tags.join(', ')}`);
-    }
     console.log(chalk.gray(`   ${metadata.join(' | ')}`));
 
     if (result.rationale) {
@@ -49,15 +46,8 @@ export async function runQueryCommand(
       console.log(chalk.gray(`   Applicability: ${result.applicability}`));
     }
 
-    for (const evidence of result.evidence) {
-      const evidenceMeta = [evidence.id, evidence.sourceType];
-      if (evidence.finalWeight !== undefined) {
-        evidenceMeta.push(`weight=${evidence.finalWeight}`);
-      }
-      if (evidence.url) {
-        evidenceMeta.push(evidence.url);
-      }
-      console.log(chalk.gray(`   Evidence: ${evidenceMeta.join(' | ')}`));
+    if (result.source_url) {
+      console.log(chalk.gray(`   Source: ${result.source_url}`));
     }
 
     if (index < results.length - 1) {

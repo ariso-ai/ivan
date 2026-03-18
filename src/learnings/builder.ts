@@ -23,7 +23,6 @@ import {
   embedTexts
 } from './embeddings.js';
 import {
-  EVIDENCE_JSONL_RELATIVE_PATH,
   LESSONS_JSONL_RELATIVE_PATH,
   resolveCanonicalLearningsPath
 } from './paths.js';
@@ -33,7 +32,6 @@ import { validateLearningsDataset } from './validator.js';
 /** Counts and path returned after a successful database rebuild. */
 export interface LearningsBuildResult {
   dbPath: string;
-  evidenceCount: number;
   learningCount: number;
   embeddingsCached: number;
   embeddingsGenerated: number;
@@ -71,7 +69,6 @@ export async function rebuildLearningsDatabase(
 
     return {
       dbPath,
-      evidenceCount: dataset.evidence.length,
       learningCount: dataset.learnings.length,
       embeddingsCached: cached,
       embeddingsGenerated: generated
@@ -130,10 +127,7 @@ export function computeJsonlHash(repoPath: string): string {
 
   const files: string[] = [];
 
-  for (const relativePath of [
-    EVIDENCE_JSONL_RELATIVE_PATH,
-    LESSONS_JSONL_RELATIVE_PATH
-  ]) {
+  for (const relativePath of [LESSONS_JSONL_RELATIVE_PATH]) {
     const file = path.join(resolved, relativePath);
     if (fs.existsSync(file)) {
       files.push(file);
@@ -291,28 +285,6 @@ async function insertDataset(
   dataset: LearningsDataset
 ): Promise<void> {
   await db.transaction().execute(async (trx) => {
-    for (const evidence of [...dataset.evidence].sort(sortByPathThenId)) {
-      await trx
-        .insertInto('evidence')
-        .values({
-          id: evidence.id,
-          source_system: evidence.source_system,
-          source_type: evidence.source_type,
-          external_url: evidence.external_url ?? null,
-          parent_url: evidence.parent_url ?? null,
-          author_type: evidence.author_type ?? null,
-          author_name: evidence.author_name ?? null,
-          occurred_at: evidence.occurred_at ?? null,
-          base_weight: evidence.base_weight ?? null,
-          final_weight: evidence.final_weight ?? null,
-          boosts_json: JSON.stringify(evidence.boosts),
-          penalties_json: JSON.stringify(evidence.penalties),
-          created_at: evidence.created_at,
-          updated_at: evidence.updated_at
-        })
-        .execute();
-    }
-
     for (const learning of [...dataset.learnings].sort(sortByPathThenId)) {
       await trx
         .insertInto('learnings')
@@ -320,6 +292,7 @@ async function insertDataset(
           id: learning.id,
           kind: learning.kind,
           source_type: learning.source_type ?? null,
+          source_url: learning.source_url ?? null,
           title: learning.title ?? null,
           statement: learning.statement,
           rationale: learning.rationale ?? null,
@@ -338,35 +311,6 @@ async function insertDataset(
         await sql`INSERT INTO learning_vectors (learning_id, vector) VALUES (${learning.id}, ${vectorBuffer})`.execute(
           trx
         );
-      }
-
-      for (const evidenceId of [...learning.evidence_ids].sort((a, b) =>
-        a.localeCompare(b)
-      )) {
-        await trx
-          .insertInto('learning_evidence')
-          .values({
-            learning_id: learning.id,
-            evidence_id: evidenceId,
-            relationship_type: 'supports',
-            contribution_weight: null,
-            extraction_reason: `Linked from ${learning.sourcePath}`,
-            created_at: learning.created_at
-          })
-          .execute();
-      }
-
-      for (const tag of [...learning.tags].sort((a, b) => a.localeCompare(b))) {
-        await trx
-          .insertInto('learning_tags')
-          .values({
-            learning_id: learning.id,
-            tag,
-            source: 'inferred',
-            weight: null,
-            created_at: learning.created_at
-          })
-          .execute();
       }
     }
   });

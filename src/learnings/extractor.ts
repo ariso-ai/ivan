@@ -7,7 +7,6 @@ import { rebuildLearningsDatabase } from './builder.js';
 import { createDeterministicId } from './id.js';
 import { writeLearningRecords } from './learning-writer.js';
 import { LESSONS_JSONL_RELATIVE_PATH } from './paths.js';
-import { loadCanonicalRecords } from './parser.js';
 import type {
   EvidenceSignal,
   EvidenceContextCache,
@@ -17,8 +16,6 @@ import {
   ensureLearningsDirectories,
   resolveLearningsRepositoryContext
 } from './repository.js';
-import { fetchGitHubPullRequestEvidence } from './github-evidence.js';
-import { buildEvidenceSignalsFromPullRequest } from './evidence-writer.js';
 
 export interface ExtractionResult {
   writtenLearningCount: number;
@@ -50,12 +47,11 @@ const EXTRACTION_SCHEMA = {
                 properties: {
                   statement:    { type: 'string' },
                   kind:         { type: 'string', enum: ['repo_convention', 'engineering_lesson'] },
-                  tags:         { type: 'array', items: { type: 'string' } },
                   confidence:   { type: 'number' },
                   rationale:    { anyOf: [{ type: 'null' }, { type: 'string' }] },
                   applicability:{ anyOf: [{ type: 'null' }, { type: 'string' }] }
                 },
-                required: ['statement', 'kind', 'tags', 'confidence', 'rationale', 'applicability'],
+                required: ['statement', 'kind', 'confidence', 'rationale', 'applicability'],
                 additionalProperties: false
               }
             ]
@@ -73,7 +69,6 @@ const EXTRACTION_SCHEMA = {
 interface LessonOutput {
   statement: string;
   kind: 'repo_convention' | 'engineering_lesson';
-  tags: string[];
   confidence: number;
   rationale: string | null;
   applicability: string | null;
@@ -129,11 +124,6 @@ Write statements in sentence case (capitalise the first word only).
 
 "engineering_lesson" -- general software engineering patterns applicable beyond this repo.
 
-## Tags
-
-Pick one or more from: cli, claude, async, concurrency, testing, github, configuration, parsing
-Match tags to the semantic content of the statement. Use multiple tags when appropriate.
-
 ## Confidence
 
 Derive from the provided weight (integer 1-12); clamp result to [0.35, 0.95]:
@@ -162,19 +152,18 @@ export class LearningsExtractor {
   }
 
   /**
-   * Runs the full extract pipeline for a repo: loads evidence, calls the LLM,
+   * Runs the full extract pipeline for a repo: calls the LLM on the provided signals,
    * writes learning records to JSONL, and rebuilds the SQLite index.
    */
   async extractLearningsFromEvidence(
     repoPath: string,
-    contextCache?: EvidenceContextCache
+    signals: EvidenceSignal[],
+    contextCache: EvidenceContextCache
   ): Promise<ExtractionResult> {
     const context = resolveLearningsRepositoryContext(repoPath);
     ensureLearningsDirectories(context);
 
-    const dataset = loadCanonicalRecords(context.repoPath);
-    const resolvedCache = contextCache ?? await refetchContextCache(context.repoPath, dataset.evidence);
-    const extractedRecords = await this.extractLearningRecords(dataset.evidence, resolvedCache);
+    const extractedRecords = await this.extractLearningRecords(signals, contextCache);
     const writtenPaths = writeLearningRecords(context.repoPath, extractedRecords);
     const rebuild = await rebuildLearningsDatabase(context.repoPath);
 
@@ -256,7 +245,7 @@ export class LearningsExtractor {
       const evidence = batch.find((ev) => ev.id === item.evidence_id);
       if (!evidence) continue;
 
-      const { statement, kind, tags, confidence, rationale, applicability } = item.lesson;
+      const { statement, kind, confidence, rationale, applicability } = item.lesson;
       const trimmed = statement.trim();
       if (trimmed.length < 4) continue;
 
@@ -266,14 +255,13 @@ export class LearningsExtractor {
         id: createDeterministicId('lrn', evidence.id, trimmed),
         kind,
         source_type: 'github_pr_discourse',
+        source_url: evidence.parent_url ?? evidence.external_url,
         statement: trimmed,
         title: trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`,
         ...(rationale !== null ? { rationale } : {}),
         ...(applicability !== null ? { applicability } : {}),
         confidence: Math.max(0.35, Math.min(0.95, confidence)),
         status: 'active',
-        evidence_ids: [evidence.id],
-        tags: tags.length > 0 ? tags : [evidence.source_type],
         created_at: evidence.updated_at ?? now,
         updated_at: evidence.updated_at ?? now
       });
@@ -284,16 +272,15 @@ export class LearningsExtractor {
 }
 
 // Module-level shared instance used by the standalone helper functions below.
-// Direct instantiation of LearningsExtractor is preferred in code that needs
-// isolation (e.g. tests).
 const _sharedExtractor = new LearningsExtractor();
 
 /** Runs the full extract pipeline using the shared extractor instance. */
 export function extractLearningsFromEvidence(
   repoPath: string,
-  contextCache?: EvidenceContextCache
+  signals: EvidenceSignal[],
+  contextCache: EvidenceContextCache
 ): Promise<ExtractionResult> {
-  return _sharedExtractor.extractLearningsFromEvidence(repoPath, contextCache);
+  return _sharedExtractor.extractLearningsFromEvidence(repoPath, signals, contextCache);
 }
 
 /** Extracts learning records from evidence using the shared extractor instance. */
@@ -331,42 +318,4 @@ function isEligibleForExtraction(signal: EvidenceSignal): boolean {
   }
 
   return true;
-}
-
-/**
- * Re-fetches content from GitHub for all evidence signals by grouping them by
- * parent PR URL and rebuilding the context cache from fresh payloads.
- */
-async function refetchContextCache(
-  repoPath: string,
-  signals: EvidenceSignal[]
-): Promise<EvidenceContextCache> {
-  const cache: EvidenceContextCache = new Map();
-
-  // Group signals by parent_url to identify unique PRs
-  const prGroups = new Map<string, EvidenceSignal[]>();
-  for (const signal of signals) {
-    const prUrl = signal.parent_url ?? signal.external_url;
-    if (!prUrl) continue;
-    if (!prGroups.has(prUrl)) prGroups.set(prUrl, []);
-    const group = prGroups.get(prUrl);
-    if (group) group.push(signal);
-  }
-
-  for (const [prUrl] of prGroups) {
-    // Parse PR number from URL: https://github.com/owner/repo/pull/42
-    const match = prUrl.match(/\/pull\/(\d+)/);
-    if (!match) continue;
-    const prNumber = parseInt(match[1], 10);
-
-    const payload = await fetchGitHubPullRequestEvidence(repoPath, prNumber);
-    const { contextCache: freshCache } = buildEvidenceSignalsFromPullRequest(payload);
-
-    // Merge fresh context into the overall cache
-    for (const [id, ctx] of freshCache) {
-      cache.set(id, ctx);
-    }
-  }
-
-  return cache;
 }

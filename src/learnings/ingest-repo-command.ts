@@ -1,11 +1,11 @@
 // CLI handler for `ivan learnings ingest-repo`.
-// Fetches all PRs for a repo, writes evidence signals, then runs a single extract + rebuild pass.
+// Fetches all PRs for a repo, builds signals in memory, then runs a single extract + rebuild pass.
 
 import chalk from 'chalk';
 import { extractLearningsFromEvidence } from './extractor.js';
 import { fetchAllPullRequestNumbers } from './github-evidence.js';
-import { ingestPullRequestEvidenceOnly } from './github-ingestion.js';
-import type { EvidenceContextCache } from './record-types.js';
+import { fetchPullRequestSignals } from './github-ingestion.js';
+import type { EvidenceSignal, EvidenceContextCache } from './record-types.js';
 import {
   ensureLearningsDirectories,
   resolveLearningsRepositoryContext
@@ -17,7 +17,7 @@ interface IngestRepoCommandOptions {
   state?: string;
 }
 
-/** Commander action handler: lists all PRs, ingests evidence for each, then runs a single extract + rebuild. */
+/** Commander action handler: lists all PRs, fetches signals for each, then runs a single extract + rebuild. */
 export async function runIngestRepoCommand(
   options: IngestRepoCommandOptions
 ): Promise<void> {
@@ -43,10 +43,10 @@ export async function runIngestRepoCommand(
     return;
   }
 
-  console.log(chalk.gray(`Found ${prNumbers.length} PRs. Ingesting evidence...`));
+  console.log(chalk.gray(`Found ${prNumbers.length} PRs. Fetching signals...`));
 
+  const allSignals: EvidenceSignal[] = [];
   const mergedCache: EvidenceContextCache = new Map();
-  let totalEvidence = 0;
   let failed = 0;
 
   for (let i = 0; i < prNumbers.length; i++) {
@@ -56,32 +56,29 @@ export async function runIngestRepoCommand(
     );
 
     try {
-      const { writtenEvidenceCount, contextCache } = await ingestPullRequestEvidenceOnly(
+      const { signals, contextCache } = await fetchPullRequestSignals(
         options.repo,
         prNumber
       );
+      allSignals.push(...signals);
       for (const [id, ctx] of contextCache) {
         mergedCache.set(id, ctx);
       }
-      totalEvidence += writtenEvidenceCount;
-      process.stdout.write(chalk.green(`${writtenEvidenceCount} signals\n`));
+      process.stdout.write(chalk.green(`${signals.length} signals\n`));
     } catch (err) {
       failed++;
       process.stdout.write(chalk.red(`failed (${(err as Error).message})\n`));
     }
   }
 
-  console.log(
-    chalk.gray(`\nIngested ${totalEvidence} evidence signals across ${prNumbers.length - failed} PRs.`)
-  );
   if (failed > 0) {
     console.log(chalk.yellow(`${failed} PRs failed and were skipped.`));
   }
 
   console.log(chalk.gray('Extracting learnings...'));
-  const extraction = await extractLearningsFromEvidence(options.repo, mergedCache);
+  const extraction = await extractLearningsFromEvidence(options.repo, allSignals, mergedCache);
 
   console.log(chalk.green('✅ Repo ingestion complete'));
-  console.log(chalk.gray(`Evidence: ${totalEvidence}, learnings: ${extraction.writtenLearningCount}`));
+  console.log(chalk.gray(`Learnings: ${extraction.writtenLearningCount}`));
   console.log(chalk.gray(`DB: ${extraction.rebuild.dbPath}`));
 }

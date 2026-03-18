@@ -1,13 +1,8 @@
-// Builds and persists EvidenceSignal JSONL files from raw GitHub PR payloads.
-// Signals are lean pointer records (identity + scoring metadata + canonical URL).
-// Content flows in-memory through the pipeline via EvidenceContextCache and is never persisted.
+// Builds in-memory EvidenceSignal objects from raw GitHub PR payloads.
+// Signals are purely in-memory — they flow through the extraction pipeline
+// and are never written to disk.
 
-import fs from 'fs';
 import { createDeterministicId } from './id.js';
-import {
-  EVIDENCE_JSONL_RELATIVE_PATH,
-  resolveCanonicalLearningsPath
-} from './paths.js';
 import type {
   EvidenceSignal,
   EvidenceContext,
@@ -46,7 +41,6 @@ export function buildEvidenceSignalsFromPullRequest(
     const id = createDeterministicId('ev', `${baseExternalId}:summary`);
     signals.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pull_request',
@@ -79,7 +73,6 @@ export function buildEvidenceSignalsFromPullRequest(
     const author = inferAuthorFields(comment.author?.login);
     signals.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_issue_comment',
@@ -110,7 +103,6 @@ export function buildEvidenceSignalsFromPullRequest(
     const author = inferAuthorFields(review.author?.login);
     signals.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_review',
@@ -146,7 +138,6 @@ export function buildEvidenceSignalsFromPullRequest(
 
     signals.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_review_thread',
@@ -182,7 +173,6 @@ export function buildEvidenceSignalsFromPullRequest(
     const weight = weightCheck(check);
     signals.push({
       type: 'evidence',
-      sourcePath: evidenceSourcePath(),
       id,
       source_system: 'github',
       source_type: 'pr_check',
@@ -208,78 +198,6 @@ export function buildEvidenceSignalsFromPullRequest(
     ),
     contextCache
   };
-}
-
-/**
- * Upserts `signals` into `.ivan/evidence.jsonl`, merging with existing data
- * by id (new signals win).
- * Returns the `{filePath}#L{n}` source paths for every signal written.
- */
-export function writeEvidenceSignals(
-  repoPath: string,
-  signals: EvidenceSignal[]
-): string[] {
-  const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
-  const merged = mergeEvidenceSignals(filePath, signals)
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((signal) => ({ ...signal, sourcePath: evidenceSourcePath() }));
-
-  const content = merged
-    .map((signal) => `${JSON.stringify(serializeEvidenceSignal(signal))}\n`)
-    .join('');
-  fs.writeFileSync(filePath, content, 'utf8');
-
-  return merged.map((_signal, index) => `${filePath}#L${index + 1}`);
-}
-
-/** Loads any existing JSONL at `filePath` into an id-keyed map, then upserts `signals` on top. */
-function mergeEvidenceSignals(
-  filePath: string,
-  signals: EvidenceSignal[]
-): EvidenceSignal[] {
-  const byId = new Map<string, EvidenceSignal>();
-
-  if (fs.existsSync(filePath)) {
-    const lines = fs.readFileSync(filePath, 'utf8').split('\n');
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
-
-      const parsed = JSON.parse(line) as EvidenceSignal;
-      byId.set(parsed.id, parsed);
-    }
-  }
-
-  for (const signal of signals) {
-    byId.set(signal.id, signal);
-  }
-
-  return [...byId.values()];
-}
-
-/** Produces a plain-object representation of an `EvidenceSignal` for JSON serialization. */
-function serializeEvidenceSignal(signal: EvidenceSignal): Record<string, unknown> {
-  return {
-    id: signal.id,
-    source_system: signal.source_system,
-    source_type: signal.source_type,
-    external_url: signal.external_url,
-    parent_url: signal.parent_url,
-    author_name: signal.author_name,
-    author_type: signal.author_type,
-    occurred_at: signal.occurred_at,
-    base_weight: signal.base_weight,
-    final_weight: signal.final_weight,
-    boosts: signal.boosts,
-    penalties: signal.penalties,
-    created_at: signal.created_at,
-    updated_at: signal.updated_at
-  };
-}
-
-/** Returns the canonical relative path for the evidence JSONL file (without a line number). */
-function evidenceSourcePath(): string {
-  return EVIDENCE_JSONL_RELATIVE_PATH;
 }
 
 /** Assembles a human-readable summary of the PR (number + title + body + changed files) as the evidence content. */

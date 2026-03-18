@@ -37,11 +37,10 @@ function serializeLearningRecord(
     kind: record.kind,
     statement: record.statement,
     status: record.status,
-    evidence_ids: record.evidence_ids,
-    tags: record.tags,
     created_at: record.created_at,
     updated_at: record.updated_at,
     source_type: record.source_type,
+    source_url: record.source_url,
     title: record.title,
     rationale: record.rationale,
     applicability: record.applicability,
@@ -55,4 +54,3 @@ function serializeLearningRecord(
 function learningSourcePath(): string {
   return LESSONS_JSONL_RELATIVE_PATH;
 }
-

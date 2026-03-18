@@ -1,50 +1,23 @@
-// Reads all canonical JSONL files from a repository's `.ivan/` directory and
-// deserializes them into typed in-memory records.  The parser is additive: missing
+// Reads the canonical JSONL file from a repository's `.ivan/` directory and
+// deserializes it into typed in-memory records.  The parser is additive: missing
 // optional fields are silently dropped rather than treated as errors.
 
 import fs from 'fs';
 import path from 'path';
 import { resolveCanonicalLearningsPath } from './paths.js';
 import type {
-  EvidenceSignal,
   LearningsDataset,
   LearningRecord
 } from './record-types.js';
 
 type JsonlRecord = Record<string, unknown>;
 
-/** Reads and sorts the canonical JSONL files for `repoPath`, returning a combined `LearningsDataset`. */
+/** Reads and sorts the canonical lessons JSONL for `repoPath`, returning a `LearningsDataset`. */
 export function loadCanonicalRecords(repoPath: string): LearningsDataset {
   const resolvedRepoPath = path.resolve(repoPath);
-  return sortDataset({
-    evidence: readEvidenceSignals(resolvedRepoPath),
-    learnings: readLearningRecords(resolvedRepoPath)
-  });
-}
-
-/** Reads `.ivan/evidence.jsonl` and parses it into `EvidenceSignal[]`. */
-function readEvidenceSignals(repoPath: string): EvidenceSignal[] {
-  const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
-  return readJsonlFile(filePath, repoPath, (sourcePath, record) => ({
-    type: 'evidence' as const,
-    sourcePath,
-    id: getRequiredString(record, 'id', sourcePath),
-    source_system: getRequiredString(record, 'source_system', sourcePath),
-    source_type: getRequiredString(record, 'source_type', sourcePath),
-    boosts: getStringArray(record, 'boosts'),
-    penalties: getStringArray(record, 'penalties'),
-    created_at: getRequiredString(record, 'created_at', sourcePath),
-    updated_at: getRequiredString(record, 'updated_at', sourcePath),
-    ...omitUndefined({
-      external_url: getOptionalString(record, 'external_url') ?? getOptionalString(record, 'url'),
-      parent_url: getOptionalString(record, 'parent_url'),
-      author_type: getOptionalString(record, 'author_type'),
-      author_name: getOptionalString(record, 'author_name'),
-      occurred_at: getOptionalString(record, 'occurred_at'),
-      base_weight: getOptionalNumber(record, 'base_weight'),
-      final_weight: getOptionalNumber(record, 'final_weight')
-    })
-  }) as EvidenceSignal);
+  return {
+    learnings: readLearningRecords(resolvedRepoPath).sort(sortByPathThenId)
+  };
 }
 
 /** Reads `.ivan/lessons.jsonl` and parses it into `LearningRecord[]`. */
@@ -57,12 +30,12 @@ function readLearningRecords(repoPath: string): LearningRecord[] {
     kind: getRequiredString(record, 'kind', sourcePath),
     statement: getRequiredString(record, 'statement', sourcePath),
     status: getOptionalString(record, 'status') ?? 'active',
-    evidence_ids: getStringArray(record, 'evidence_ids'),
     tags: getStringArray(record, 'tags'),
     created_at: getRequiredString(record, 'created_at', sourcePath),
     updated_at: getRequiredString(record, 'updated_at', sourcePath),
     ...omitUndefined({
       source_type: getOptionalString(record, 'source_type'),
+      source_url: getOptionalString(record, 'source_url'),
       title: getOptionalString(record, 'title'),
       rationale: getOptionalString(record, 'rationale'),
       applicability: getOptionalString(record, 'applicability'),
@@ -187,14 +160,6 @@ function getStringArray(record: JsonlRecord, key: string): string[] {
 /** Converts an absolute file path to a forward-slash relative path from `repoPath`. */
 function toCanonicalPath(repoPath: string, filePath: string): string {
   return path.relative(repoPath, filePath).split(path.sep).join('/');
-}
-
-/** Sorts each record list in a dataset by `sourcePath` then `id` for consistent ordering across calls. */
-function sortDataset(dataset: LearningsDataset): LearningsDataset {
-  return {
-    evidence: [...dataset.evidence].sort(sortByPathThenId),
-    learnings: [...dataset.learnings].sort(sortByPathThenId)
-  };
 }
 
 /** Comparator that orders by `sourcePath` first, then `id`, both lexicographically. */

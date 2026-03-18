@@ -4,7 +4,7 @@
 
 import type { LearningsDataset } from './record-types.js';
 import { isStableRecordId } from './id.js';
-import { EVIDENCE_JSONL_RELATIVE_PATH, LESSONS_JSONL_RELATIVE_PATH } from './paths.js';
+import { LESSONS_JSONL_RELATIVE_PATH } from './paths.js';
 
 /** Thrown by `validateLearningsDataset` when the dataset contains one or more structural problems. */
 export class LearningsValidationError extends Error {
@@ -19,35 +19,13 @@ export class LearningsValidationError extends Error {
 }
 
 /**
- * Validates all three record types in `dataset` against the schema rules:
- * correct ID prefixes, no duplicates, valid cross-references, and correct file locations.
+ * Validates all records in `dataset` against the schema rules:
+ * correct ID prefixes, no duplicates, and correct file locations.
  * Throws `LearningsValidationError` listing every issue found; returns void on success.
  */
 export function validateLearningsDataset(dataset: LearningsDataset): void {
   const issues: string[] = [];
-
-  const evidenceIds = new Set<string>();
   const learningIds = new Set<string>();
-
-  for (const evidence of dataset.evidence) {
-    if (!isStableRecordId(evidence.id, 'ev')) {
-      issues.push(
-        `${evidence.sourcePath}: evidence id "${evidence.id}" must start with "ev_"`
-      );
-    }
-
-    if (evidenceIds.has(evidence.id)) {
-      issues.push(`${evidence.sourcePath}: duplicate evidence id "${evidence.id}"`);
-    }
-    evidenceIds.add(evidence.id);
-
-    const evidenceSourceFile = evidence.sourcePath.split('#')[0];
-    if (evidenceSourceFile !== EVIDENCE_JSONL_RELATIVE_PATH) {
-      issues.push(
-        `${evidence.sourcePath}: evidence must live in ${EVIDENCE_JSONL_RELATIVE_PATH}`
-      );
-    }
-  }
 
   for (const learning of dataset.learnings) {
     if (!isStableRecordId(learning.id, 'lrn')) {
@@ -63,12 +41,6 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
 
     if (!learning.statement.trim()) {
       issues.push(`${learning.sourcePath}: learning statement must not be empty`);
-    }
-
-    if (learning.evidence_ids.length === 0) {
-      issues.push(
-        `${learning.sourcePath}: learning must reference at least one evidence id`
-      );
     }
 
     const learningSourceFile = learning.sourcePath.split('#')[0];

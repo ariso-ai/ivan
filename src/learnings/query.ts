@@ -4,7 +4,6 @@ import { sql } from 'kysely';
 import { openLearningsDatabase, type LearningsDatabase } from './database.js';
 import { embedText } from './embeddings.js';
 import type {
-  LearningsQueryEvidence,
   LearningsQueryResult,
   LearningsSearchOptions
 } from './types.js';
@@ -20,14 +19,15 @@ interface VectorLearningRow {
   applicability: string | null;
   confidence: number | null;
   status: string;
+  source_url: string | null;
   distance: number;
 }
 
 const MIN_VECTOR_SIMILARITY = 0.12;
 
 /**
- * Searches the learnings database for records relevant to `text`, hydrating each result
- * with its tags and evidence.  Opens the DB read-only and closes it before returning.
+ * Searches the learnings database for records relevant to `text`.
+ * Opens the DB read-only and closes it before returning.
  */
 export async function queryLearnings(
   repoPath: string,
@@ -46,45 +46,17 @@ export async function queryLearnings(
     const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 5;
     const vectorRows = await runVectorSearch(db, searchText, limit);
 
-    return await Promise.all(
-      vectorRows.map(async ({ distance: _distance, ...row }) => {
-        const tagRows = await db
-          .selectFrom('learning_tags')
-          .select('tag')
-          .where('learning_id', '=', row.id)
-          .orderBy('tag', 'asc')
-          .execute();
-
-        const evidenceRows = await db
-          .selectFrom('learning_evidence as le')
-          .innerJoin('evidence as e', 'e.id', 'le.evidence_id')
-          .select(['e.id', 'e.external_url', 'e.source_type', 'e.final_weight'])
-          .where('le.learning_id', '=', row.id)
-          .orderBy(sql`COALESCE(le.contribution_weight, e.final_weight, 0)`, 'desc')
-          .orderBy('e.id', 'asc')
-          .execute();
-
-        const evidence: LearningsQueryEvidence[] = evidenceRows.map((e) => ({
-          id: e.id,
-          sourceType: e.source_type,
-          url: e.external_url ?? undefined,
-          finalWeight: e.final_weight ?? undefined
-        }));
-
-        return {
-          id: row.id,
-          kind: row.kind,
-          statement: row.statement,
-          status: row.status,
-          tags: tagRows.map((t) => t.tag),
-          evidence,
-          title: row.title ?? undefined,
-          rationale: row.rationale ?? undefined,
-          applicability: row.applicability ?? undefined,
-          confidence: row.confidence ?? undefined
-        };
-      })
-    );
+    return vectorRows.map(({ distance: _distance, ...row }) => ({
+      id: row.id,
+      kind: row.kind,
+      statement: row.statement,
+      status: row.status,
+      title: row.title ?? undefined,
+      rationale: row.rationale ?? undefined,
+      applicability: row.applicability ?? undefined,
+      confidence: row.confidence ?? undefined,
+      source_url: row.source_url ?? undefined
+    }));
   } finally {
     await db.destroy();
   }
@@ -112,6 +84,7 @@ async function runVectorSearch(
       l.applicability,
       l.confidence,
       l.status,
+      l.source_url,
       distance
     FROM learning_vectors lv
     INNER JOIN learnings l ON l.id = lv.learning_id

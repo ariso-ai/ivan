@@ -3,7 +3,6 @@
 // used by other parts of ivan (task executor, hooks, etc.).
 
 import { Command } from 'commander';
-import { runExtractCommand } from './extract-command.js';
 import { initLearningsStore, runInitCommand } from './init-command.js';
 import { runIngestPrCommand } from './ingest-pr-command.js';
 import { runIngestRepoCommand } from './ingest-repo-command.js';
@@ -16,7 +15,7 @@ import { runQueryCommand } from './query-command.js';
 import { rebuildLearningsDatabase } from './builder.js';
 import { runRebuildCommand } from './rebuild-command.js';
 
-/** Registers the `learnings` subcommand tree (init, rebuild, extract, query, ingest-pr, install-hooks) on `program`. */
+/** Registers the `learnings` subcommand tree (init, rebuild, query, ingest-pr, ingest-repo, install-hooks) on `program`. */
 export function registerLearningsCommands(program: Command): void {
   const learnings = program
     .command('learnings')
@@ -43,12 +42,6 @@ export function registerLearningsCommands(program: Command): void {
       'Skip rebuild if .ivan/db.sqlite is already up to date'
     )
     .action(runRebuildCommand);
-
-  learnings
-    .command('extract')
-    .description('Extract canonical learning records from weighted evidence')
-    .requiredOption('--repo <path>', 'Repository root path')
-    .action(runExtractCommand);
 
   learnings
     .command('query')

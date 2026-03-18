@@ -25,5 +25,5 @@ export async function runRebuildCommand(
 
   console.log(chalk.green('✅ Learnings database rebuilt'));
   console.log(chalk.gray(`DB: ${result.dbPath}`));
-  console.log(chalk.gray(`Evidence: ${result.evidenceCount}, learnings: ${result.learningCount}`));
+  console.log(chalk.gray(`Learnings: ${result.learningCount}`));
 }

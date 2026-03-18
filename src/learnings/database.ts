@@ -13,26 +13,11 @@ import { learningsMigrations } from '../database/migrations/index.js';
 
 /** Kysely schema type for the learnings SQLite database. */
 export interface LearningsDatabase {
-  evidence: {
-    id: string;
-    source_system: string;
-    source_type: string;
-    external_url: string | null;
-    parent_url: string | null;
-    author_type: string | null;
-    author_name: string | null;
-    occurred_at: string | null;
-    base_weight: number | null;
-    final_weight: number | null;
-    boosts_json: string | null;
-    penalties_json: string | null;
-    created_at: string;
-    updated_at: string;
-  };
   learnings: {
     id: string;
     kind: string;
     source_type: string | null;
+    source_url: string | null;
     title: string | null;
     statement: string;
     rationale: string | null;
@@ -41,21 +26,6 @@ export interface LearningsDatabase {
     status: string;
     created_at: string;
     updated_at: string;
-  };
-  learning_evidence: {
-    learning_id: string;
-    evidence_id: string;
-    relationship_type: string;
-    contribution_weight: number | null;
-    extraction_reason: string | null;
-    created_at: string;
-  };
-  learning_tags: {
-    learning_id: string;
-    tag: string;
-    source: string;
-    weight: number | null;
-    created_at: string;
   };
   meta: {
     key: string;

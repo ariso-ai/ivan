@@ -6,13 +6,11 @@
 export interface CanonicalRecord {
   id: string;
   type: 'evidence' | 'learning';
-  /** Relative path within the repo (e.g. `.ivan/evidence.jsonl#L3`). */
-  sourcePath: string;
   created_at: string;
   updated_at: string;
 }
 
-/** Lean pointer record persisted to evidence.jsonl. Contains identity + scoring metadata only. */
+/** In-memory signal derived from a GitHub PR payload. Never written to disk. */
 export interface EvidenceSignal extends CanonicalRecord {
   type: 'evidence';
   source_system: string;
@@ -81,6 +79,8 @@ export type EvidenceContextCache = Map<string, EvidenceContext>;
 /** An extracted engineering insight derived from one or more evidence records. */
 export interface LearningRecord extends CanonicalRecord {
   type: 'learning';
+  /** Relative path within the repo (e.g. `.ivan/lessons.jsonl#L3`). */
+  sourcePath: string;
   /** `repo_convention` for project-specific rules; `engineering_lesson` for general patterns. */
   kind: string;
   source_type?: string;
@@ -92,8 +92,8 @@ export interface LearningRecord extends CanonicalRecord {
   /** 0.35–0.95; derived from `final_weight` via `inferConfidence`. */
   confidence?: number;
   status: string;
-  evidence_ids: string[];
-  tags: string[];
+  /** GitHub URL of the PR that generated this learning. */
+  source_url?: string;
   /** Cached 1536-dim embedding vector from `text-embedding-3-small`. */
   embedding?: number[];
   /** SHA-256 hex of the embedding input string; used to detect content changes. */
@@ -102,6 +102,5 @@ export interface LearningRecord extends CanonicalRecord {
 
 /** The full in-memory view of all canonical JSONL data for one repo. */
 export interface LearningsDataset {
-  evidence: EvidenceSignal[];
   learnings: LearningRecord[];
 }
