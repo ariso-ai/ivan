@@ -23,12 +23,6 @@ export interface ExtractionResult {
 
 const BATCH_SIZE = 15;
 
-let _client: OpenAI | undefined;
-function getClient(): OpenAI {
-  if (!_client) _client = new OpenAI();
-  return _client;
-}
-
 const EXTRACTION_SYSTEM_PROMPT = `\
 You are an expert at extracting actionable engineering lessons from GitHub PR review feedback.
 
@@ -106,47 +100,193 @@ Return a JSON object with an "items" array — one entry per evidence item, in t
   ]
 }`;
 
-/** Returned by extractLearningsFromEvidence; summarises what was written and the rebuild outcome. */
-export async function extractLearningsFromEvidence(
-  repoPath: string
-): Promise<ExtractionResult> {
-  const context = resolveLearningsRepositoryContext(repoPath);
-  ensureLearningsDirectories(context);
+interface LessonOutput {
+  statement: string;
+  kind: string;
+  tags: string[];
+  confidence: number;
+  rationale?: string;
+  applicability?: string;
+}
 
-  const dataset = loadCanonicalRecords(context.repoPath);
-  const extractedRecords = await extractLearningRecords(dataset.evidence);
-  const writtenPaths = writeLearningRecords(
-    context.repoPath,
-    context.repositoryId,
-    extractedRecords
-  );
-  const rebuild = await rebuildLearningsDatabase(context.repoPath);
-
-  return {
-    repositoryId: context.repositoryId,
-    writtenLearningCount: extractedRecords.length,
-    writtenPaths,
-    rebuild
-  };
+interface LessonItem {
+  evidence_id: string;
+  lesson: LessonOutput | null;
 }
 
 /**
- * Pre-filters evidence through cheap gates, then batches survivors to the LLM.
- * Returns records sorted by id for deterministic JSONL output.
+ * Extracts actionable learning records from evidence via the OpenAI API.
+ * Holds the OpenAI client as an instance field, following the codebase's
+ * class-based service pattern (matching PromptRewriter, OpenAIService, etc.).
  */
-export async function extractLearningRecords(
-  evidenceRecords: EvidenceRecord[]
-): Promise<LearningRecord[]> {
-  const eligible = evidenceRecords.filter(isEligibleForExtraction);
-  if (eligible.length === 0) return [];
+export class LearningsExtractor {
+  private client: OpenAI | null = null;
 
-  const all: LearningRecord[] = [];
-  for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
-    const batch = eligible.slice(i, i + BATCH_SIZE);
-    all.push(...(await extractBatch(batch)));
+  private getClient(): OpenAI {
+    if (!this.client) this.client = new OpenAI();
+    return this.client;
   }
 
-  return all.sort((a, b) => a.id.localeCompare(b.id));
+  /**
+   * Runs the full extract pipeline for a repo: loads evidence, calls the LLM,
+   * writes learning records to JSONL, and rebuilds the SQLite index.
+   */
+  async extractLearningsFromEvidence(repoPath: string): Promise<ExtractionResult> {
+    const context = resolveLearningsRepositoryContext(repoPath);
+    ensureLearningsDirectories(context);
+
+    const dataset = loadCanonicalRecords(context.repoPath);
+    const extractedRecords = await this.extractLearningRecords(dataset.evidence);
+    const writtenPaths = writeLearningRecords(
+      context.repoPath,
+      context.repositoryId,
+      extractedRecords
+    );
+    const rebuild = await rebuildLearningsDatabase(context.repoPath);
+
+    return {
+      repositoryId: context.repositoryId,
+      writtenLearningCount: extractedRecords.length,
+      writtenPaths,
+      rebuild
+    };
+  }
+
+  /**
+   * Pre-filters evidence through cheap gates, then batches survivors to the LLM.
+   * Returns records sorted by id for deterministic JSONL output.
+   */
+  async extractLearningRecords(
+    evidenceRecords: EvidenceRecord[]
+  ): Promise<LearningRecord[]> {
+    const eligible = evidenceRecords.filter(isEligibleForExtraction);
+    if (eligible.length === 0) return [];
+
+    const all: LearningRecord[] = [];
+    for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
+      const batch = eligible.slice(i, i + BATCH_SIZE);
+      all.push(...(await this.extractBatch(batch)));
+    }
+
+    return all.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  private async extractBatch(batch: EvidenceRecord[]): Promise<LearningRecord[]> {
+    const userContent = batch
+      .map((ev, i) =>
+        [
+          `## Evidence ${i + 1}`,
+          `evidence_id: ${ev.id}`,
+          `source_type: ${ev.source_type}`,
+          `weight: ${ev.final_weight ?? ev.base_weight ?? 0}`,
+          `author: ${ev.author_name ?? 'unknown'}`,
+          ev.title != null ? `title: ${ev.title}` : null,
+          ev.file_path != null ? `file: ${ev.file_path}` : null,
+          `\n${ev.content}`
+        ]
+          .filter(Boolean)
+          .join('\n')
+      )
+      .join('\n\n---\n\n');
+
+    const response = await this.getClient().chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+        { role: 'user', content: userContent }
+      ]
+    });
+
+    const raw = response.choices[0]?.message?.content ?? '{"items":[]}';
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+
+    const items: LessonItem[] = Array.isArray(parsed)
+      ? (parsed as LessonItem[])
+      : (((parsed as Record<string, unknown>).items ?? []) as LessonItem[]);
+
+    const now = new Date().toISOString();
+    const results: LearningRecord[] = [];
+
+    for (const item of items) {
+      if (!item?.lesson || !item.evidence_id) continue;
+
+      const evidence = batch.find((ev) => ev.id === item.evidence_id);
+      if (!evidence) continue;
+
+      const { statement, kind, tags, confidence, rationale, applicability } =
+        item.lesson;
+
+      if (!statement || typeof statement !== 'string' || statement.trim().length < 4) {
+        continue;
+      }
+
+      const trimmed = statement.trim();
+
+      const rationaleValue =
+        typeof rationale === 'string' && rationale.trim()
+          ? rationale.trim()
+          : null;
+      const applicabilityValue =
+        typeof applicability === 'string' && applicability.trim()
+          ? applicability.trim()
+          : null;
+      const confidenceValue =
+        typeof confidence === 'number' && Number.isFinite(confidence)
+          ? Math.max(0.35, Math.min(0.95, confidence))
+          : null;
+
+      results.push({
+        type: 'learning',
+        sourcePath: LESSONS_JSONL_RELATIVE_PATH,
+        id: createDeterministicId('lrn', evidence.repository_id, evidence.id, trimmed),
+        repository_id: evidence.repository_id,
+        kind: kind === 'repo_convention' ? 'repo_convention' : 'engineering_lesson',
+        source_type: 'github_pr_discourse',
+        statement: trimmed,
+        title:
+          trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`,
+        ...(rationaleValue !== null ? { rationale: rationaleValue } : {}),
+        ...(applicabilityValue !== null ? { applicability: applicabilityValue } : {}),
+        ...(confidenceValue !== null ? { confidence: confidenceValue } : {}),
+        status: 'active',
+        evidence_ids: [evidence.id],
+        tags:
+          Array.isArray(tags) && tags.length > 0
+            ? (tags as unknown[]).map(String).filter(Boolean)
+            : [evidence.source_type],
+        created_at: evidence.updated_at ?? now,
+        updated_at: evidence.updated_at ?? now
+      });
+    }
+
+    return results;
+  }
+}
+
+// Module-level shared instance used by the standalone helper functions below.
+// Direct instantiation of LearningsExtractor is preferred in code that needs
+// isolation (e.g. tests).
+const _sharedExtractor = new LearningsExtractor();
+
+/** Runs the full extract pipeline using the shared extractor instance. */
+export function extractLearningsFromEvidence(
+  repoPath: string
+): Promise<ExtractionResult> {
+  return _sharedExtractor.extractLearningsFromEvidence(repoPath);
+}
+
+/** Extracts learning records from evidence using the shared extractor instance. */
+export function extractLearningRecords(
+  evidenceRecords: EvidenceRecord[]
+): Promise<LearningRecord[]> {
+  return _sharedExtractor.extractLearningRecords(evidenceRecords);
 }
 
 /**
@@ -176,116 +316,4 @@ function isEligibleForExtraction(evidence: EvidenceRecord): boolean {
   }
 
   return true;
-}
-
-interface LessonOutput {
-  statement: string;
-  kind: string;
-  tags: string[];
-  confidence: number;
-  rationale?: string;
-  applicability?: string;
-}
-
-interface LessonItem {
-  evidence_id: string;
-  lesson: LessonOutput | null;
-}
-
-async function extractBatch(batch: EvidenceRecord[]): Promise<LearningRecord[]> {
-  const userContent = batch
-    .map((ev, i) =>
-      [
-        `## Evidence ${i + 1}`,
-        `evidence_id: ${ev.id}`,
-        `source_type: ${ev.source_type}`,
-        `weight: ${ev.final_weight ?? ev.base_weight ?? 0}`,
-        `author: ${ev.author_name ?? 'unknown'}`,
-        ev.title != null ? `title: ${ev.title}` : null,
-        ev.file_path != null ? `file: ${ev.file_path}` : null,
-        `\n${ev.content}`
-      ]
-        .filter(Boolean)
-        .join('\n')
-    )
-    .join('\n\n---\n\n');
-
-  const response = await getClient().chat.completions.create({
-    model: 'gpt-4o-mini',
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-      { role: 'user', content: userContent }
-    ]
-  });
-
-  const raw = response.choices[0]?.message?.content ?? '{"items":[]}';
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-
-  const items: LessonItem[] = Array.isArray(parsed)
-    ? (parsed as LessonItem[])
-    : (((parsed as Record<string, unknown>).items ?? []) as LessonItem[]);
-
-  const now = new Date().toISOString();
-  const results: LearningRecord[] = [];
-
-  for (const item of items) {
-    if (!item?.lesson || !item.evidence_id) continue;
-
-    const evidence = batch.find((ev) => ev.id === item.evidence_id);
-    if (!evidence) continue;
-
-    const { statement, kind, tags, confidence, rationale, applicability } =
-      item.lesson;
-
-    if (!statement || typeof statement !== 'string' || statement.trim().length < 4) {
-      continue;
-    }
-
-    const trimmed = statement.trim();
-
-    const rationaleValue =
-      typeof rationale === 'string' && rationale.trim()
-        ? rationale.trim()
-        : null;
-    const applicabilityValue =
-      typeof applicability === 'string' && applicability.trim()
-        ? applicability.trim()
-        : null;
-    const confidenceValue =
-      typeof confidence === 'number' && Number.isFinite(confidence)
-        ? Math.max(0.35, Math.min(0.95, confidence))
-        : null;
-
-    results.push({
-      type: 'learning',
-      sourcePath: LESSONS_JSONL_RELATIVE_PATH,
-      id: createDeterministicId('lrn', evidence.repository_id, evidence.id, trimmed),
-      repository_id: evidence.repository_id,
-      kind: kind === 'repo_convention' ? 'repo_convention' : 'engineering_lesson',
-      source_type: 'github_pr_discourse',
-      statement: trimmed,
-      title:
-        trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`,
-      ...(rationaleValue !== null ? { rationale: rationaleValue } : {}),
-      ...(applicabilityValue !== null ? { applicability: applicabilityValue } : {}),
-      ...(confidenceValue !== null ? { confidence: confidenceValue } : {}),
-      status: 'active',
-      evidence_ids: [evidence.id],
-      tags:
-        Array.isArray(tags) && tags.length > 0
-          ? (tags as unknown[]).map(String).filter(Boolean)
-          : [evidence.source_type],
-      created_at: evidence.updated_at ?? now,
-      updated_at: evidence.updated_at ?? now
-    });
-  }
-
-  return results;
 }

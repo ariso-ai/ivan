@@ -54,9 +54,7 @@ export async function rebuildLearningsDatabase(
   const { cached, generated, dirty } = await resolveEmbeddings(
     dataset.learnings
   );
-  process.stderr.write(
-    `Embeddings: ${cached} cached, ${generated} generated\n`
-  );
+  console.log(`Embeddings: ${cached} cached, ${generated} generated`);
 
   if (dirty) writeBackEmbeddings(repoPath, dataset.learnings);
 
@@ -198,8 +196,8 @@ async function resolveEmbeddings(
       }
       generated = dirty.length;
     } catch (err) {
-      process.stderr.write(
-        `Warning: could not generate embeddings (${(err as Error).message}). Vector search will be unavailable for this rebuild.\n`
+      console.error(
+        `Warning: could not generate embeddings (${(err as Error).message}). Vector search will be unavailable for this rebuild.`
       );
     }
   }

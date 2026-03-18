@@ -7,7 +7,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { LEARNINGS_DB_RELATIVE_PATH } from './paths.js';
-import { LearningsMigrationManager } from './migration.js';
+import { LearningsMigrationManager } from '../database/migration.js';
 
 /** Returns the absolute path to the learnings SQLite database for the given repo root. */
 export function getLearningsDbPath(repoPath: string): string {
