@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import { runExtractCommand } from './extract-command.js';
 import { initLearningsStore, runInitCommand } from './init-command.js';
 import { runIngestPrCommand } from './ingest-pr-command.js';
+import { runIngestRepoCommand } from './ingest-repo-command.js';
 import {
   installLearningsHooks,
   runInstallHooksCommand
@@ -65,6 +66,14 @@ export function registerLearningsCommands(program: Command): void {
     .requiredOption('--repo <path>', 'Repository root path')
     .requiredOption('--pr <number>', 'Pull request number')
     .action(runIngestPrCommand);
+
+  learnings
+    .command('ingest-repo')
+    .description('Fetch evidence for all PRs in a repo and extract learnings in one pass')
+    .requiredOption('--repo <path>', 'Repository root path')
+    .option('--limit <number>', 'Maximum number of PRs to ingest', '100')
+    .option('--state <state>', 'PR state to fetch: open, closed, merged, or all', 'merged')
+    .action(runIngestRepoCommand);
 
   learnings
     .command('install-hooks')

@@ -39,6 +39,9 @@ export interface LearningsBuildResult {
   embeddingsGenerated: number;
 }
 
+const EMBEDDING_BATCH_MAX_ITEMS = 64;
+const EMBEDDING_BATCH_MAX_CHARS = 200_000;
+
 /**
  * Validates all canonical JSONL records, then creates a fresh SQLite database,
  * bulk-inserts everything in one transaction, and populates the FTS tables.
@@ -149,8 +152,9 @@ export function computeJsonlHash(repoPath: string): string {
 
 /**
  * Checks each learning's cached embedding against a SHA-256 of the model version +
- * embedding input string. Cache hits reuse the stored vector; cache misses are batched
- * into a single OpenAI API call. Mutates records in-place. Returns hit/miss counts.
+ * embedding input string. Cache hits reuse the stored vector; cache misses are generated
+ * in bounded batches so a large rebuild does not exceed provider request limits.
+ * Mutates records in-place. Returns hit/miss counts.
  *
  * Including EMBEDDING_MODEL in the hash ensures old caches (e.g. from the previous
  * local hash function) are automatically invalidated when the model changes.
@@ -185,21 +189,51 @@ async function resolveEmbeddings(
   let generated = 0;
 
   if (dirty.length > 0) {
-    try {
-      const vectors = await embedTexts(dirty.map((d) => d.inputString));
-      for (let i = 0; i < dirty.length; i++) {
-        dirty[i].learning.embedding = vectors[i];
-        dirty[i].learning.embeddingInputHash = dirty[i].hash;
+    for (const batch of chunkEmbeddingRequests(dirty)) {
+      try {
+        const vectors = await embedTexts(batch.map((item) => item.inputString));
+        for (let i = 0; i < batch.length; i++) {
+          batch[i].learning.embedding = vectors[i];
+          batch[i].learning.embeddingInputHash = batch[i].hash;
+        }
+        generated += batch.length;
+      } catch (err) {
+        console.error(
+          `Warning: could not generate embeddings for batch of ${batch.length} learning(s) (${(err as Error).message}). Those rows will be skipped for this rebuild.`
+        );
       }
-      generated = dirty.length;
-    } catch (err) {
-      console.error(
-        `Warning: could not generate embeddings (${(err as Error).message}). Vector search will be unavailable for this rebuild.`
-      );
     }
   }
 
   return { cached, generated, dirty: generated > 0 };
+}
+
+function chunkEmbeddingRequests<T extends { inputString: string }>(items: T[]): T[][] {
+  const batches: T[][] = [];
+  let currentBatch: T[] = [];
+  let currentChars = 0;
+
+  for (const item of items) {
+    const itemChars = item.inputString.length;
+    const wouldOverflowItems = currentBatch.length >= EMBEDDING_BATCH_MAX_ITEMS;
+    const wouldOverflowChars =
+      currentBatch.length > 0 && currentChars + itemChars > EMBEDDING_BATCH_MAX_CHARS;
+
+    if (wouldOverflowItems || wouldOverflowChars) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentChars = 0;
+    }
+
+    currentBatch.push(item);
+    currentChars += itemChars;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
 }
 
 /**

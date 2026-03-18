@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
@@ -17,12 +18,15 @@ function deterministicEmbedding(text) {
   return vec.map((v) => v / mag);
 }
 
+const embeddingRequests = [];
+
 // Must be called before any dynamic import that resolves openai
 jest.unstable_mockModule('openai', () => ({
   default: class OpenAIMock {
     embeddings = {
       create: async ({ input }) => {
         const texts = Array.isArray(input) ? input : [input];
+        embeddingRequests.push([...texts]);
         return {
           data: texts.map((text, index) => ({ index, embedding: deterministicEmbedding(text) }))
         };
@@ -77,6 +81,10 @@ const projectRoot = path.resolve(__dirname, '..');
 const fixtureRoot = path.join(__dirname, 'fixtures', 'sample-repo');
 const tempRoots = [];
 
+beforeEach(() => {
+  embeddingRequests.length = 0;
+});
+
 afterEach(() => {
   while (tempRoots.length > 0) {
     const tempRoot = tempRoots.pop();
@@ -116,6 +124,82 @@ describe('learnings storage slice', () => {
       'ev_lock-await',
       'ev_lock-await-ack'
     ]);
+  });
+
+  test('falls back to lexical search when vector neighbors do not clear the similarity threshold', async () => {
+    const repoPath = copyFixtureRepo();
+    const lessonsPath = path.join(repoPath, '.ivan', 'lessons.jsonl');
+    const evidencePath = path.join(repoPath, '.ivan', 'evidence.jsonl');
+    const queryText = 'src/exact-file-name.ts';
+
+    fs.appendFileSync(
+      evidencePath,
+      `${JSON.stringify({
+        type: 'evidence',
+        sourcePath: '.ivan/evidence.jsonl#L3',
+        id: 'ev_exact-file',
+        source_system: 'test',
+        source_type: 'unit_test',
+        author_type: 'human',
+        author_name: 'tester',
+        occurred_at: '2026-03-18T00:00:00Z',
+        base_weight: 4,
+        final_weight: 4,
+        boosts: [],
+        penalties: [],
+        created_at: '2026-03-18T00:00:00Z',
+        updated_at: '2026-03-18T00:00:00Z'
+      })}\n`,
+      'utf8'
+    );
+
+    fs.appendFileSync(
+      lessonsPath,
+      `${JSON.stringify({
+        type: 'learning',
+        sourcePath: '.ivan/lessons.jsonl#L2',
+        id: 'lrn_exact-file',
+        kind: 'repo_convention',
+        title: queryText,
+        statement: 'Use the exact filename when documenting ownership boundaries.',
+        rationale: 'Literal path matches should remain discoverable.',
+        applicability: 'When searching for file-scoped conventions.',
+        confidence: 0.7,
+        status: 'active',
+        evidence_ids: ['ev_exact-file'],
+        tags: ['search', 'filename'],
+        created_at: '2026-03-18T00:00:00Z',
+        updated_at: '2026-03-18T00:00:00Z'
+      })}\n`,
+      'utf8'
+    );
+
+    await rebuildLearningsDatabase(repoPath);
+
+    const records = fs
+      .readFileSync(lessonsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+
+    const corrupted = records.map((record) => ({
+      ...record,
+      embedding: deterministicEmbedding(`unrelated embedding ${record.id}`),
+      embeddingInputHash: computeEmbeddingHash(record)
+    }));
+    fs.writeFileSync(
+      lessonsPath,
+      `${corrupted.map((record) => JSON.stringify(record)).join('\n')}\n`,
+      'utf8'
+    );
+
+    await rebuildLearningsDatabase(repoPath);
+
+    const queryResults = await queryLearnings(repoPath, queryText, { limit: 1 });
+
+    expect(queryResults).toHaveLength(1);
+    expect(queryResults[0].id).toBe('lrn_exact-file');
+    expect(queryResults[0].title).toBe(queryText);
   });
 
   test('initializes learnings storage through the CLI', () => {
@@ -269,6 +353,70 @@ describe('learnings storage slice', () => {
     const afterSecond = fs.readFileSync(lessonsPath, 'utf8');
     const recordSecond = JSON.parse(afterSecond.trim().split('\n')[0]);
     expect(recordSecond.embeddingInputHash).not.toBe(originalHash);
+  });
+
+  test('rebuild chunks dirty embeddings into multiple API requests', async () => {
+    const repoPath = createEmptyRepo('chunked-embeddings-repo');
+    const ivanDir = path.join(repoPath, '.ivan');
+    fs.mkdirSync(ivanDir, { recursive: true });
+
+    const evidenceRecords = [];
+    const learningRecords = [];
+
+    for (let i = 0; i < 70; i++) {
+      const id = `lrn_${i}`;
+      const evidenceId = `ev_${i}`;
+      evidenceRecords.push({
+        type: 'evidence',
+        sourcePath: `.ivan/evidence.jsonl#L${i + 1}`,
+        id: evidenceId,
+        source_system: 'test',
+        source_type: 'unit_test',
+        author_type: 'human',
+        author_name: 'tester',
+        occurred_at: '2026-03-18T00:00:00Z',
+        base_weight: 3,
+        final_weight: 3,
+        boosts: [],
+        penalties: [],
+        created_at: '2026-03-18T00:00:00Z',
+        updated_at: '2026-03-18T00:00:00Z'
+      });
+      learningRecords.push({
+        type: 'learning',
+        sourcePath: `.ivan/lessons.jsonl#L${i + 1}`,
+        id,
+        kind: 'engineering_lesson',
+        title: `Learning ${i}`,
+        statement: `Statement ${i}`,
+        rationale: 'Generated for chunking coverage.',
+        applicability: 'Embedding rebuild batching.',
+        confidence: 0.6,
+        status: 'active',
+        evidence_ids: [evidenceId],
+        tags: ['batching'],
+        created_at: '2026-03-18T00:00:00Z',
+        updated_at: '2026-03-18T00:00:00Z'
+      });
+    }
+
+    fs.writeFileSync(
+      path.join(ivanDir, 'evidence.jsonl'),
+      `${evidenceRecords.map((record) => JSON.stringify(record)).join('\n')}\n`,
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(ivanDir, 'lessons.jsonl'),
+      `${learningRecords.map((record) => JSON.stringify(record)).join('\n')}\n`,
+      'utf8'
+    );
+
+    const result = await rebuildLearningsDatabase(repoPath);
+
+    expect(result.embeddingsGenerated).toBe(70);
+    expect(result.embeddingsCached).toBe(0);
+    expect(embeddingRequests).toHaveLength(2);
+    expect(embeddingRequests.map((batch) => batch.length)).toEqual([64, 6]);
   });
 
   test('maps GitHub PR evidence into deterministic canonical evidence records', () => {
@@ -472,4 +620,20 @@ function execIvan(args) {
     encoding: 'utf8',
     env: { ...process.env, OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? 'sk-test' }
   });
+}
+
+function computeEmbeddingHash(learning) {
+  const textParts = [
+    learning.kind,
+    learning.title,
+    learning.statement,
+    learning.rationale,
+    learning.applicability,
+    learning.tags.join(' ')
+  ].filter(Boolean);
+
+  return createHash('sha256')
+    .update('text-embedding-3-small@1536\n')
+    .update(textParts.join('\n'))
+    .digest('hex');
 }

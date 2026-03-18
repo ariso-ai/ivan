@@ -89,6 +89,57 @@ export interface GitHubPullRequestEvidence {
 }
 
 /**
+ * Lists all PR numbers for the repo, using the configured auth type.
+ * Returns numbers in descending order (newest first).
+ */
+export async function fetchAllPullRequestNumbers(
+  repoPath: string,
+  options: { state?: 'open' | 'closed' | 'merged' | 'all'; limit?: number } = {}
+): Promise<number[]> {
+  const configManager = new ConfigManager();
+  const authType = configManager.getGithubAuthType();
+  const state = options.state ?? 'merged';
+  const limit = options.limit ?? 100;
+
+  if (authType === 'pat') {
+    const pat = configManager.getGithubPat();
+    if (!pat) {
+      throw new Error(
+        'GitHub PAT is not configured. Please run "ivan configure" and set your PAT.'
+      );
+    }
+    return fetchAllPullRequestNumbersPat(repoPath, pat, state, limit);
+  }
+
+  return fetchAllPullRequestNumbersCli(repoPath, state, limit);
+}
+
+async function fetchAllPullRequestNumbersPat(
+  repoPath: string,
+  pat: string,
+  state: 'open' | 'closed' | 'merged' | 'all',
+  limit: number
+): Promise<number[]> {
+  const repo = GitHubAPIClient.getRepoInfoFromRemote(repoPath);
+  const client = new GitHubAPIClient(pat);
+  return client.listPullRequestNumbers(repo.owner, repo.repo, state, limit);
+}
+
+function fetchAllPullRequestNumbersCli(
+  repoPath: string,
+  state: 'open' | 'closed' | 'merged' | 'all',
+  limit: number
+): Promise<number[]> {
+  // gh pr list supports "merged" as a state directly
+  const raw = execSync(
+    `gh pr list --state ${state} --json number --limit ${limit}`,
+    { cwd: repoPath, encoding: 'utf8' }
+  );
+  const prs = JSON.parse(raw) as Array<{ number: number }>;
+  return Promise.resolve(prs.map((pr) => pr.number));
+}
+
+/**
  * Entry point for PR evidence fetching: routes to the PAT-based REST/GraphQL path
  * or the `gh` CLI path depending on the configured auth type.
  */

@@ -22,6 +22,12 @@ interface LearningRow {
   status: string;
 }
 
+interface VectorLearningRow extends LearningRow {
+  distance: number;
+}
+
+const MIN_VECTOR_SIMILARITY = 0.12;
+
 /**
  * Searches the learnings database for records relevant to `text`, hydrating each result
  * with its tags and evidence.  Opens the DB read-only and closes it before returning.
@@ -111,7 +117,7 @@ async function runLearningSearch(
 ): Promise<LearningRow[]> {
   const vectorRows = await runVectorSearch(db, text, limit);
   if (vectorRows.length > 0) {
-    return vectorRows;
+    return vectorRows.map(({ distance: _distance, ...row }) => row);
   }
 
   const ftsExpression = buildFtsExpression(text);
@@ -182,13 +188,15 @@ async function runLearningSearch(
 
 /**
  * Embeds `text` and runs a vec0 KNN cosine-distance query against `learning_vectors`,
- * filtering to active learnings only. Returns the top `limit` rows ordered by distance.
+ * filtering to active learnings only. Returns the top `limit` rows when the best
+ * neighbors clear the minimum semantic relevance threshold; otherwise returns [] so
+ * lexical search tiers can handle exact or out-of-domain matches.
  */
 async function runVectorSearch(
   db: ReturnType<typeof openLearningsDatabase>,
   text: string,
   limit: number
-): Promise<LearningRow[]> {
+): Promise<VectorLearningRow[]> {
   let queryVector: Buffer;
   try {
     queryVector = Buffer.from(new Float32Array(await embedText(text)).buffer);
@@ -196,7 +204,7 @@ async function runVectorSearch(
     return []; // OpenAI unavailable — fall through to FTS5
   }
 
-  return db
+  const rows = db
     .prepare(
       `
         SELECT
@@ -207,7 +215,8 @@ async function runVectorSearch(
           l.rationale,
           l.applicability,
           l.confidence,
-          l.status
+          l.status,
+          distance
         FROM learning_vectors lv
         INNER JOIN learnings l ON l.id = lv.learning_id
         WHERE lv.vector MATCH ?
@@ -216,7 +225,11 @@ async function runVectorSearch(
         ORDER BY distance
       `
     )
-    .all(queryVector, limit) as LearningRow[];
+    .all(queryVector, limit) as VectorLearningRow[];
+
+  return rows.filter(
+    (row) => Number.isFinite(row.distance) && 1 - row.distance >= MIN_VECTOR_SIMILARITY
+  );
 }
 
 /**

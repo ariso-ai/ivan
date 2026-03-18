@@ -8,10 +8,30 @@ import {
 } from './evidence-writer.js';
 import { extractLearningsFromEvidence } from './extractor.js';
 import { fetchGitHubPullRequestEvidence } from './github-evidence.js';
+import type { EvidenceContextCache } from './record-types.js';
 import {
   ensureLearningsDirectories,
   resolveLearningsRepositoryContext
 } from './repository.js';
+
+/**
+ * Fetches and writes evidence signals for a single PR without running extraction or rebuild.
+ * Returns the written signal count and the in-memory context cache for later extraction.
+ * Used by `ingest-repo` to batch multiple PRs before a single extract+rebuild pass.
+ */
+export async function ingestPullRequestEvidenceOnly(
+  repoPath: string,
+  prNumber: number
+): Promise<{ writtenEvidenceCount: number; contextCache: EvidenceContextCache }> {
+  const context = resolveLearningsRepositoryContext(repoPath);
+  ensureLearningsDirectories(context);
+
+  const payload = await fetchGitHubPullRequestEvidence(context.repoPath, prNumber);
+  const { signals, contextCache } = buildEvidenceSignalsFromPullRequest(payload);
+  writeEvidenceSignals(context.repoPath, signals);
+
+  return { writtenEvidenceCount: signals.length, contextCache };
+}
 
 /** Returned by `ingestPullRequestEvidence`; summarises the full ingestion outcome. */
 export interface PullRequestIngestionResult {
