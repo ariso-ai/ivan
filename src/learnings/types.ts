@@ -19,7 +19,6 @@ export interface LearningsQueryEvidence {
 /** A fully hydrated learning returned by `queryLearnings`, including its evidence and tags. */
 export interface LearningsQueryResult {
   id: string;
-  repositoryId: string;
   title?: string;
   kind: string;
   statement: string;

@@ -91,7 +91,6 @@ describe('learnings storage slice', () => {
     const repoPath = copyFixtureRepo();
     const dataset = loadCanonicalRecords(repoPath);
 
-    expect(dataset.repositories).toHaveLength(1);
     expect(dataset.evidence).toHaveLength(2);
     expect(dataset.learnings).toHaveLength(1);
     expect(dataset.learnings[0].statement).toBe(
@@ -109,7 +108,6 @@ describe('learnings storage slice', () => {
     const queryResults = await queryLearnings(repoPath, 'locks await', { limit: 2 });
 
     expect(fs.existsSync(result.dbPath)).toBe(true);
-    expect(result.repositoryCount).toBe(1);
     expect(result.evidenceCount).toBe(2);
     expect(result.learningCount).toBe(1);
     expect(queryResults).toHaveLength(1);
@@ -274,7 +272,7 @@ describe('learnings storage slice', () => {
   });
 
   test('maps GitHub PR evidence into deterministic canonical evidence records', () => {
-    const records = buildEvidenceRecordsFromPullRequest('repo_sample-repo', {
+    const records = buildEvidenceRecordsFromPullRequest({
       repository: {
         owner: 'ariso-ai',
         name: 'ivan'
@@ -362,7 +360,6 @@ describe('learnings storage slice', () => {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_pr_summary',
-        repository_id: 'repo_sample-repo',
         source_system: 'github',
         source_type: 'pull_request',
         external_id: 'github:ariso-ai/ivan:pr:42',
@@ -388,7 +385,6 @@ describe('learnings storage slice', () => {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_bot_review',
-        repository_id: 'repo_sample-repo',
         source_system: 'github',
         source_type: 'pr_review_thread',
         external_id: 'github:ariso-ai/ivan:pr:42:thread:1',
@@ -420,7 +416,6 @@ describe('learnings storage slice', () => {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_human_review',
-        repository_id: 'repo_sample-repo',
         source_system: 'github',
         source_type: 'pr_review_thread',
         external_id: 'github:ariso-ai/ivan:pr:42:thread:2',

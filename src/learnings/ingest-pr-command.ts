@@ -21,7 +21,6 @@ export async function runIngestPrCommand(
   const result = await ingestPullRequestEvidence(options.repo, prNumber);
 
   console.log(chalk.green('✅ GitHub PR evidence ingested'));
-  console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));
   console.log(
     chalk.gray(`Evidence records written: ${result.writtenEvidenceCount}`)
   );

@@ -9,8 +9,7 @@ import Database from 'better-sqlite3';
 import type {
   EvidenceRecord,
   LearningsDataset,
-  LearningRecord,
-  RepositoryRecord
+  LearningRecord
 } from './record-types.js';
 import {
   createFreshLearningsDatabase,
@@ -34,7 +33,6 @@ import { validateLearningsDataset } from './validator.js';
 /** Counts and path returned after a successful database rebuild. */
 export interface LearningsBuildResult {
   dbPath: string;
-  repositoryCount: number;
   evidenceCount: number;
   learningCount: number;
   embeddingsCached: number;
@@ -71,7 +69,6 @@ export async function rebuildLearningsDatabase(
 
     return {
       dbPath,
-      repositoryCount: dataset.repositories.length,
       evidenceCount: dataset.evidence.length,
       learningCount: dataset.learnings.length,
       embeddingsCached: cached,
@@ -255,27 +252,13 @@ function writeBackEmbeddings(
 }
 
 /**
- * Inserts all repositories, evidence, learnings, embeddings, and tag/evidence join rows
+ * Inserts all evidence, learnings, embeddings, and tag/evidence join rows
  * in a single SQLite transaction for atomicity and performance.
  */
 function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
-  const insertRepository = db.prepare(`
-    INSERT INTO repositories (
-      id,
-      slug,
-      name,
-      local_path,
-      remote_url,
-      is_active,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
   const insertEvidence = db.prepare(`
     INSERT INTO evidence (
       id,
-      repository_id,
       source_system,
       source_type,
       external_id,
@@ -302,13 +285,12 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
       penalties_json,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertLearning = db.prepare(`
     INSERT INTO learnings (
       id,
-      repository_id,
       kind,
       source_type,
       title,
@@ -319,7 +301,7 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
       status,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertLearningEvidence = db.prepare(`
@@ -348,10 +330,6 @@ function insertDataset(db: Database.Database, dataset: LearningsDataset): void {
   `);
 
   const transaction = db.transaction(() => {
-    for (const repository of [...dataset.repositories].sort(sortByPathThenId)) {
-      writeRepository(insertRepository, repository);
-    }
-
     for (const evidence of [...dataset.evidence].sort(sortByPathThenId)) {
       writeEvidence(insertEvidence, evidence);
     }
@@ -396,23 +374,6 @@ function writeLearningVector(
   statement.run(learning.id, Buffer.from(new Float32Array(learning.embedding).buffer));
 }
 
-/** Executes the prepared `INSERT INTO repositories` statement for one record. */
-function writeRepository(
-  statement: Database.Statement,
-  repository: RepositoryRecord
-): void {
-  statement.run(
-    repository.id,
-    repository.slug,
-    repository.name,
-    repository.local_path ?? null,
-    repository.remote_url ?? null,
-    repository.is_active ? 1 : 0,
-    repository.created_at,
-    repository.updated_at
-  );
-}
-
 /** Executes the prepared `INSERT INTO evidence` statement, serializing boosts/penalties arrays as JSON. */
 function writeEvidence(
   statement: Database.Statement,
@@ -420,7 +381,6 @@ function writeEvidence(
 ): void {
   statement.run(
     evidence.id,
-    evidence.repository_id,
     evidence.source_system,
     evidence.source_type,
     evidence.external_id ?? null,
@@ -457,7 +417,6 @@ function writeLearning(
 ): void {
   statement.run(
     learning.id,
-    learning.repository_id,
     learning.kind,
     learning.source_type ?? null,
     learning.title ?? null,
@@ -477,30 +436,15 @@ function populateFtsTables(db: Database.Database): void {
   db.exec('DELETE FROM learnings_fts');
 
   db.exec(`
-    INSERT INTO evidence_fts (id, repository_id, source_type, title, content)
-    SELECT id, repository_id, source_type, COALESCE(title, ''), content
+    INSERT INTO evidence_fts (id, source_type, title, content)
+    SELECT id, source_type, COALESCE(title, ''), content
     FROM evidence
     ORDER BY id
   `);
 
   db.exec(`
-    INSERT INTO learnings_fts (
-      id,
-      repository_id,
-      kind,
-      title,
-      statement,
-      rationale,
-      applicability
-    )
-    SELECT
-      id,
-      repository_id,
-      kind,
-      COALESCE(title, ''),
-      statement,
-      COALESCE(rationale, ''),
-      COALESCE(applicability, '')
+    INSERT INTO learnings_fts (id, kind, title, statement, rationale, applicability)
+    SELECT id, kind, COALESCE(title, ''), statement, COALESCE(rationale, ''), COALESCE(applicability, '')
     FROM learnings
     ORDER BY id
   `);

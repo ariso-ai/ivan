@@ -17,7 +17,6 @@ interface InitCommandOptions {
  * Initialises the learnings store for `repoPath`: creates the `.ivan/` directory and canonical files.
  */
 export function initLearningsStore(repoPath: string): {
-  repositoryId: string;
   createdDirectories: string[];
   createdFiles: string[];
   gitignoreUpdated: boolean;
@@ -28,7 +27,6 @@ export function initLearningsStore(repoPath: string): {
   const gitignoreUpdated = ensureGitignoreCoverage(context.repoPath);
 
   return {
-    repositoryId: context.repositoryId,
     createdDirectories,
     createdFiles,
     gitignoreUpdated
@@ -42,7 +40,6 @@ export async function runInitCommand(
   const result = initLearningsStore(options.repo);
 
   console.log(chalk.green('✅ Learnings store initialized'));
-  console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));
 
   if (result.createdDirectories.length > 0) {
     console.log(chalk.gray('Created directories:'));

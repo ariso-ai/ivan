@@ -16,18 +16,6 @@ export function slugify(value: string): string {
     .replace(/-{2,}/g, '-');
 }
 
-/** Returns `repo_{slug}` for the given repository name; throws if the name produces an empty slug. */
-export function createRepositoryId(value: string): string {
-  const slug = slugify(value);
-  if (!slug) {
-    throw new Error(
-      'Repository name must contain at least one letter or digit'
-    );
-  }
-
-  return `repo_${slug}`;
-}
-
 /**
  * Builds a stable `{prefix}_{20-hex-char SHA1}` ID from the given parts.
  * Parts are joined with the ASCII unit-separator (U+001F) before hashing so

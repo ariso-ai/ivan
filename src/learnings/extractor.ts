@@ -15,7 +15,6 @@ import {
 } from './repository.js';
 
 export interface ExtractionResult {
-  repositoryId: string;
   writtenLearningCount: number;
   writtenPaths: string[];
   rebuild: LearningsBuildResult;
@@ -163,15 +162,10 @@ export class LearningsExtractor {
 
     const dataset = loadCanonicalRecords(context.repoPath);
     const extractedRecords = await this.extractLearningRecords(dataset.evidence);
-    const writtenPaths = writeLearningRecords(
-      context.repoPath,
-      context.repositoryId,
-      extractedRecords
-    );
+    const writtenPaths = writeLearningRecords(context.repoPath, extractedRecords);
     const rebuild = await rebuildLearningsDatabase(context.repoPath);
 
     return {
-      repositoryId: context.repositoryId,
       writtenLearningCount: extractedRecords.length,
       writtenPaths,
       rebuild
@@ -250,8 +244,7 @@ export class LearningsExtractor {
       results.push({
         type: 'learning',
         sourcePath: LESSONS_JSONL_RELATIVE_PATH,
-        id: createDeterministicId('lrn', evidence.repository_id, evidence.id, trimmed),
-        repository_id: evidence.repository_id,
+        id: createDeterministicId('lrn', evidence.id, trimmed),
         kind,
         source_type: 'github_pr_discourse',
         statement: trimmed,

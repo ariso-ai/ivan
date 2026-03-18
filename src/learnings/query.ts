@@ -14,7 +14,6 @@ import type {
 /** Raw SQLite row shape returned by learning search queries. */
 interface LearningRow {
   id: string;
-  repository_id: string;
   title: string | null;
   kind: string;
   statement: string;
@@ -94,7 +93,6 @@ export async function queryLearnings(
 
       return {
         id: row.id,
-        repositoryId: row.repository_id,
         kind: row.kind,
         statement: row.statement,
         status: row.status,
@@ -135,7 +133,6 @@ async function runLearningSearch(
         `
           SELECT
             l.id,
-            l.repository_id,
             l.title,
             l.kind,
             l.statement,
@@ -166,7 +163,6 @@ async function runLearningSearch(
       `
         SELECT
           id,
-          repository_id,
           title,
           kind,
           statement,
@@ -216,7 +212,6 @@ async function runVectorSearch(
       `
         SELECT
           l.id,
-          l.repository_id,
           l.title,
           l.kind,
           l.statement,

@@ -5,57 +5,25 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { createRepositoryId, slugify } from './id.js';
 import { resolveCanonicalLearningsPath } from './paths.js';
-import type { RepositoryRecord } from './record-types.js';
 
-/** Resolved identity information for the repository being tracked; passed through the init/extract pipeline. */
+/** Resolved path context for the repository being tracked. */
 export interface LearningsRepositoryContext {
   repoPath: string;
-  repositoryId: string;
-  repositorySlug: string;
-  repositoryName: string;
   remoteUrl?: string;
 }
 
-/** Derives repository identity from `repoPath` and git metadata. */
+/** Resolves and validates the repository path. */
 export function resolveLearningsRepositoryContext(
   repoPath: string
 ): LearningsRepositoryContext {
   const resolvedRepoPath = path.resolve(repoPath);
   assertDirectoryExists(resolvedRepoPath);
 
-  const repositoryName = path.basename(resolvedRepoPath);
-  const repositorySlug = slugify(repositoryName);
-  const repositoryId = createRepositoryId(repositorySlug);
-
   const remoteUrl = readRemoteUrl(resolvedRepoPath);
   return {
     repoPath: resolvedRepoPath,
-    repositoryId,
-    repositorySlug,
-    repositoryName,
     ...(remoteUrl !== undefined ? { remoteUrl } : {})
-  };
-}
-
-/** Constructs the synthetic repository record used to populate the derived SQLite database. */
-export function buildRepositoryRecord(
-  context: LearningsRepositoryContext
-): RepositoryRecord {
-  const now = new Date().toISOString();
-
-  return {
-    type: 'repository',
-    sourcePath: '.ivan#derived',
-    id: context.repositoryId,
-    slug: context.repositorySlug,
-    name: context.repositoryName,
-    local_path: context.repoPath,
-    is_active: true,
-    created_at: now,
-    updated_at: now,
-    ...(context.remoteUrl !== undefined ? { remote_url: context.remoteUrl } : {})
   };
 }
 

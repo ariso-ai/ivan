@@ -27,7 +27,6 @@ import {
  * Each record is weighted and sorted by `source_type` for deterministic JSONL output.
  */
 export function buildEvidenceRecordsFromPullRequest(
-  repositoryId: string,
   payload: GitHubPullRequestEvidence
 ): EvidenceRecord[] {
   const records: EvidenceRecord[] = [];
@@ -38,7 +37,6 @@ export function buildEvidenceRecordsFromPullRequest(
     type: 'evidence',
     sourcePath: evidenceSourcePath(),
     id: createDeterministicId('ev', `${baseExternalId}:summary`),
-    repository_id: repositoryId,
     source_system: 'github',
     source_type: 'pull_request',
     external_id: baseExternalId,
@@ -70,7 +68,6 @@ export function buildEvidenceRecordsFromPullRequest(
       type: 'evidence',
       sourcePath: evidenceSourcePath(),
       id,
-      repository_id: repositoryId,
       source_system: 'github',
       source_type: 'pr_issue_comment',
       external_id: `${baseExternalId}:issue-comment:${comment.id}`,
@@ -101,7 +98,6 @@ export function buildEvidenceRecordsFromPullRequest(
       type: 'evidence',
       sourcePath: evidenceSourcePath(),
       id,
-      repository_id: repositoryId,
       source_system: 'github',
       source_type: 'pr_review',
       external_id: `${baseExternalId}:review:${review.id}`,
@@ -127,7 +123,6 @@ export function buildEvidenceRecordsFromPullRequest(
 
   for (const thread of payload.reviewThreads) {
     const threadRecord = buildThreadEvidenceRecord(
-      repositoryId,
       payload,
       thread,
       baseExternalId,
@@ -148,7 +143,6 @@ export function buildEvidenceRecordsFromPullRequest(
       type: 'evidence',
       sourcePath: evidenceSourcePath(),
       id,
-      repository_id: repositoryId,
       source_system: 'github',
       source_type: 'pr_check',
       external_id: `${baseExternalId}:check:${check.name}`,
@@ -179,7 +173,6 @@ export function buildEvidenceRecordsFromPullRequest(
  */
 export function writeEvidenceRecords(
   repoPath: string,
-  _repositoryId: string,
   records: EvidenceRecord[]
 ): string[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'evidence.jsonl');
@@ -227,7 +220,6 @@ function mergeEvidenceRecords(
 
 /** Constructs an `EvidenceRecord` from the first comment of a review thread; returns null if the thread has no comments. */
 function buildThreadEvidenceRecord(
-  repositoryId: string,
   payload: GitHubPullRequestEvidence,
   thread: GitHubReviewThreadEvidence,
   baseExternalId: string,
@@ -250,7 +242,6 @@ function buildThreadEvidenceRecord(
     type: 'evidence',
     sourcePath: evidenceSourcePath(),
     id,
-    repository_id: repositoryId,
     source_system: 'github',
     source_type: 'pr_review_thread',
     external_id: `${baseExternalId}:thread:${threadId}`,
@@ -309,7 +300,6 @@ function serializeEvidenceRecord(
 ): Record<string, unknown> {
   return {
     id: record.id,
-    repository_id: record.repository_id,
     source_system: record.source_system,
     source_type: record.source_type,
     external_id: record.external_id,

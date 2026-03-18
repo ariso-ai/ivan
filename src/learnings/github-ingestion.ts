@@ -15,7 +15,6 @@ import {
 
 /** Returned by `ingestPullRequestEvidence`; summarises the full ingestion outcome. */
 export interface PullRequestIngestionResult {
-  repositoryId: string;
   writtenEvidenceCount: number;
   writtenPaths: string[];
   rebuild: LearningsBuildResult;
@@ -32,23 +31,12 @@ export async function ingestPullRequestEvidence(
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
 
-  const payload = await fetchGitHubPullRequestEvidence(
-    context.repoPath,
-    prNumber
-  );
-  const records = buildEvidenceRecordsFromPullRequest(
-    context.repositoryId,
-    payload
-  );
-  const writtenPaths = writeEvidenceRecords(
-    context.repoPath,
-    context.repositoryId,
-    records
-  );
+  const payload = await fetchGitHubPullRequestEvidence(context.repoPath, prNumber);
+  const records = buildEvidenceRecordsFromPullRequest(payload);
+  const writtenPaths = writeEvidenceRecords(context.repoPath, records);
   const extraction = await extractLearningsFromEvidence(context.repoPath);
 
   return {
-    repositoryId: context.repositoryId,
     writtenEvidenceCount: records.length,
     writtenPaths,
     rebuild: extraction.rebuild

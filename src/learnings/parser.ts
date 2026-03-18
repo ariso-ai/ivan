@@ -5,10 +5,6 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveCanonicalLearningsPath } from './paths.js';
-import {
-  buildRepositoryRecord,
-  resolveLearningsRepositoryContext
-} from './repository.js';
 import type {
   EvidenceRecord,
   LearningsDataset,
@@ -20,10 +16,7 @@ type JsonlRecord = Record<string, unknown>;
 /** Reads and sorts the canonical JSONL files for `repoPath`, returning a combined `LearningsDataset`. */
 export function loadCanonicalRecords(repoPath: string): LearningsDataset {
   const resolvedRepoPath = path.resolve(repoPath);
-  const context = resolveLearningsRepositoryContext(resolvedRepoPath);
-
   return sortDataset({
-    repositories: [buildRepositoryRecord(context)],
     evidence: readEvidenceRecords(resolvedRepoPath),
     learnings: readLearningRecords(resolvedRepoPath)
   });
@@ -36,7 +29,6 @@ function readEvidenceRecords(repoPath: string): EvidenceRecord[] {
     type: 'evidence' as const,
     sourcePath,
     id: getRequiredString(record, 'id', sourcePath),
-    repository_id: getRequiredString(record, 'repository_id', sourcePath),
     source_system: getRequiredString(record, 'source_system', sourcePath),
     source_type: getRequiredString(record, 'source_type', sourcePath),
     content: getRequiredString(record, 'content', sourcePath),
@@ -75,7 +67,6 @@ function readLearningRecords(repoPath: string): LearningRecord[] {
     type: 'learning' as const,
     sourcePath,
     id: getRequiredString(record, 'id', sourcePath),
-    repository_id: getRequiredString(record, 'repository_id', sourcePath),
     kind: getRequiredString(record, 'kind', sourcePath),
     statement: getRequiredString(record, 'statement', sourcePath),
     status: getOptionalString(record, 'status') ?? 'active',
@@ -214,7 +205,6 @@ function toCanonicalPath(repoPath: string, filePath: string): string {
 /** Sorts each record list in a dataset by `sourcePath` then `id` for consistent ordering across calls. */
 function sortDataset(dataset: LearningsDataset): LearningsDataset {
   return {
-    repositories: [...dataset.repositories].sort(sortByPathThenId),
     evidence: [...dataset.evidence].sort(sortByPathThenId),
     learnings: [...dataset.learnings].sort(sortByPathThenId)
   };

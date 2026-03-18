@@ -5,27 +5,16 @@
 /** Shared fields present on every record in the learnings store. */
 export interface CanonicalRecord {
   id: string;
-  type: 'repository' | 'evidence' | 'learning';
+  type: 'evidence' | 'learning';
   /** Relative path within the repo (e.g. `.ivan/evidence.jsonl#L3`). */
   sourcePath: string;
   created_at: string;
   updated_at: string;
 }
 
-/** Synthetic repository record derived from the target repo path and git metadata. */
-export interface RepositoryRecord extends CanonicalRecord {
-  type: 'repository';
-  slug: string;
-  name: string;
-  local_path?: string;
-  remote_url?: string;
-  is_active: boolean;
-}
-
 /** One atomic piece of feedback or signal from GitHub (PR, review thread, issue comment, check). */
 export interface EvidenceRecord extends CanonicalRecord {
   type: 'evidence';
-  repository_id: string;
   source_system: string;
   /** Narrows the evidence kind: `pull_request`, `pr_review_thread`, `pr_review`, `pr_issue_comment`, `pr_check`. */
   source_type: string;
@@ -92,7 +81,6 @@ export interface EvidenceRecord extends CanonicalRecord {
 /** An extracted engineering insight derived from one or more evidence records. */
 export interface LearningRecord extends CanonicalRecord {
   type: 'learning';
-  repository_id: string;
   /** `repo_convention` for project-specific rules; `engineering_lesson` for general patterns. */
   kind: string;
   source_type?: string;
@@ -114,7 +102,6 @@ export interface LearningRecord extends CanonicalRecord {
 
 /** The full in-memory view of all canonical JSONL data for one repo. */
 export interface LearningsDataset {
-  repositories: RepositoryRecord[];
   evidence: EvidenceRecord[];
   learnings: LearningRecord[];
 }

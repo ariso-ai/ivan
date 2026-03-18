@@ -15,7 +15,6 @@ export async function runExtractCommand(
   const result = await extractLearningsFromEvidence(options.repo);
 
   console.log(chalk.green('✅ Learnings extracted from evidence'));
-  console.log(chalk.gray(`Repository ID: ${result.repositoryId}`));
   console.log(
     chalk.gray(`Learning records written: ${result.writtenLearningCount}`)
   );

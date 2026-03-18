@@ -31,7 +31,6 @@ export async function runQueryCommand(
 
     const metadata = [
       `id=${result.id}`,
-      `repo=${result.repositoryId}`,
       `kind=${result.kind}`
     ];
     if (result.confidence !== undefined) {
