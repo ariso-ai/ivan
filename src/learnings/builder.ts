@@ -250,6 +250,7 @@ function writeBackEmbeddings(
     updatedLines.push(JSON.stringify(parsed));
   }
 
+  // write to a temporary file and rename to avoid partial writes
   const tmpPath = `${filePath}.tmp`;
   fs.writeFileSync(tmpPath, updatedLines.map((l) => `${l}\n`).join(''), 'utf8');
   fs.renameSync(tmpPath, filePath);
@@ -513,4 +514,3 @@ function storeJsonlHash(db: Database.Database, hash: string): void {
     'INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES (?, ?, ?)'
   ).run('jsonl_hash', hash, new Date().toISOString());
 }
-
