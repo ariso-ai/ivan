@@ -48,3 +48,6 @@ pnpm-debug.log*
 .ivan/*.db-wal
 .ivan/*.db-shm
 # Do NOT ignore ".ivan/db.sqlite" we actually DO want to track it for ivan learnings
+
+.claude/cache
+thoughts/
