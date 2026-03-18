@@ -6,14 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
-import { URL } from 'url';
 import { LEARNINGS_DB_RELATIVE_PATH } from './paths.js';
-
-/** Schema SQL is loaded once at module init and reused for every fresh database creation. */
-const SCHEMA_SQL = fs.readFileSync(
-  new URL('./schema.sql', import.meta.url),
-  'utf8'
-);
+import { LearningsMigrationManager } from './migration.js';
 
 /** Returns the absolute path to the learnings SQLite database for the given repo root. */
 export function getLearningsDbPath(repoPath: string): string {
@@ -38,7 +32,7 @@ export function createFreshLearningsDatabase(
   sqliteVec.load(db);
   db.pragma('journal_mode = DELETE');
   db.pragma('foreign_keys = ON');
-  db.exec(SCHEMA_SQL);
+  new LearningsMigrationManager(db).runMigrations();
 
   return db;
 }

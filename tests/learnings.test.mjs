@@ -28,6 +28,29 @@ jest.unstable_mockModule('openai', () => ({
         };
       }
     };
+
+    chat = {
+      completions: {
+        create: async ({ messages }) => {
+          // Parse evidence_id lines from the user message and return a generic lesson per item.
+          const userContent = messages.find((m) => m.role === 'user')?.content ?? '';
+          const evidenceIds = [...userContent.matchAll(/^evidence_id: (.+)$/gm)].map(
+            (m) => m[1].trim()
+          );
+          const items = evidenceIds.map((evidence_id) => ({
+            evidence_id,
+            lesson: {
+              statement: `Lesson extracted from ${evidence_id}`,
+              kind: 'engineering_lesson',
+              tags: ['testing'],
+              confidence: 0.6,
+              title: `Lesson extracted from ${evidence_id}`
+            }
+          }));
+          return { choices: [{ message: { content: JSON.stringify({ items }) } }] };
+        }
+      }
+    };
   }
 }));
 
@@ -333,8 +356,8 @@ describe('learnings storage slice', () => {
     ).toBe('unresolved');
   });
 
-  test('extractor suppresses CodeRabbit evidence and normalizes PR summaries', () => {
-    const extracted = extractLearningRecords([
+  test('extractor suppresses bot evidence and passes human evidence to the LLM', async () => {
+    const extracted = await extractLearningRecords([
       {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
@@ -383,15 +406,16 @@ describe('learnings storage slice', () => {
       }
     ]);
 
+    // Bot evidence is pre-filtered before the LLM; only the human PR summary survives.
     expect(extracted).toHaveLength(1);
-    expect(extracted[0].statement).toBe(
-      'Adds an optional --rewrite-prompt step that cleans up noisy tickets before sending them to Claude Code'
-    );
     expect(extracted[0].evidence_ids).toEqual(['ev_pr_summary']);
+    expect(extracted[0].statement).toBeTruthy();
+    expect(extracted[0].kind).toMatch(/^(repo_convention|engineering_lesson)$/);
+    expect(Array.isArray(extracted[0].tags)).toBe(true);
   });
 
-  test('extractor rewrites weak first-person review comments into clearer lessons', () => {
-    const extracted = extractLearningRecords([
+  test('extractor sends human review comments to the LLM and returns a structured lesson', async () => {
+    const extracted = await extractLearningRecords([
       {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
@@ -416,9 +440,12 @@ describe('learnings storage slice', () => {
     ]);
 
     expect(extracted).toHaveLength(1);
-    expect(extracted[0].statement).toBe(
-      'Consider a centralized service for prompt templates as we add more prompts.'
-    );
+    expect(extracted[0].evidence_ids).toEqual(['ev_human_review']);
+    expect(typeof extracted[0].statement).toBe('string');
+    expect(extracted[0].statement.length).toBeGreaterThan(0);
+    expect(extracted[0].kind).toMatch(/^(repo_convention|engineering_lesson)$/);
+    expect(Array.isArray(extracted[0].tags)).toBe(true);
+    expect(extracted[0].tags.length).toBeGreaterThan(0);
   });
 });
 

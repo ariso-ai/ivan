@@ -7,7 +7,7 @@
     "ivan": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc --noEmitOnError false; node --input-type=module -e \"import fs from 'node:fs'; fs.mkdirSync('dist/learnings', { recursive: true }); fs.copyFileSync('src/learnings/schema.sql', 'dist/learnings/schema.sql');\"",
+    "build": "tsc --noEmitOnError false",
     "watch": "tsc --watch",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
