@@ -349,7 +349,8 @@ async function refetchContextCache(
     const prUrl = signal.parent_url ?? signal.external_url;
     if (!prUrl) continue;
     if (!prGroups.has(prUrl)) prGroups.set(prUrl, []);
-    prGroups.get(prUrl)!.push(signal);
+    const group = prGroups.get(prUrl);
+    if (group) group.push(signal);
   }
 
   for (const [prUrl] of prGroups) {

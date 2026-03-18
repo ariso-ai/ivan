@@ -57,7 +57,7 @@ jest.unstable_mockModule('openai', () => ({
 // Dynamic imports must come after unstable_mockModule so the mock is in place
 let rebuildLearningsDatabase;
 let buildEmbeddingInputString;
-let buildEvidenceRecordsFromPullRequest;
+let buildEvidenceSignalsFromPullRequest;
 let extractLearningRecords;
 let loadCanonicalRecords;
 let queryLearnings;
@@ -65,7 +65,7 @@ let queryLearnings;
 beforeAll(async () => {
   ({ rebuildLearningsDatabase } = await import('../dist/learnings/builder.js'));
   ({ buildEmbeddingInputString } = await import('../dist/learnings/embeddings.js'));
-  ({ buildEvidenceRecordsFromPullRequest } = await import('../dist/learnings/evidence-writer.js'));
+  ({ buildEvidenceSignalsFromPullRequest } = await import('../dist/learnings/evidence-writer.js'));
   ({ extractLearningRecords } = await import('../dist/learnings/extractor.js'));
   ({ loadCanonicalRecords } = await import('../dist/learnings/parser.js'));
   ({ queryLearnings } = await import('../dist/learnings/query.js'));
@@ -272,7 +272,7 @@ describe('learnings storage slice', () => {
   });
 
   test('maps GitHub PR evidence into deterministic canonical evidence records', () => {
-    const records = buildEvidenceRecordsFromPullRequest({
+    const { signals } = buildEvidenceSignalsFromPullRequest({
       repository: {
         owner: 'ariso-ai',
         name: 'ivan'
@@ -337,40 +337,30 @@ describe('learnings storage slice', () => {
       ]
     });
 
-    expect(records.map((record) => record.source_type)).toEqual([
+    expect(signals.map((s) => s.source_type)).toEqual([
       'pr_check',
       'pr_issue_comment',
       'pr_review',
       'pr_review_thread',
       'pull_request'
     ]);
-    expect(records.every((record) => record.id.startsWith('ev_'))).toBe(true);
-    expect(records.find((record) => record.source_type === 'pr_review')?.boosts).toContain(
+    expect(signals.every((s) => s.id.startsWith('ev_'))).toBe(true);
+    expect(signals.find((s) => s.source_type === 'pr_review')?.boosts).toContain(
       'changes_requested'
     );
     expect(
-      records.find((record) => record.source_type === 'pr_review_thread')
-        ?.resolution_state
-    ).toBe('unresolved');
+      signals.find((s) => s.source_type === 'pr_review_thread')?.boosts
+    ).toContain('unresolved_thread');
   });
 
   test('extractor suppresses bot evidence and passes human evidence to the LLM', async () => {
-    const extracted = await extractLearningRecords([
+    const signals = [
       {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_pr_summary',
         source_system: 'github',
         source_type: 'pull_request',
-        external_id: 'github:ariso-ai/ivan:pr:42',
-        title: 'Feature/prompt rewriting',
-        content: [
-          'PR #42: Feature/prompt rewriting',
-          '',
-          'Adds an optional --rewrite-prompt step that cleans up noisy tickets before sending them to Claude Code.',
-          '',
-          'Verify DB after any rewrite run: sqlite3 ~/.ivan/db.sqlite ...'
-        ].join('\n'),
         author_type: 'human',
         author_name: 'michaelgeiger',
         boosts: ['pr_summary'],
@@ -387,11 +377,8 @@ describe('learnings storage slice', () => {
         id: 'ev_bot_review',
         source_system: 'github',
         source_type: 'pr_review_thread',
-        external_id: 'github:ariso-ai/ivan:pr:42:thread:1',
         author_type: 'bot',
         author_name: 'coderabbitai',
-        title: 'Review thread on src/index.ts:10',
-        content: '**Minor: Question length filter may be too aggressive.**',
         boosts: [],
         penalties: [],
         occurred_at: '2026-03-11T00:01:00Z',
@@ -400,7 +387,19 @@ describe('learnings storage slice', () => {
         base_weight: 3,
         final_weight: 3
       }
+    ];
+    const contextCache = new Map([
+      ['ev_pr_summary', {
+        title: 'Feature/prompt rewriting',
+        content: 'PR #42: Feature/prompt rewriting\n\nAdds an optional --rewrite-prompt step that cleans up noisy tickets before sending them to Claude Code.\n\nVerify DB after any rewrite run: sqlite3 ~/.ivan/db.sqlite ...'
+      }],
+      ['ev_bot_review', {
+        title: 'Review thread on src/index.ts:10',
+        content: '**Minor: Question length filter may be too aggressive.**'
+      }]
     ]);
+
+    const extracted = await extractLearningRecords(signals, contextCache);
 
     // Bot evidence is pre-filtered before the LLM; only the human PR summary survives.
     expect(extracted).toHaveLength(1);
@@ -411,19 +410,15 @@ describe('learnings storage slice', () => {
   });
 
   test('extractor sends human review comments to the LLM and returns a structured lesson', async () => {
-    const extracted = await extractLearningRecords([
+    const signals = [
       {
         type: 'evidence',
         sourcePath: '.ivan/evidence.jsonl',
         id: 'ev_human_review',
         source_system: 'github',
         source_type: 'pr_review_thread',
-        external_id: 'github:ariso-ai/ivan:pr:42:thread:2',
         author_type: 'human',
         author_name: 'reviewer1',
-        title: 'Review thread on src/prompts.ts:12',
-        content:
-          'I think a centralized service for prompt templates would be nice as we add more prompts.',
         boosts: [],
         penalties: [],
         occurred_at: '2026-03-11T00:02:00Z',
@@ -432,7 +427,16 @@ describe('learnings storage slice', () => {
         base_weight: 3,
         final_weight: 3
       }
+    ];
+    const contextCache = new Map([
+      ['ev_human_review', {
+        title: 'Review thread on src/prompts.ts:12',
+        content: 'I think a centralized service for prompt templates would be nice as we add more prompts.',
+        file_path: 'src/prompts.ts'
+      }]
     ]);
+
+    const extracted = await extractLearningRecords(signals, contextCache);
 
     expect(extracted).toHaveLength(1);
     expect(extracted[0].evidence_ids).toEqual(['ev_human_review']);

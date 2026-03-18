@@ -104,7 +104,7 @@ function verifySeededQueryFlow(repoPath) {
 
   const rebuildOutput = runIvan(['learnings', 'rebuild', '--repo', repoPath]);
   assertIncludes(rebuildOutput, 'Learnings database rebuilt');
-  assertIncludes(rebuildOutput, 'Repositories: 1, evidence: 2, learnings: 1');
+  assertIncludes(rebuildOutput, 'Evidence: 2, learnings: 1');
 
   const queryOutput = runIvan([
     'learnings',

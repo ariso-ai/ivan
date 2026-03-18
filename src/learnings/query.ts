@@ -54,10 +54,8 @@ export async function queryLearnings(
       `
         SELECT
           e.id,
-          e.url,
+          e.external_url,
           e.source_type,
-          e.title,
-          e.content,
           e.final_weight
         FROM learning_evidence le
         INNER JOIN evidence e ON e.id = le.evidence_id
@@ -73,18 +71,14 @@ export async function queryLearnings(
       const evidence = (
         evidenceStatement.all(row.id) as Array<{
           id: string;
-          url: string | null;
+          external_url: string | null;
           source_type: string;
-          title: string | null;
-          content: string;
           final_weight: number | null;
         }>
       ).map((evidenceRow): LearningsQueryEvidence => ({
         id: evidenceRow.id,
         sourceType: evidenceRow.source_type,
-        content: evidenceRow.content,
-        url: evidenceRow.url ?? undefined,
-        title: evidenceRow.title ?? undefined,
+        url: evidenceRow.external_url ?? undefined,
         finalWeight: evidenceRow.final_weight ?? undefined
       }));
 

@@ -11,8 +11,6 @@ export interface LearningsQueryEvidence {
   id: string;
   url?: string;
   sourceType: string;
-  title?: string;
-  content: string;
   finalWeight?: number;
 }
 
