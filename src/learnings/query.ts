@@ -40,7 +40,8 @@ export async function queryLearnings(
   const db = openLearningsDatabase(repoPath, { readonly: true });
 
   try {
-    const limit = options.limit ?? 5;
+    const rawLimit = options.limit ?? 5;
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 5;
     const rows = await runLearningSearch(db, searchText, limit);
     const tagStatement = db.prepare(
       `
@@ -152,6 +153,7 @@ async function runLearningSearch(
           FROM learnings_fts
           INNER JOIN learnings l ON l.id = learnings_fts.id
           WHERE learnings_fts MATCH ?
+            AND l.status = 'active'
           ORDER BY rank ASC, COALESCE(l.confidence, 0) DESC, l.updated_at DESC
           LIMIT ?
         `
@@ -163,7 +165,8 @@ async function runLearningSearch(
     }
   }
 
-  const likePattern = `%${text}%`;
+  const escapedText = text.replace(/[%_\\]/g, '\\$&');
+  const likePattern = `%${escapedText}%`;
   return db
     .prepare(
       `
@@ -178,10 +181,13 @@ async function runLearningSearch(
           confidence,
           status
         FROM learnings
-        WHERE statement LIKE ?
-          OR COALESCE(title, '') LIKE ?
-          OR COALESCE(rationale, '') LIKE ?
-          OR COALESCE(applicability, '') LIKE ?
+        WHERE status = 'active'
+          AND (
+            statement LIKE ? ESCAPE '\\'
+            OR COALESCE(title, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(rationale, '') LIKE ? ESCAPE '\\'
+            OR COALESCE(applicability, '') LIKE ? ESCAPE '\\'
+          )
         ORDER BY COALESCE(confidence, 0) DESC, updated_at DESC
         LIMIT ?
       `

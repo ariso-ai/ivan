@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 
-if [[ ! -d "$repo_root/learnings" ]]; then
+if [[ ! -d "$repo_root/.ivan" ]]; then
   exit 0
 fi
 
@@ -19,6 +19,6 @@ fi
 
 "$node_bin" "$ivan_entry" learnings rebuild --repo "$repo_root" --if-stale
 
-if [[ -f "$repo_root/learnings.db" ]]; then
-  git add "$repo_root/learnings.db"
+if [[ -f "$repo_root/.ivan/db.sqlite" ]]; then
+  git add "$repo_root/.ivan/db.sqlite"
 fi

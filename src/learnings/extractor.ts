@@ -177,16 +177,36 @@ function extractStatement(content: string): string | null {
 
   const normalized = sanitizeEvidenceContent(content);
 
-  const candidates = normalized
+  const allCandidates = normalized
     .split(/\n+/)
     .flatMap((line) => line.split(/(?<=[.?!])\s+/))
-    .map((candidate) => candidate.trim())
-    .filter((candidate) => isUsableCandidate(candidate));
+    .map((candidate) => candidate.trim());
+
+  const candidates = allCandidates.filter((candidate) =>
+    isUsableCandidate(candidate)
+  );
 
   for (const candidate of candidates) {
     const imperative = toImperativeStatement(candidate);
     if (imperative) {
       return imperative;
+    }
+  }
+
+  // Question-form candidates are rejected by isUsableCandidate, but toImperativeStatement
+  // may be able to rewrite them into actionable imperatives — try those before giving up.
+  for (const candidate of allCandidates) {
+    if (isUsableCandidate(candidate)) {
+      continue;
+    }
+    if (
+      /^(who|what|when|where|why|how)\b/i.test(candidate) ||
+      candidate.endsWith('?')
+    ) {
+      const imperative = toImperativeStatement(candidate);
+      if (imperative) {
+        return imperative;
+      }
     }
   }
 
@@ -432,7 +452,7 @@ function sanitizeEvidenceContent(content: string): string {
     .replace(/\bAfter Rewrite:\b/gi, ' ')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/[*_>#]+/g, ' ')
-    .replace(/\[[^\]]+\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
 }

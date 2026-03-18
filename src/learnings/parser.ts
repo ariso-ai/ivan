@@ -160,7 +160,7 @@ function getOptionalString(
   return String(value).trim() || undefined;
 }
 
-/** Coerces a JSON value to a number; throws on non-numeric strings; returns `undefined` for absent/null. */
+/** Coerces a JSON value to a number; returns `undefined` for absent, null, blank, or non-finite values. */
 function getOptionalNumber(
   record: JsonlRecord,
   key: string
@@ -171,15 +171,16 @@ function getOptionalNumber(
   }
 
   if (typeof value === 'number') {
-    return value;
+    return Number.isFinite(value) ? value : undefined;
   }
 
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
-    throw new Error(`Expected numeric field "${key}"`);
+  const str = String(value).trim();
+  if (str === '') {
+    return undefined;
   }
 
-  return parsed;
+  const parsed = Number(str);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** Returns a `number[]` from a JSON field, or `undefined` when the field is absent or null. */

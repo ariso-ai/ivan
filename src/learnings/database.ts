@@ -24,14 +24,17 @@ export function getLearningsDbPath(repoPath: string): string {
  * Deletes any existing database (including WAL/SHM files), creates a fresh one,
  * applies the schema, and returns the open connection.
  * Uses `DELETE` journal mode so no WAL files are created during the bulk rebuild.
+ * Pass an explicit `dbPath` to write to a non-default location (e.g. a `.tmp` file).
  */
 export function createFreshLearningsDatabase(
-  repoPath: string
+  repoPath: string,
+  dbPath?: string
 ): Database.Database {
-  const dbPath = getLearningsDbPath(repoPath);
-  removeLearningsDatabaseFiles(dbPath);
+  const resolvedDbPath = dbPath ?? getLearningsDbPath(repoPath);
+  removeLearningsDatabaseFiles(resolvedDbPath);
 
-  const db = new Database(dbPath);
+  fs.mkdirSync(path.dirname(resolvedDbPath), { recursive: true });
+  const db = new Database(resolvedDbPath);
   sqliteVec.load(db);
   db.pragma('journal_mode = DELETE');
   db.pragma('foreign_keys = ON');

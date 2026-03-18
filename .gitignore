@@ -43,3 +43,8 @@ pnpm-debug.log*
 # Claude Code local config — generated files and runtime logs, not for sharing
 .claude/hooks/logs/
 .claude/hooks/ivan-learnings-*.sh
+
+# ivan derived artifacts
+.ivan/*.db-wal
+.ivan/*.db-shm
+# Do NOT ignore ".ivan/db.sqlite" we actually DO want to track it for ivan learnings

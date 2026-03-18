@@ -230,8 +230,57 @@ async function fetchCliEvidence(
     }>;
   };
 
-  const graphQlQuery = `
-    query($owner: String!, $repo: String!, $prNumber: Int!) {
+  type ReviewThreadNode = {
+    id?: string;
+    isResolved?: boolean;
+    isOutdated?: boolean;
+    comments?: {
+      nodes?: Array<{
+        id?: string;
+        databaseId?: number;
+        body?: string;
+        createdAt?: string;
+        path?: string;
+        line?: number;
+        url?: string;
+        author?: { login: string };
+      }>;
+    };
+  };
+
+  type GraphQLResponse = {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          commits?: {
+            nodes?: Array<{ commit?: { oid?: string } }>;
+          };
+          reviewThreads?: {
+            nodes?: ReviewThreadNode[];
+            pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+          };
+        };
+      };
+    };
+  };
+
+  function runGraphQL(
+    query: string,
+    variables: Record<string, unknown>
+  ): GraphQLResponse {
+    const payload = JSON.stringify({ query, variables });
+    return JSON.parse(
+      execSync('gh api graphql --input -', {
+        cwd: repoPath,
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024 * 10,
+        input: payload
+      })
+    ) as GraphQLResponse;
+  }
+
+  const initialQuery = `
+    query($owner: String!, $repo: String!, $prNumber: Int!, $cursor: String) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $prNumber) {
           commits(last: 1) {
@@ -241,7 +290,11 @@ async function fetchCliEvidence(
               }
             }
           }
-          reviewThreads(first: 100) {
+          reviewThreads(first: 100, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               id
               isResolved
@@ -267,45 +320,37 @@ async function fetchCliEvidence(
     }
   `;
 
-  const threadResponse = JSON.parse(
-    execSync(
-      `gh api graphql -f query='${graphQlQuery}' -F owner='${repoInfo.owner.login}' -F repo='${repoInfo.name}' -F prNumber=${prNumber}`,
-      {
-        cwd: repoPath,
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024 * 10
-      }
-    )
-  ) as {
-    data?: {
-      repository?: {
-        pullRequest?: {
-          commits?: {
-            nodes?: Array<{ commit?: { oid?: string } }>;
-          };
-          reviewThreads?: {
-            nodes?: Array<{
-              id?: string;
-              isResolved?: boolean;
-              isOutdated?: boolean;
-              comments?: {
-                nodes?: Array<{
-                  id?: string;
-                  databaseId?: number;
-                  body?: string;
-                  createdAt?: string;
-                  path?: string;
-                  line?: number;
-                  url?: string;
-                  author?: { login: string };
-                }>;
-              };
-            }>;
-          };
-        };
-      };
-    };
+  const baseVariables = {
+    owner: repoInfo.owner.login,
+    repo: repoInfo.name,
+    prNumber
   };
+
+  let threadResponse = runGraphQL(initialQuery, { ...baseVariables, cursor: null });
+
+  const headSha =
+    threadResponse.data?.repository?.pullRequest?.commits?.nodes?.[0]?.commit
+      ?.oid;
+
+  const allThreadNodes: ReviewThreadNode[] = [
+    ...(threadResponse.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [])
+  ];
+
+  {
+    let pageInfo =
+      threadResponse.data?.repository?.pullRequest?.reviewThreads?.pageInfo;
+    while (pageInfo?.hasNextPage) {
+      const nextResponse = runGraphQL(initialQuery, {
+        ...baseVariables,
+        cursor: pageInfo.endCursor
+      });
+      const nextNodes =
+        nextResponse.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+      allThreadNodes.push(...nextNodes);
+      pageInfo =
+        nextResponse.data?.repository?.pullRequest?.reviewThreads?.pageInfo;
+    }
+  }
 
   const checks = JSON.parse(
     execSync(`gh pr checks ${prNumber} --json name,state,link`, {
@@ -318,11 +363,7 @@ async function fetchCliEvidence(
     link?: string;
   }>;
 
-  const reviewThreads =
-    threadResponse.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-  const headSha =
-    threadResponse.data?.repository?.pullRequest?.commits?.nodes?.[0]?.commit
-      ?.oid;
+  const reviewThreads = allThreadNodes;
 
   return {
     repository: {

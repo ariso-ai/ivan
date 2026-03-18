@@ -1,1 +1,1 @@
-{"session_id":"test","cwd":"/Users/michaelgeiger/Developer/repos/ivan.worktree/ivan-learnings/tests/fixtures/sample-repo","prompt":"update the queue processor to acquire a lock before processing jobs"}
+{"session_id":"test","cwd":"/tmp/sample-repo","prompt":"update the queue processor to acquire a lock before processing jobs"}

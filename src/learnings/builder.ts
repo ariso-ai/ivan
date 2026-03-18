@@ -60,23 +60,31 @@ export async function rebuildLearningsDatabase(
 
   if (dirty) writeBackEmbeddings(repoPath, dataset.learnings);
 
-  const db = createFreshLearningsDatabase(repoPath);
+  const dbPath = getLearningsDbPath(repoPath);
+  const tmpPath = `${dbPath}.tmp`;
+  const db = createFreshLearningsDatabase(repoPath, tmpPath);
 
   try {
     insertDataset(db, dataset);
     populateFtsTables(db);
     storeJsonlHash(db, computeJsonlHash(repoPath));
+    db.close();
+    fs.renameSync(tmpPath, dbPath);
 
     return {
-      dbPath: getLearningsDbPath(repoPath),
+      dbPath,
       repositoryCount: dataset.repositories.length,
       evidenceCount: dataset.evidence.length,
       learningCount: dataset.learnings.length,
       embeddingsCached: cached,
       embeddingsGenerated: generated
     };
-  } finally {
+  } catch (err) {
     db.close();
+    if (fs.existsSync(tmpPath)) {
+      fs.unlinkSync(tmpPath);
+    }
+    throw err;
   }
 }
 
