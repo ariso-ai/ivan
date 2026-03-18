@@ -9,6 +9,9 @@ trap 'rm -f "$payload"' EXIT
 cat > "$payload"
 
 project_dir="${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' "$payload")}"
+if [[ -z "$project_dir" ]]; then
+  exit 0
+fi
 log_dir="$project_dir/.claude/hooks/logs"
 mkdir -p "$log_dir"
 cp "$payload" "$log_dir/post-tool-use.$(date +%s).json"
