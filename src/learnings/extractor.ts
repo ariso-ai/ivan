@@ -23,6 +23,66 @@ export interface ExtractionResult {
 
 const BATCH_SIZE = 15;
 
+/**
+ * JSON Schema passed to OpenAI structured outputs (strict: true).
+ * The model is constrained to emit exactly this shape — no runtime type-guards needed below.
+ * rationale / applicability are nullable so the model can omit them cleanly.
+ */
+const EXTRACTION_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          evidence_id: { type: 'string' },
+          lesson: {
+            anyOf: [
+              { type: 'null' },
+              {
+                type: 'object',
+                properties: {
+                  statement:    { type: 'string' },
+                  kind:         { type: 'string', enum: ['repo_convention', 'engineering_lesson'] },
+                  tags:         { type: 'array', items: { type: 'string' } },
+                  confidence:   { type: 'number' },
+                  rationale:    { anyOf: [{ type: 'null' }, { type: 'string' }] },
+                  applicability:{ anyOf: [{ type: 'null' }, { type: 'string' }] }
+                },
+                required: ['statement', 'kind', 'tags', 'confidence', 'rationale', 'applicability'],
+                additionalProperties: false
+              }
+            ]
+          }
+        },
+        required: ['evidence_id', 'lesson'],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ['items'],
+  additionalProperties: false
+} as const;
+
+interface LessonOutput {
+  statement: string;
+  kind: 'repo_convention' | 'engineering_lesson';
+  tags: string[];
+  confidence: number;
+  rationale: string | null;
+  applicability: string | null;
+}
+
+interface LessonItem {
+  evidence_id: string;
+  lesson: LessonOutput | null;
+}
+
+interface ExtractionResponse {
+  items: LessonItem[];
+}
+
 const EXTRACTION_SYSTEM_PROMPT = `\
 You are an expert at extracting actionable engineering lessons from GitHub PR review feedback.
 
@@ -76,43 +136,9 @@ Derive from the provided weight (integer 1–12); clamp result to [0.35, 0.95]:
   weight 4–5 → 0.65–0.80
   weight 3   → 0.50–0.60
 
-## JSON output format
-
-Return a JSON object with an "items" array — one entry per evidence item, in the same order as the input:
-
-{
-  "items": [
-    {
-      "evidence_id": "ev_abc",
-      "lesson": {
-        "statement": "Prefer X over Y when Z",
-        "kind": "engineering_lesson",
-        "tags": ["async"],
-        "confidence": 0.70,
-        "rationale": "Supporting context from the evidence (optional)",
-        "applicability": "Brief hint about when to apply this lesson (optional)"
-      }
-    },
-    {
-      "evidence_id": "ev_def",
-      "lesson": null
-    }
-  ]
-}`;
-
-interface LessonOutput {
-  statement: string;
-  kind: string;
-  tags: string[];
-  confidence: number;
-  rationale?: string;
-  applicability?: string;
-}
-
-interface LessonItem {
-  evidence_id: string;
-  lesson: LessonOutput | null;
-}
+Return one item per evidence item in the same order as the input.
+Set lesson to null when the evidence is not worth a lesson.
+Set rationale and applicability to null when not applicable.`;
 
 /**
  * Extracts actionable learning records from evidence via the OpenAI API.
@@ -191,76 +217,51 @@ export class LearningsExtractor {
 
     const response = await this.getClient().chat.completions.create({
       model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'lesson_extraction', strict: true, schema: EXTRACTION_SCHEMA }
+      },
       messages: [
         { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
         { role: 'user', content: userContent }
       ]
     });
 
-    const raw = response.choices[0]?.message?.content ?? '{"items":[]}';
-
-    let parsed: unknown;
+    let extraction: ExtractionResponse;
     try {
-      parsed = JSON.parse(raw);
+      extraction = JSON.parse(response.choices[0]?.message?.content ?? '{"items":[]}') as ExtractionResponse;
     } catch {
       return [];
     }
 
-    const items: LessonItem[] = Array.isArray(parsed)
-      ? (parsed as LessonItem[])
-      : (((parsed as Record<string, unknown>).items ?? []) as LessonItem[]);
-
     const now = new Date().toISOString();
     const results: LearningRecord[] = [];
 
-    for (const item of items) {
-      if (!item?.lesson || !item.evidence_id) continue;
+    for (const item of extraction.items) {
+      if (!item.lesson) continue;
 
       const evidence = batch.find((ev) => ev.id === item.evidence_id);
       if (!evidence) continue;
 
-      const { statement, kind, tags, confidence, rationale, applicability } =
-        item.lesson;
-
-      if (!statement || typeof statement !== 'string' || statement.trim().length < 4) {
-        continue;
-      }
-
+      const { statement, kind, tags, confidence, rationale, applicability } = item.lesson;
       const trimmed = statement.trim();
-
-      const rationaleValue =
-        typeof rationale === 'string' && rationale.trim()
-          ? rationale.trim()
-          : null;
-      const applicabilityValue =
-        typeof applicability === 'string' && applicability.trim()
-          ? applicability.trim()
-          : null;
-      const confidenceValue =
-        typeof confidence === 'number' && Number.isFinite(confidence)
-          ? Math.max(0.35, Math.min(0.95, confidence))
-          : null;
+      if (trimmed.length < 4) continue;
 
       results.push({
         type: 'learning',
         sourcePath: LESSONS_JSONL_RELATIVE_PATH,
         id: createDeterministicId('lrn', evidence.repository_id, evidence.id, trimmed),
         repository_id: evidence.repository_id,
-        kind: kind === 'repo_convention' ? 'repo_convention' : 'engineering_lesson',
+        kind,
         source_type: 'github_pr_discourse',
         statement: trimmed,
-        title:
-          trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`,
-        ...(rationaleValue !== null ? { rationale: rationaleValue } : {}),
-        ...(applicabilityValue !== null ? { applicability: applicabilityValue } : {}),
-        ...(confidenceValue !== null ? { confidence: confidenceValue } : {}),
+        title: trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`,
+        ...(rationale !== null ? { rationale } : {}),
+        ...(applicability !== null ? { applicability } : {}),
+        confidence: Math.max(0.35, Math.min(0.95, confidence)),
         status: 'active',
         evidence_ids: [evidence.id],
-        tags:
-          Array.isArray(tags) && tags.length > 0
-            ? (tags as unknown[]).map(String).filter(Boolean)
-            : [evidence.source_type],
+        tags: tags.length > 0 ? tags : [evidence.source_type],
         created_at: evidence.updated_at ?? now,
         updated_at: evidence.updated_at ?? now
       });
