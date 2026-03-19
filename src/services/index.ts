@@ -1,7 +1,8 @@
 export { JobManager } from './job-manager.js';
 export { ClaudeExecutor } from './claude-executor.js';
 export { ClaudeCliExecutor } from './claude-cli-executor.js';
-export { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
+export { ExecutorFactory } from './executor-factory.js';
+export type { IClaudeExecutor } from './executor-factory.js';
 export { OpenAIService } from './openai-service.js';
 export { TaskExecutor } from './task-executor.js';
 

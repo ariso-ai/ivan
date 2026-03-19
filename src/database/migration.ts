@@ -1,13 +1,15 @@
 import { Kysely, sql } from 'kysely';
 import chalk from 'chalk';
-import { Database } from './types.js';
+import type { Migration } from './types.js';
 import { migrations } from './migrations/index.js';
 
 export class MigrationManager {
-  private db: Kysely<Database>;
+  private db: Kysely<any>;
+  private migrationList: Migration[];
 
-  constructor(db: Kysely<Database>) {
+  constructor(db: Kysely<any>, migrationList: Migration[] = migrations) {
     this.db = db;
+    this.migrationList = migrationList;
   }
 
   async runMigrations(): Promise<void> {
@@ -18,7 +20,7 @@ export class MigrationManager {
     let ranCount = 0;
     let skippedCount = 0;
 
-    for (const migration of migrations) {
+    for (const migration of this.migrationList) {
       if (!(await this.hasMigrationRun(migration.id))) {
         try {
           const statements = Array.isArray(migration.up)

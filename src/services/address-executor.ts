@@ -3,7 +3,6 @@ import ora from 'ora';
 import inquirer from 'inquirer';
 import { JobManager } from './job-manager.js';
 import { ExecutorFactory, IClaudeExecutor } from './executor-factory.js';
-import { ConfigManager } from '../config.js';
 import { Task } from '../database.js';
 import { AddressTaskExecutor } from './address-task-executor.js';
 import {
@@ -23,13 +22,11 @@ export class AddressExecutor {
   private repositoryManager: IRepositoryManager;
   private gitManager: IGitManager | null = null;
   private claudeExecutor: IClaudeExecutor | null = null;
-  private configManager: ConfigManager;
   private workingDir: string;
 
   constructor() {
     this.jobManager = new JobManager();
     this.repositoryManager = createRepositoryManager();
-    this.configManager = new ConfigManager();
     this.workingDir = '';
     this.prService = {} as IPRService;
   }

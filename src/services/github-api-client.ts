@@ -12,6 +12,7 @@ export interface GitHubPRInfo {
   headRefName: string;
   url: string; // GitHub web URL (html_url from API)
   state: string;
+  headSha?: string;
   author?: {
     login: string;
   };
@@ -25,7 +26,9 @@ export interface GitHubCheck {
 }
 
 export interface GitHubReviewThread {
+  id?: string;
   isResolved: boolean;
+  isOutdated?: boolean;
   comments: {
     nodes: Array<{
       id: string;
@@ -37,8 +40,39 @@ export interface GitHubReviewThread {
       createdAt: string;
       path?: string;
       line?: number;
+      url?: string;
+      diffHunk?: string;
     }>;
   };
+}
+
+export interface GitHubPullRequestEvidenceResponse extends GitHubPRInfo {
+  body?: string;
+  issueComments: Array<{
+    id: string;
+    body: string;
+    createdAt: string;
+    author?: {
+      login: string;
+    };
+    url?: string;
+  }>;
+  reviews: Array<{
+    id: string;
+    body: string;
+    state: string;
+    submittedAt?: string;
+    author?: {
+      login: string;
+    };
+    url?: string;
+  }>;
+  files: Array<{
+    path: string;
+    additions?: number;
+    deletions?: number;
+    changeType?: string;
+  }>;
 }
 
 export interface GitHubRepo {
@@ -62,9 +96,6 @@ export class GitHubAPIClient {
     this.pat = pat;
   }
 
-  /**
-   * Make a REST API request to GitHub
-   */
   private async makeRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
@@ -87,7 +118,7 @@ export class GitHubAPIClient {
     const response = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined
+      ...(body !== undefined && { body: JSON.stringify(body) })
     });
 
     if (!response.ok) {
@@ -245,7 +276,7 @@ export class GitHubAPIClient {
     const response = await this.makeRequest<{
       number: number;
       title: string;
-      head: { ref: string };
+      head: { ref: string; sha?: string };
       html_url: string;
       state: string;
       user?: { login: string };
@@ -255,9 +286,92 @@ export class GitHubAPIClient {
       number: response.number,
       title: response.title,
       headRefName: response.head.ref,
+      ...(response.head.sha !== undefined && { headSha: response.head.sha }),
       url: response.html_url,
       state: response.state,
-      author: response.user ? { login: response.user.login } : undefined
+      ...(response.user && { author: { login: response.user.login } })
+    };
+  }
+
+  async getPullRequestEvidence(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubPullRequestEvidenceResponse> {
+    const prResponse = await this.makeRequest<{
+      number: number;
+      title: string;
+      body?: string;
+      head: { ref: string; sha?: string };
+      html_url: string;
+      state: string;
+      user?: { login: string };
+    }>(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+
+    const [issueComments, reviewResponse, files] = await Promise.all([
+      this.makeRequest<
+        Array<{
+          id: number;
+          body: string;
+          created_at: string;
+          user?: { login: string };
+          html_url?: string;
+        }>
+      >(`/repos/${owner}/${repo}/issues/${prNumber}/comments`),
+      this.makeRequest<
+        Array<{
+          id: number;
+          body?: string;
+          state: string;
+          submitted_at?: string;
+          user?: { login: string };
+          html_url?: string;
+        }>
+      >(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`),
+      this.makeRequest<
+        Array<{
+          filename: string;
+          additions?: number;
+          deletions?: number;
+          status?: string;
+        }>
+      >(`/repos/${owner}/${repo}/pulls/${prNumber}/files`)
+    ]);
+
+    return {
+      number: prResponse.number,
+      title: prResponse.title,
+      ...(prResponse.body !== undefined && { body: prResponse.body }),
+      headRefName: prResponse.head.ref,
+      ...(prResponse.head.sha !== undefined && {
+        headSha: prResponse.head.sha
+      }),
+      url: prResponse.html_url,
+      state: prResponse.state,
+      ...(prResponse.user && { author: { login: prResponse.user.login } }),
+      issueComments: issueComments.map((comment) => ({
+        id: String(comment.id),
+        body: comment.body,
+        createdAt: comment.created_at,
+        ...(comment.user && { author: { login: comment.user.login } }),
+        ...(comment.html_url !== undefined && { url: comment.html_url })
+      })),
+      reviews: reviewResponse.map((review) => ({
+        id: String(review.id),
+        body: review.body ?? '',
+        state: review.state,
+        ...(review.submitted_at !== undefined && {
+          submittedAt: review.submitted_at
+        }),
+        ...(review.user && { author: { login: review.user.login } }),
+        ...(review.html_url !== undefined && { url: review.html_url })
+      })),
+      files: files.map((file) => ({
+        path: file.filename,
+        ...(file.additions !== undefined && { additions: file.additions }),
+        ...(file.deletions !== undefined && { deletions: file.deletions }),
+        ...(file.status !== undefined && { changeType: file.status })
+      }))
     };
   }
 
@@ -292,13 +406,13 @@ export class GitHubAPIClient {
     >(endpoint);
 
     // Map to GitHubPRInfo format
-    const mappedPRs = prs.map((pr) => ({
+    const mappedPRs: GitHubPRInfo[] = prs.map((pr) => ({
       number: pr.number,
       title: pr.title,
       headRefName: pr.head.ref,
       url: pr.html_url,
       state: pr.state,
-      author: pr.user ? { login: pr.user.login } : undefined
+      ...(pr.user && { author: { login: pr.user.login } })
     }));
 
     // Filter by author if specified (REST API doesn't support this directly)
@@ -310,6 +424,37 @@ export class GitHubAPIClient {
   }
 
   /**
+   * Paginated fetch of PR numbers, supporting a synthetic "merged" state (closed + merged_at filter).
+   */
+  async listPullRequestNumbers(
+    owner: string,
+    repo: string,
+    state: 'open' | 'closed' | 'merged' | 'all',
+    limit: number
+  ): Promise<number[]> {
+    const apiState = state === 'merged' ? 'closed' : state;
+    const numbers: number[] = [];
+    let page = 1;
+
+    while (numbers.length < limit) {
+      const perPage = Math.min(100, limit - numbers.length);
+      const prs = await this.makeRequest<
+        Array<{ number: number; merged_at: string | null }>
+      >(
+        `/repos/${owner}/${repo}/pulls?state=${apiState}&per_page=${perPage}&page=${page}&sort=created&direction=desc`
+      );
+      if (prs.length === 0) break;
+      const filtered =
+        state === 'merged' ? prs.filter((pr) => pr.merged_at !== null) : prs;
+      numbers.push(...filtered.map((pr) => pr.number));
+      if (prs.length < perPage) break;
+      page++;
+    }
+
+    return numbers.slice(0, limit);
+  }
+
+  /**
    * Get PR checks/status
    */
   async getPRChecks(
@@ -318,7 +463,7 @@ export class GitHubAPIClient {
     prNumber: number
   ): Promise<GitHubCheck[]> {
     const pr = await this.getPR(owner, repo, prNumber);
-    const headSha = (pr as unknown as { head?: { sha?: string } }).head?.sha;
+    const headSha = pr.headSha;
 
     if (!headSha) {
       return [];
@@ -342,7 +487,7 @@ export class GitHubAPIClient {
         check.conclusion?.toUpperCase() ||
         check.status?.toUpperCase() ||
         'PENDING',
-      link: check.html_url
+      ...(check.html_url !== undefined && { link: check.html_url })
     }));
   }
 
@@ -360,7 +505,9 @@ export class GitHubAPIClient {
           pullRequest(number: ${prNumber}) {
             reviewThreads(first: 100) {
               nodes {
+                id
                 isResolved
+                isOutdated
                 comments(first: 100) {
                   nodes {
                     id
@@ -372,6 +519,8 @@ export class GitHubAPIClient {
                     createdAt
                     path
                     line
+                    url
+                    diffHunk
                   }
                 }
               }
@@ -392,6 +541,14 @@ export class GitHubAPIClient {
     }>(query);
 
     return data.repository.pullRequest.reviewThreads.nodes;
+  }
+
+  async getDetailedReviewThreads(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubReviewThread[]> {
+    return this.getReviewThreads(owner, repo, prNumber);
   }
 
   /**
