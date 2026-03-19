@@ -106,4 +106,3 @@ export class MigrationManager {
       .execute();
   }
 }
-

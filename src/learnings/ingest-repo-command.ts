@@ -27,7 +27,12 @@ export async function runIngestRepoCommand(
   }
 
   const rawState = options.state ?? 'merged';
-  if (rawState !== 'open' && rawState !== 'closed' && rawState !== 'merged' && rawState !== 'all') {
+  if (
+    rawState !== 'open' &&
+    rawState !== 'closed' &&
+    rawState !== 'merged' &&
+    rawState !== 'all'
+  ) {
     throw new Error('State must be one of: open, closed, merged, all');
   }
   const state = rawState as 'open' | 'closed' | 'merged' | 'all';
@@ -35,8 +40,13 @@ export async function runIngestRepoCommand(
   const context = resolveLearningsRepositoryContext(options.repo);
   ensureLearningsDirectories(context);
 
-  console.log(chalk.gray(`Fetching PR list (state=${state}, limit=${limit})...`));
-  const prNumbers = await fetchAllPullRequestNumbers(options.repo, { state, limit });
+  console.log(
+    chalk.gray(`Fetching PR list (state=${state}, limit=${limit})...`)
+  );
+  const prNumbers = await fetchAllPullRequestNumbers(options.repo, {
+    state,
+    limit
+  });
 
   if (prNumbers.length === 0) {
     console.log(chalk.yellow('No PRs found.'));
@@ -76,7 +86,11 @@ export async function runIngestRepoCommand(
   }
 
   console.log(chalk.gray('Extracting learnings...'));
-  const extraction = await extractLearningsFromEvidence(options.repo, allSignals, mergedCache);
+  const extraction = await extractLearningsFromEvidence(
+    options.repo,
+    allSignals,
+    mergedCache
+  );
 
   console.log(chalk.green('✅ Repo ingestion complete'));
   console.log(chalk.gray(`Learnings: ${extraction.writtenLearningCount}`));

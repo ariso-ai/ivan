@@ -96,4 +96,3 @@ function readRemoteUrl(repoPath: string): string | undefined {
     return undefined;
   }
 }
-

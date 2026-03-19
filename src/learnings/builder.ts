@@ -6,10 +6,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { sql, type Kysely } from 'kysely';
-import type {
-  LearningsDataset,
-  LearningRecord
-} from './record-types.js';
+import type { LearningsDataset, LearningRecord } from './record-types.js';
 import {
   createFreshLearningsDatabase,
   getLearningsDbPath,
@@ -87,7 +84,9 @@ export async function rebuildLearningsDatabase(
  * the current hash of the canonical JSONL files. Used by the pre-commit hook to skip
  * unnecessary rebuilds.
  */
-export async function isLearningsDatabaseStale(repoPath: string): Promise<boolean> {
+export async function isLearningsDatabaseStale(
+  repoPath: string
+): Promise<boolean> {
   const dbPath = getLearningsDbPath(repoPath);
   if (!fs.existsSync(dbPath)) {
     return true;
@@ -200,7 +199,9 @@ async function resolveEmbeddings(
   return { cached, generated, dirty: generated > 0 };
 }
 
-function chunkEmbeddingRequests<T extends { inputString: string }>(items: T[]): T[][] {
+function chunkEmbeddingRequests<T extends { inputString: string }>(
+  items: T[]
+): T[][] {
   const batches: T[][] = [];
   let currentBatch: T[] = [];
   let currentChars = 0;
@@ -209,7 +210,8 @@ function chunkEmbeddingRequests<T extends { inputString: string }>(items: T[]): 
     const itemChars = item.inputString.length;
     const wouldOverflowItems = currentBatch.length >= EMBEDDING_BATCH_MAX_ITEMS;
     const wouldOverflowChars =
-      currentBatch.length > 0 && currentChars + itemChars > EMBEDDING_BATCH_MAX_CHARS;
+      currentBatch.length > 0 &&
+      currentChars + itemChars > EMBEDDING_BATCH_MAX_CHARS;
 
     if (wouldOverflowItems || wouldOverflowChars) {
       batches.push(currentBatch);
@@ -323,7 +325,11 @@ async function storeJsonlHash(
 ): Promise<void> {
   await db
     .insertInto('meta')
-    .values({ key: 'jsonl_hash', value: hash, updated_at: new Date().toISOString() })
+    .values({
+      key: 'jsonl_hash',
+      value: hash,
+      updated_at: new Date().toISOString()
+    })
     .onConflict((oc) =>
       oc.column('key').doUpdateSet({
         value: hash,

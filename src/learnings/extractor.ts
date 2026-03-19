@@ -45,13 +45,24 @@ const EXTRACTION_SCHEMA = {
               {
                 type: 'object',
                 properties: {
-                  statement:    { type: 'string' },
-                  kind:         { type: 'string', enum: ['repo_convention', 'engineering_lesson'] },
-                  confidence:   { type: 'number' },
-                  rationale:    { anyOf: [{ type: 'null' }, { type: 'string' }] },
-                  applicability:{ anyOf: [{ type: 'null' }, { type: 'string' }] }
+                  statement: { type: 'string' },
+                  kind: {
+                    type: 'string',
+                    enum: ['repo_convention', 'engineering_lesson']
+                  },
+                  confidence: { type: 'number' },
+                  rationale: { anyOf: [{ type: 'null' }, { type: 'string' }] },
+                  applicability: {
+                    anyOf: [{ type: 'null' }, { type: 'string' }]
+                  }
                 },
-                required: ['statement', 'kind', 'confidence', 'rationale', 'applicability'],
+                required: [
+                  'statement',
+                  'kind',
+                  'confidence',
+                  'rationale',
+                  'applicability'
+                ],
                 additionalProperties: false
               }
             ]
@@ -163,8 +174,14 @@ export class LearningsExtractor {
     const context = resolveLearningsRepositoryContext(repoPath);
     ensureLearningsDirectories(context);
 
-    const extractedRecords = await this.extractLearningRecords(signals, contextCache);
-    const writtenPaths = writeLearningRecords(context.repoPath, extractedRecords);
+    const extractedRecords = await this.extractLearningRecords(
+      signals,
+      contextCache
+    );
+    const writtenPaths = writeLearningRecords(
+      context.repoPath,
+      extractedRecords
+    );
     const rebuild = await rebuildLearningsDatabase(context.repoPath);
 
     return {
@@ -209,7 +226,9 @@ export class LearningsExtractor {
           `author: ${signal.author_name ?? 'unknown'}`,
           ctx?.title != null ? `title: ${ctx.title}` : null,
           ctx?.file_path != null ? `file: ${ctx.file_path}` : null,
-          ctx?.diff_hunk != null ? `\ndiff context:\n\`\`\`\n${ctx.diff_hunk}\n\`\`\`` : null,
+          ctx?.diff_hunk != null
+            ? `\ndiff context:\n\`\`\`\n${ctx.diff_hunk}\n\`\`\``
+            : null,
           ctx?.content != null ? `\n${ctx.content}` : '\n[content unavailable]'
         ]
           .filter(Boolean)
@@ -221,7 +240,11 @@ export class LearningsExtractor {
       model: 'gpt-4o-mini',
       response_format: {
         type: 'json_schema',
-        json_schema: { name: 'lesson_extraction', strict: true, schema: EXTRACTION_SCHEMA }
+        json_schema: {
+          name: 'lesson_extraction',
+          strict: true,
+          schema: EXTRACTION_SCHEMA
+        }
       },
       messages: [
         { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
@@ -231,7 +254,9 @@ export class LearningsExtractor {
 
     let extraction: ExtractionResponse;
     try {
-      extraction = JSON.parse(response.choices[0]?.message?.content ?? '{"items":[]}') as ExtractionResponse;
+      extraction = JSON.parse(
+        response.choices[0]?.message?.content ?? '{"items":[]}'
+      ) as ExtractionResponse;
     } catch {
       return [];
     }
@@ -245,7 +270,8 @@ export class LearningsExtractor {
       const evidence = batch.find((ev) => ev.id === item.evidence_id);
       if (!evidence) continue;
 
-      const { statement, kind, confidence, rationale, applicability } = item.lesson;
+      const { statement, kind, confidence, rationale, applicability } =
+        item.lesson;
       const trimmed = statement.trim();
       if (trimmed.length < 4) continue;
 
@@ -257,7 +283,10 @@ export class LearningsExtractor {
         source_type: 'github_pr_discourse',
         source_url: evidence.parent_url ?? evidence.external_url,
         statement: trimmed,
-        title: trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69).trimEnd()}...`,
+        title:
+          trimmed.length <= 72
+            ? trimmed
+            : `${trimmed.slice(0, 69).trimEnd()}...`,
         ...(rationale !== null ? { rationale } : {}),
         ...(applicability !== null ? { applicability } : {}),
         confidence: Math.max(0.35, Math.min(0.95, confidence)),
@@ -280,7 +309,11 @@ export function extractLearningsFromEvidence(
   signals: EvidenceSignal[],
   contextCache: EvidenceContextCache
 ): Promise<ExtractionResult> {
-  return _sharedExtractor.extractLearningsFromEvidence(repoPath, signals, contextCache);
+  return _sharedExtractor.extractLearningsFromEvidence(
+    repoPath,
+    signals,
+    contextCache
+  );
 }
 
 /** Extracts learning records from evidence using the shared extractor instance. */

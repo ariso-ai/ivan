@@ -40,8 +40,15 @@ export async function ingestPullRequestEvidence(
   const context = resolveLearningsRepositoryContext(repoPath);
   ensureLearningsDirectories(context);
 
-  const { signals, contextCache } = await fetchPullRequestSignals(repoPath, prNumber);
-  const extraction = await extractLearningsFromEvidence(repoPath, signals, contextCache);
+  const { signals, contextCache } = await fetchPullRequestSignals(
+    repoPath,
+    prNumber
+  );
+  const extraction = await extractLearningsFromEvidence(
+    repoPath,
+    signals,
+    contextCache
+  );
 
   return {
     writtenPaths: extraction.writtenPaths,

@@ -35,12 +35,16 @@ export function validateLearningsDataset(dataset: LearningsDataset): void {
     }
 
     if (learningIds.has(learning.id)) {
-      issues.push(`${learning.sourcePath}: duplicate learning id "${learning.id}"`);
+      issues.push(
+        `${learning.sourcePath}: duplicate learning id "${learning.id}"`
+      );
     }
     learningIds.add(learning.id);
 
     if (!learning.statement.trim()) {
-      issues.push(`${learning.sourcePath}: learning statement must not be empty`);
+      issues.push(
+        `${learning.sourcePath}: learning statement must not be empty`
+      );
     }
 
     const learningSourceFile = learning.sourcePath.split('#')[0];

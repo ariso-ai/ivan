@@ -29,10 +29,7 @@ export async function runQueryCommand(
   results.forEach((result, index) => {
     console.log(chalk.cyan(`${index + 1}. ${result.statement}`));
 
-    const metadata = [
-      `id=${result.id}`,
-      `kind=${result.kind}`
-    ];
+    const metadata = [`id=${result.id}`, `kind=${result.kind}`];
     if (result.confidence !== undefined) {
       metadata.push(`confidence=${result.confidence.toFixed(2)}`);
     }

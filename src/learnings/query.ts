@@ -3,10 +3,7 @@
 import { sql } from 'kysely';
 import { openLearningsDatabase, type LearningsDatabase } from './database.js';
 import { embedText } from './embeddings.js';
-import type {
-  LearningsQueryResult,
-  LearningsSearchOptions
-} from './types.js';
+import type { LearningsQueryResult, LearningsSearchOptions } from './types.js';
 import type { Kysely } from 'kysely';
 
 /** Raw row shape returned by the vec0 KNN query. */
@@ -43,7 +40,8 @@ export async function queryLearnings(
 
   try {
     const rawLimit = options.limit ?? 5;
-    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 5;
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 5;
     const vectorRows = await runVectorSearch(db, searchText, limit);
 
     return vectorRows.map(({ distance: _distance, ...row }) => ({
@@ -95,6 +93,7 @@ async function runVectorSearch(
   `.execute(db);
 
   return rows.filter(
-    (row) => Number.isFinite(row.distance) && 1 - row.distance >= MIN_VECTOR_SIMILARITY
+    (row) =>
+      Number.isFinite(row.distance) && 1 - row.distance >= MIN_VECTOR_SIMILARITY
   );
 }

@@ -379,14 +379,18 @@ async function fetchCliEvidence(
     prNumber
   };
 
-  let threadResponse = runGraphQL(initialQuery, { ...baseVariables, cursor: null });
+  let threadResponse = runGraphQL(initialQuery, {
+    ...baseVariables,
+    cursor: null
+  });
 
   const headSha =
     threadResponse.data?.repository?.pullRequest?.commits?.nodes?.[0]?.commit
       ?.oid;
 
   const allThreadNodes: ReviewThreadNode[] = [
-    ...(threadResponse.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [])
+    ...(threadResponse.data?.repository?.pullRequest?.reviewThreads?.nodes ??
+      [])
   ];
 
   {

@@ -438,11 +438,14 @@ export class GitHubAPIClient {
 
     while (numbers.length < limit) {
       const perPage = Math.min(100, limit - numbers.length);
-      const prs = await this.makeRequest<Array<{ number: number; merged_at: string | null }>>(
+      const prs = await this.makeRequest<
+        Array<{ number: number; merged_at: string | null }>
+      >(
         `/repos/${owner}/${repo}/pulls?state=${apiState}&per_page=${perPage}&page=${page}&sort=created&direction=desc`
       );
       if (prs.length === 0) break;
-      const filtered = state === 'merged' ? prs.filter((pr) => pr.merged_at !== null) : prs;
+      const filtered =
+        state === 'merged' ? prs.filter((pr) => pr.merged_at !== null) : prs;
       numbers.push(...filtered.map((pr) => pr.number));
       if (prs.length < perPage) break;
       page++;

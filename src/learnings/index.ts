@@ -62,10 +62,16 @@ export function registerLearningsCommands(program: Command): void {
 
   learnings
     .command('ingest-repo')
-    .description('Fetch evidence for all PRs in a repo and extract learnings in one pass')
+    .description(
+      'Fetch evidence for all PRs in a repo and extract learnings in one pass'
+    )
     .requiredOption('--repo <path>', 'Repository root path')
     .option('--limit <number>', 'Maximum number of PRs to ingest', '100')
-    .option('--state <state>', 'PR state to fetch: open, closed, merged, or all', 'merged')
+    .option(
+      '--state <state>',
+      'PR state to fetch: open, closed, merged, or all',
+      'merged'
+    )
     .action(runIngestRepoCommand);
 
   learnings

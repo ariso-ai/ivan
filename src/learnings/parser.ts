@@ -5,10 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveCanonicalLearningsPath } from './paths.js';
-import type {
-  LearningsDataset,
-  LearningRecord
-} from './record-types.js';
+import type { LearningsDataset, LearningRecord } from './record-types.js';
 
 type JsonlRecord = Record<string, unknown>;
 
@@ -23,27 +20,32 @@ export function loadCanonicalRecords(repoPath: string): LearningsDataset {
 /** Reads `.ivan/lessons.jsonl` and parses it into `LearningRecord[]`. */
 function readLearningRecords(repoPath: string): LearningRecord[] {
   const filePath = resolveCanonicalLearningsPath(repoPath, 'lessons.jsonl');
-  return readJsonlFile(filePath, repoPath, (sourcePath, record) => ({
-    type: 'learning' as const,
-    sourcePath,
-    id: getRequiredString(record, 'id', sourcePath),
-    kind: getRequiredString(record, 'kind', sourcePath),
-    statement: getRequiredString(record, 'statement', sourcePath),
-    status: getOptionalString(record, 'status') ?? 'active',
-    tags: getStringArray(record, 'tags'),
-    created_at: getRequiredString(record, 'created_at', sourcePath),
-    updated_at: getRequiredString(record, 'updated_at', sourcePath),
-    ...omitUndefined({
-      source_type: getOptionalString(record, 'source_type'),
-      source_url: getOptionalString(record, 'source_url'),
-      title: getOptionalString(record, 'title'),
-      rationale: getOptionalString(record, 'rationale'),
-      applicability: getOptionalString(record, 'applicability'),
-      confidence: getOptionalNumber(record, 'confidence'),
-      embedding: getOptionalNumberArray(record, 'embedding'),
-      embeddingInputHash: getOptionalString(record, 'embeddingInputHash')
-    })
-  }) as LearningRecord);
+  return readJsonlFile(
+    filePath,
+    repoPath,
+    (sourcePath, record) =>
+      ({
+        type: 'learning' as const,
+        sourcePath,
+        id: getRequiredString(record, 'id', sourcePath),
+        kind: getRequiredString(record, 'kind', sourcePath),
+        statement: getRequiredString(record, 'statement', sourcePath),
+        status: getOptionalString(record, 'status') ?? 'active',
+        tags: getStringArray(record, 'tags'),
+        created_at: getRequiredString(record, 'created_at', sourcePath),
+        updated_at: getRequiredString(record, 'updated_at', sourcePath),
+        ...omitUndefined({
+          source_type: getOptionalString(record, 'source_type'),
+          source_url: getOptionalString(record, 'source_url'),
+          title: getOptionalString(record, 'title'),
+          rationale: getOptionalString(record, 'rationale'),
+          applicability: getOptionalString(record, 'applicability'),
+          confidence: getOptionalNumber(record, 'confidence'),
+          embedding: getOptionalNumberArray(record, 'embedding'),
+          embeddingInputHash: getOptionalString(record, 'embeddingInputHash')
+        })
+      }) as LearningRecord
+  );
 }
 
 /**
