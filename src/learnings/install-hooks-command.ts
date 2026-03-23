@@ -224,10 +224,10 @@ function buildHookCommand(repoPath: string, scriptPath: string): string {
 /** Generates the `UserPromptSubmit` hook script that queries learnings using the user's prompt text. */
 function buildUserPromptScript(): string {
   return `#!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 script_dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-ivan_entry="$script_dir/../../dist/index.js"
+ivan_entry="$(command -v ivan || true)"
 
 payload="$(mktemp)"
 trap 'rm -f "$payload"' EXIT
@@ -237,9 +237,11 @@ project_dir="\${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' "$payload")}"
 if [[ -z "$project_dir" ]]; then
   exit 0
 fi
+if [[ -z "$ivan_entry" ]]; then
+  exit 0
+fi
 log_dir="$project_dir/.claude/hooks/logs"
 mkdir -p "$log_dir"
-cp "$payload" "$log_dir/user-prompt-submit.$(date +%s).json"
 
 repo="$(jq -r '.cwd // empty' "$payload")"
 prompt="$(jq -r '.prompt // empty' "$payload")"
@@ -248,7 +250,7 @@ if [[ -z "$repo" || -z "$prompt" ]]; then
   exit 0
 fi
 
-output="$(node "$ivan_entry" learnings query --repo "$repo" --text "$prompt" --limit 3 2>>"$log_dir/query.stderr")" || true
+output="$("$ivan_entry" learnings query --repo "$repo" --text "$prompt" --limit 3 2>>"$log_dir/query.stderr")" || true
 
 if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
   exit 0
@@ -261,10 +263,10 @@ printf 'Local learnings relevant to this prompt:\\n%s\\n' "$output"
 /** Generates the `PostToolUse` hook script that queries learnings after each Edit/Write/MultiEdit tool call. */
 function buildPostEditScript(): string {
   return `#!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 script_dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-ivan_entry="$script_dir/../../dist/index.js"
+ivan_entry="$(command -v ivan || true)"
 
 payload="$(mktemp)"
 trap 'rm -f "$payload"' EXIT
@@ -274,9 +276,11 @@ project_dir="\${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' "$payload")}"
 if [[ -z "$project_dir" ]]; then
   exit 0
 fi
+if [[ -z "$ivan_entry" ]]; then
+  exit 0
+fi
 log_dir="$project_dir/.claude/hooks/logs"
 mkdir -p "$log_dir"
-cp "$payload" "$log_dir/post-tool-use.$(date +%s).json"
 
 repo="$(jq -r '.cwd // empty' "$payload")"
 tool_name="$(jq -r '.tool_name // empty' "$payload")"
@@ -288,7 +292,7 @@ fi
 
 query_text="recent file changes after tool: $tool_name; input: $tool_input"
 
-output="$(node "$ivan_entry" learnings query --repo "$repo" --text "$query_text" --limit 3 2>>"$log_dir/query.stderr")" || true
+output="$("$ivan_entry" learnings query --repo "$repo" --text "$query_text" --limit 3 2>>"$log_dir/query.stderr")" || true
 
 if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
   exit 0

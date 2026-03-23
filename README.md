@@ -22,6 +22,9 @@ ivan
 
 # Or provide a task description directly
 ivan "Add user authentication with JWT tokens"
+
+# Or branch work off a specific local base branch instead of main
+ivan --base-branch learnings-bootstrap "Add user authentication with JWT tokens"
 ```
 
 Ivan will:
@@ -174,6 +177,9 @@ ivan show-config              # View current configuration
 ```bash
 # Start Ivan in any git repository
 ivan
+
+# Start Ivan and branch work from a specific local base branch
+ivan --base-branch learnings-bootstrap
 ```
 
 Ivan will prompt you for what to build, then:
@@ -188,6 +194,9 @@ Ivan will prompt you for what to build, then:
 ```bash
 # Provide task description as an argument
 ivan "Add user authentication with JWT tokens"
+
+# Provide a task description and branch from a specific local base branch
+ivan --base-branch learnings-bootstrap "Add user authentication with JWT tokens"
 
 # Or use a JSON config file
 ivan -c config.json
@@ -214,6 +223,7 @@ Here are some example requests you can give Ivan:
 
 ```bash
 ivan                    # Run Ivan to execute tasks (default command)
+ivan --base-branch dev  # Branch work from a specific local base branch
 ivan address [PR#]      # Address PR review comments (optionally specify PR number)
 ivan reconfigure        # Reconfigure API keys and settings
 ivan add-action         # Add Ivan Agent GitHub Action workflow to repository
