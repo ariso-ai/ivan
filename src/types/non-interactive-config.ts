@@ -30,6 +30,12 @@ export interface NonInteractiveConfig {
   workingDir?: string;
 
   /**
+   * Optional: Local branch Ivan should branch from before creating a worktree.
+   * Defaults to "main".
+   */
+  baseBranch?: string;
+
+  /**
    * Whether to rewrite verbose prompts before execution.
    * Uses GPT-4o-mini to strip noise (Slack metadata, assignee directives, boilerplate)
    * and reformat the ticket as a structured Task/Acceptance Criteria prompt for Claude Code.

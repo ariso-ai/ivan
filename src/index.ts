@@ -30,6 +30,10 @@ program
   .description('Ivan - A coding orchestration agent CLI')
   .version('1.0.0')
   .option(
+    '--base-branch <branch>',
+    'Local branch Ivan should branch from before creating a worktree'
+  )
+  .option(
     '--rewrite-prompt',
     'Rewrite verbose task descriptions before execution using GPT-4o-mini'
   );
@@ -650,8 +654,12 @@ async function runNonInteractive(configInput: string): Promise<void> {
     }
 
     // Apply --rewrite-prompt flag if passed on CLI
-    const { rewritePrompt } = program.opts<{ rewritePrompt: boolean }>();
+    const { rewritePrompt, baseBranch } = program.opts<{
+      rewritePrompt: boolean;
+      baseBranch?: string;
+    }>();
     if (rewritePrompt) config.rewritePrompt = true;
+    if (baseBranch) config.baseBranch = baseBranch;
 
     // Validate config
     if (
@@ -706,8 +714,9 @@ async function main() {
 
     // Parse known options early; operands are everything left after stripping flags
     const { operands } = program.parseOptions(args);
-    const { rewritePrompt: hasRewriteFlag } = program.opts<{
+    const { rewritePrompt: hasRewriteFlag, baseBranch } = program.opts<{
       rewritePrompt: boolean;
+      baseBranch?: string;
     }>();
 
     // Check for -c/--config flag
@@ -747,7 +756,8 @@ async function main() {
       // Create a NonInteractiveConfig with the task
       const config: NonInteractiveConfig = {
         tasks: [taskDescription],
-        rewritePrompt: hasRewriteFlag
+        rewritePrompt: hasRewriteFlag,
+        ...(baseBranch && { baseBranch })
       };
 
       // Check configuration before running
@@ -795,7 +805,7 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow(hasRewriteFlag);
+      await taskExecutor.executeWorkflow(hasRewriteFlag, baseBranch);
       return;
     }
 
