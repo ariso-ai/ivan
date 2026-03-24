@@ -451,8 +451,10 @@ export class GitManagerCLI implements IGitManager {
     }
   }
 
-  async cleanupAndSyncMain(): Promise<void> {
-    // Always operate on the original directory for main branch operations
+  async cleanupAndSyncMain(baseBranch?: string): Promise<void> {
+    const targetBranch = baseBranch?.trim() || 'main';
+
+    // Always operate on the original directory for base branch operations
     const workDir = this.originalWorkingDir;
 
     try {
@@ -486,21 +488,54 @@ export class GitManagerCLI implements IGitManager {
         stdio: 'pipe'
       });
 
-      // Switch to main branch
-      execSync('git checkout main', {
+      // Switch to the requested local base branch
+      execSync(`git checkout "${targetBranch.replace(/"/g, '\\"')}"`, {
         cwd: workDir,
         stdio: 'pipe'
       });
 
-      // Pull latest changes
-      execSync('git pull origin main', {
-        cwd: workDir,
-        stdio: 'pipe'
-      });
+      // If the branch exists on origin, rebase against it. Otherwise use the local branch as-is.
+      let branchExistsOnOrigin = false;
+      try {
+        execSync(
+          `git ls-remote --exit-code --heads origin "${targetBranch.replace(/"/g, '\\"')}"`,
+          {
+            cwd: workDir,
+            stdio: 'pipe'
+          }
+        );
+        branchExistsOnOrigin = true;
+      } catch (lsRemoteError: unknown) {
+        const err = lsRemoteError as { status?: number };
+        if (err.status === 2) {
+          // exit code 2 = branch not found on origin; fall back to local
+          console.log(
+            chalk.gray(
+              `Branch ${targetBranch} not found on origin; using local branch as base`
+            )
+          );
+        } else {
+          throw lsRemoteError;
+        }
+      }
 
-      console.log(chalk.green('✅ Cleaned up and synced with main branch'));
+      if (branchExistsOnOrigin) {
+        execSync(
+          `git pull --rebase origin "${targetBranch.replace(/"/g, '\\"')}"`,
+          {
+            cwd: workDir,
+            stdio: 'pipe'
+          }
+        );
+      }
+
+      console.log(
+        chalk.green(`✅ Cleaned up and synced with ${targetBranch} branch`)
+      );
     } catch (error) {
-      throw new Error(`Failed to cleanup and sync main: ${error}`);
+      throw new Error(
+        `Failed to cleanup and sync base branch ${targetBranch}: ${error}`
+      );
     }
   }
 

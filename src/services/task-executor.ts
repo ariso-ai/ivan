@@ -29,6 +29,7 @@ export class TaskExecutor {
   private configManager: ConfigManager;
   private workingDir: string;
   private repoInstructions: string | undefined;
+  private baseBranch: string | undefined;
 
   constructor() {
     this.jobManager = new JobManager();
@@ -36,6 +37,7 @@ export class TaskExecutor {
     this.configManager = new ConfigManager();
     this.workingDir = '';
     this.repoInstructions = undefined;
+    this.baseBranch = undefined;
   }
 
   private getClaudeExecutor(): IClaudeExecutor {
@@ -52,8 +54,13 @@ export class TaskExecutor {
     return this.openaiService;
   }
 
-  async executeWorkflow(rewritePrompt: boolean = false): Promise<void> {
+  async executeWorkflow(
+    rewritePrompt: boolean = false,
+    baseBranch?: string
+  ): Promise<void> {
     try {
+      this.baseBranch = baseBranch?.trim() || undefined;
+
       console.log(chalk.blue.bold('🚀 Starting Ivan workflow'));
       console.log('');
 
@@ -89,6 +96,9 @@ export class TaskExecutor {
       console.log(
         chalk.blue(`📂 Working in: ${repoInfo.name} (${repoInfo.branch})`)
       );
+      if (this.baseBranch) {
+        console.log(chalk.gray(`Base branch: ${this.baseBranch}`));
+      }
       console.log('');
 
       // Get or create repository in database
@@ -382,13 +392,18 @@ export class TaskExecutor {
       await this.jobManager.updateTaskStatus(task.uuid, 'active');
       if (spinner) spinner.succeed('Task marked as active');
 
+      const targetBranch = this.baseBranch || 'main';
       if (!quiet)
-        spinner = ora('Cleaning up and syncing with main branch...').start();
+        spinner = ora(
+          `Cleaning up and syncing with ${targetBranch} branch...`
+        ).start();
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      await this.gitManager.cleanupAndSyncMain();
-      if (spinner) spinner.succeed('Repository cleaned and synced with main');
+      await this.gitManager.cleanupAndSyncMain(this.baseBranch);
+      if (spinner) {
+        spinner.succeed(`Repository cleaned and synced with ${targetBranch}`);
+      }
 
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
@@ -649,9 +664,10 @@ export class TaskExecutor {
       console.log(chalk.blue('📦 Creating single branch for all tasks...'));
     }
 
+    const targetBranch = this.baseBranch || 'main';
     let spinner = quiet
       ? null
-      : ora('Cleaning up and syncing with main branch...').start();
+      : ora(`Cleaning up and syncing with ${targetBranch} branch...`).start();
     let worktreePath: string | null = null;
     let branchName: string | null = null;
     let sessionId: string | undefined;
@@ -660,8 +676,10 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      await this.gitManager.cleanupAndSyncMain();
-      if (spinner) spinner.succeed('Repository cleaned and synced with main');
+      await this.gitManager.cleanupAndSyncMain(this.baseBranch);
+      if (spinner) {
+        spinner.succeed(`Repository cleaned and synced with ${targetBranch}`);
+      }
 
       // Generate branch name based on all tasks
       const combinedDescription =
@@ -900,8 +918,8 @@ export class TaskExecutor {
       const prTaskDescription = `Completed ${tasks.length} tasks:\n\n${allTaskDescriptions}`;
 
       // Get combined diff for PR description
-      const finalDiff = this.gitManager.getDiff('origin/main', 'HEAD');
-      const allChangedFiles = this.gitManager.getChangedFiles('origin/main');
+      const finalDiff = this.gitManager.getDiff(`origin/${targetBranch}`, 'HEAD');
+      const allChangedFiles = this.gitManager.getChangedFiles(`origin/${targetBranch}`);
 
       const { title, body } =
         await this.getOpenAIService().generatePullRequestDescription(
@@ -953,6 +971,8 @@ export class TaskExecutor {
     config: NonInteractiveConfig
   ): Promise<void> {
     try {
+      this.baseBranch = config.baseBranch?.trim() || undefined;
+
       // Quiet mode: suppress all intermediate output
       const executor = this.getClaudeExecutor();
       executor.quietMode = true;

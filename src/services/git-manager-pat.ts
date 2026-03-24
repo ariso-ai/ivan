@@ -442,7 +442,8 @@ export class GitManagerPAT implements IGitManager {
     }
   }
 
-  async cleanupAndSyncMain(): Promise<void> {
+  async cleanupAndSyncMain(baseBranch?: string): Promise<void> {
+    const targetBranch = baseBranch?.trim() || 'main';
     const workDir = this.originalWorkingDir;
 
     try {
@@ -474,20 +475,55 @@ export class GitManagerPAT implements IGitManager {
         stdio: 'pipe'
       });
 
-      execSync('git checkout main', {
+      execSync(`git checkout "${targetBranch.replace(/"/g, '\\"')}"`, {
         cwd: workDir,
         stdio: 'pipe'
       });
 
-      execSync('git pull origin main', {
-        cwd: workDir,
-        stdio: 'pipe'
-      });
+      let branchExistsOnOrigin = false;
+      try {
+        execSync(
+          `git ls-remote --exit-code --heads origin "${targetBranch.replace(/"/g, '\\"')}"`,
+          {
+            cwd: workDir,
+            stdio: 'pipe'
+          }
+        );
+        branchExistsOnOrigin = true;
+      } catch (lsRemoteError: unknown) {
+        const err = lsRemoteError as { status?: number };
+        if (err.status === 2) {
+          // exit code 2 = branch not found on origin; fall back to local
+          if (!this.quietMode) {
+            console.log(
+              chalk.gray(
+                `Branch ${targetBranch} not found on origin; using local branch as base`
+              )
+            );
+          }
+        } else {
+          throw lsRemoteError;
+        }
+      }
+
+      if (branchExistsOnOrigin) {
+        execSync(
+          `git pull --rebase origin "${targetBranch.replace(/"/g, '\\"')}"`,
+          {
+            cwd: workDir,
+            stdio: 'pipe'
+          }
+        );
+      }
 
       if (!this.quietMode)
-        console.log(chalk.green('✅ Cleaned up and synced with main branch'));
+        console.log(
+          chalk.green(`✅ Cleaned up and synced with ${targetBranch} branch`)
+        );
     } catch (error) {
-      throw new Error(`Failed to cleanup and sync main: ${error}`);
+      throw new Error(
+        `Failed to cleanup and sync base branch ${targetBranch}: ${error}`
+      );
     }
   }
 
