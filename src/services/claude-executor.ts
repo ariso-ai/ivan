@@ -42,8 +42,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
     }
 
     try {
-      // Set the API key in environment for the SDK
+      // Set API keys in environment for the SDK and downstream hooks
       process.env.ANTHROPIC_API_KEY = await this.getApiKey();
+      const openaiKey = this.configManager.getConfig()?.openaiApiKey;
+      if (openaiKey) process.env.OPENAI_API_KEY = openaiKey;
 
       // Determine the original repo path (in case we're in a worktree)
       let originalRepoPath = workingDir;
@@ -211,6 +213,24 @@ export class ClaudeExecutor implements IClaudeExecutor {
                 currentResponse = '';
               }
             }
+          } else if (message.type === 'user') {
+            // Synthetic user messages carry hook-injected context (e.g. ivan learnings)
+            if (message.isSynthetic) {
+              const content = message.message.content;
+              const text =
+                typeof content === 'string'
+                  ? content
+                  : Array.isArray(content)
+                    ? content
+                        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+                        .map((b) => b.text)
+                        .join('\n')
+                    : null;
+              if (text) {
+                process.stdout.write(chalk.cyan(text) + '\n');
+                currentResponse += text + '\n';
+              }
+            }
           } else if (message.type === 'result') {
             // Final result message
             if ('result' in message) {
@@ -235,12 +255,6 @@ export class ClaudeExecutor implements IClaudeExecutor {
                 currentSessionId = message.session_id;
               }
             }
-          } else if (
-            'session_id' in message &&
-            typeof message.session_id === 'string'
-          ) {
-            // Capture session ID from any message that has it
-            currentSessionId = message.session_id;
           }
         }
 
