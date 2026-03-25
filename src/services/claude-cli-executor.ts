@@ -40,6 +40,10 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
     }
 
     try {
+      // Set OPENAI_API_KEY from config so downstream hooks can query learnings
+      const openaiKey = this.configManager.getConfig()?.openaiApiKey;
+      if (openaiKey) process.env.OPENAI_API_KEY = openaiKey;
+
       // Determine the original repo path (in case we're in a worktree)
       let originalRepoPath = workingDir;
 
