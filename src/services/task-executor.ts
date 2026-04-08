@@ -918,8 +918,13 @@ export class TaskExecutor {
       const prTaskDescription = `Completed ${tasks.length} tasks:\n\n${allTaskDescriptions}`;
 
       // Get combined diff for PR description
-      const finalDiff = this.gitManager.getDiff(`origin/${targetBranch}`, 'HEAD');
-      const allChangedFiles = this.gitManager.getChangedFiles(`origin/${targetBranch}`);
+      const finalDiff = this.gitManager.getDiff(
+        `origin/${targetBranch}`,
+        'HEAD'
+      );
+      const allChangedFiles = this.gitManager.getChangedFiles(
+        `origin/${targetBranch}`
+      );
 
       const { title, body } =
         await this.getOpenAIService().generatePullRequestDescription(
