@@ -178,7 +178,7 @@ export class AddressExecutor {
       for (const pr of selectedPRs) {
         // Create tasks for unaddressed comments
         for (const comment of pr.unaddressedComments) {
-          let description = `Address PR #${pr.number} comment from @${comment.author}: "${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}"`;
+          let description = `Address PR #${pr.number} comment from @${comment.author}: "${comment.body}"`;
 
           if (comment.path) {
             description += ` (in ${comment.path}${comment.line ? `:${comment.line}` : ''})`;
