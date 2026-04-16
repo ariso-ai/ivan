@@ -1,0 +1,157 @@
+name: Ivan Learnings E2E
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ivan-e2e]
+
+jobs:
+  ivan-e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    strategy:
+      matrix:
+        executor: [sdk, cli]
+
+    env:
+      IVAN_E2E_REPO: ariso-ai/ivan-e2e
+
+    steps:
+      - name: Check required secrets
+        run: |
+          test -n "${{ secrets.OPEN_AI_KEY }}"
+          test -n "${{ secrets.ANTHROPIC_KEY }}"
+          test -n "${{ secrets.PAT }}"
+
+      - name: Checkout Ivan
+        uses: actions/checkout@v4
+        with:
+          repository: ariso-ai/ivan
+          token: ${{ secrets.PAT }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install GitHub CLI
+        run: |
+          type gh >/dev/null 2>&1 || sudo apt-get update
+          type gh >/dev/null 2>&1 || sudo apt-get install -y gh jq sqlite3
+
+      - name: Build Ivan from local source
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Ivan from local build
+        run: npm link
+
+      - name: Install Claude Code CLI
+        if: matrix.executor == 'cli'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_KEY }}
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Write Ivan config
+        env:
+          OPENAI_KEY: ${{ secrets.OPEN_AI_KEY }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+          GH_PAT: ${{ secrets.PAT }}
+          EXECUTOR_TYPE: ${{ matrix.executor }}
+        run: |
+          mkdir -p ~/.ivan
+          cat <<'JSON' > ~/.ivan/config.json
+          {
+            "openaiApiKey": "__OPENAI__",
+            "anthropicApiKey": "__ANTHROPIC__",
+            "version": "1.0.0",
+            "executorType": "__EXECUTOR__",
+            "githubAuthType": "pat",
+            "githubPat": "__PAT__",
+            "repoInstructionsDeclined": {},
+            "repoInstructions": {},
+            "reviewAgent": "@coderabbitai"
+          }
+          JSON
+          perl -0pi -e "s/__OPENAI__/$ENV{OPENAI_KEY}/g; s/__ANTHROPIC__/$ENV{ANTHROPIC_KEY}/g; s/__PAT__/$ENV{GH_PAT}/g; s/__EXECUTOR__/$ENV{EXECUTOR_TYPE}/g" ~/.ivan/config.json
+
+      - name: Register issue cleanup trap
+        shell: bash
+        run: |
+          cat <<'BASH' > /tmp/ivan-e2e-cleanup.sh
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [ -n "${TEST_ISSUE_NUMBER:-}" ]; then
+            gh issue delete "$TEST_ISSUE_NUMBER" --repo "$IVAN_E2E_REPO" --yes
+          fi
+          BASH
+          chmod +x /tmp/ivan-e2e-cleanup.sh
+
+      - name: Prepare victim repo
+        run: |
+          test -d e2e
+          git config --global user.name "ivan-e2e"
+          git config --global user.email "ivan-e2e@users.noreply.github.com"
+
+      - name: Create ephemeral GitHub issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_ISSUE_NUMBER="$(gh issue create \
+            --repo "$IVAN_E2E_REPO" \
+            --title "Add a multiply(a,b):number export to src/math.ts [e2e-$(date +%s)]" \
+            --body "Add a multiply(a, b): number export to src/math.ts" \
+            --json number --jq '.number')"
+          test "$TEST_ISSUE_NUMBER" -gt 0
+          echo "TEST_ISSUE_NUMBER=$TEST_ISSUE_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Run learnings pipeline
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          ivan learnings init --repo "$PWD"
+          ivan learnings ingest-repo --repo "$PWD" --state merged --limit 50
+          ivan learnings rebuild --repo "$PWD"
+          test -f .ivan/db.sqlite
+          ivan learnings query --repo "$PWD" --text "add a function"
+          ivan learnings install-hooks --repo "$PWD"
+          grep -q 'UserPromptSubmit' .claude/settings.json
+          grep -q 'PostToolUse' .claude/settings.json
+          git add .claude/settings.json
+          git commit -m "chore: install ivan learnings hooks" || true
+          git push || true
+
+      - name: Run Ivan against fixture issue
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_KEY }}
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          ivan -c "{\"tasks\":[\"Add a multiply(a, b): number export to src/math.ts\"],\"generateSubtasks\":false,\"prStrategy\":\"single\"}" | tee /tmp/ivan-e2e-output.txt
+          grep -Eo 'https://github.com/[^ ]+/pull/[0-9]+' /tmp/ivan-e2e-output.txt
+          npm ci
+          npx tsc --noEmit
+          git add .ivan/lessons.jsonl .ivan/db.sqlite
+          git commit -m "chore: persist ivan learnings state" || true
+          git push || true
+
+      - name: Cleanup ephemeral issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: /tmp/ivan-e2e-cleanup.sh

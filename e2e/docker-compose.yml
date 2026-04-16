@@ -1,0 +1,13 @@
+services:
+  act:
+    image: catthehacker/ubuntu:act-latest
+    working_dir: /workspace/e2e
+    volumes:
+      - ..:/workspace
+      - ~/.ivan:/root/.ivan
+    environment:
+      OPEN_AI_KEY: ${OPEN_AI_KEY}
+      ANTHROPIC_KEY: ${ANTHROPIC_KEY}
+      GH_TOKEN: ${GH_TOKEN}
+      PAT: ${PAT:-${GH_TOKEN}}
+    command: act --secret-file .secrets -W .github/workflows/ivan-e2e.yml
