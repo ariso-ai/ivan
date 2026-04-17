@@ -1,0 +1,4 @@
+.secrets
+.act/
+node_modules/
+.claude/settings.local.json

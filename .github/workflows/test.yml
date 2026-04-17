@@ -27,10 +27,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Note: Tests are not yet implemented in package.json
-      # Uncomment the following when tests are added:
-      # - name: Run tests
-      #   run: npm test
+      - name: Run tests
+        run: npm test
 
-      - name: Placeholder for future tests
-        run: echo "Tests will be added here once implemented"
+      - name: Validate ivan-e2e fixture
+        run: npm run test:e2e:learnings -- --dry-run
