@@ -6,16 +6,10 @@ on:
     types: [ivan-e2e]
 
 jobs:
-  ivan-e2e:
+  prepare-fixture:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
-      pull-requests: write
-
-    strategy:
-      matrix:
-        executor: [sdk, cli]
 
     env:
       IVAN_E2E_REPO: ariso-ai/ivan-e2e
@@ -42,21 +36,124 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Build Ivan
+        run: |
+          npm ci
+          npm run build
+          chmod +x dist/index.js
+          npm link
+
+      - name: Write Ivan config
+        env:
+          OPENAI_KEY: ${{ secrets.OPEN_AI_KEY }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+          GH_PAT: ${{ secrets.PAT }}
+        run: |
+          mkdir -p ~/.ivan
+          cat > ~/.ivan/config.json <<EOF
+          {
+            "openaiApiKey": "${OPENAI_KEY}",
+            "anthropicApiKey": "${ANTHROPIC_KEY}",
+            "version": "1.0.0",
+            "executorType": "sdk",
+            "githubAuthType": "pat",
+            "githubPat": "${GH_PAT}",
+            "repoInstructionsDeclined": {},
+            "repoInstructions": {},
+            "reviewAgent": "@coderabbitai"
+          }
+          EOF
+
+      - name: Configure git
+        run: |
+          git config --global user.name "ivan-e2e"
+          git config --global user.email "ivan-e2e@users.noreply.github.com"
+
+      - name: Build learnings from Ivan PR history
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          OPENAI_API_KEY: ${{ secrets.OPEN_AI_KEY }}
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          ivan learnings init --repo "$PWD"
+          ivan learnings ingest-repo --repo "$PWD" --state merged --limit 50
+          ivan learnings rebuild --repo "$PWD"
+          test -f .ivan/db.sqlite
+          ivan learnings query --repo "$PWD" --text "add a function"
+
+      - name: Seed fixture repo
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          set -euo pipefail
+          git clone "https://oauth2:$GH_TOKEN@github.com/$IVAN_E2E_REPO.git" /tmp/ivan-e2e-fixture
+          cd /tmp/ivan-e2e-fixture
+
+          # Seed fixture files if not present (fresh repo)
+          if [ ! -f package.json ]; then
+            cp "$GITHUB_WORKSPACE/e2e/package.json" .
+            cp "$GITHUB_WORKSPACE/e2e/tsconfig.json" .
+            mkdir -p src
+            printf 'node_modules/\npackage-lock.json\n' > .gitignore
+            git add .
+            git commit -m "chore: seed fixture files"
+            git push
+          fi
+
+          # Copy learnings and install hooks
+          cp -r "$GITHUB_WORKSPACE/e2e/.ivan" .
+          ivan learnings install-hooks --repo "$PWD"
+          grep -q 'UserPromptSubmit' .claude/settings.json
+          grep -q 'PostToolUse' .claude/settings.json
+          git add .ivan/ .claude/
+          git commit -m "chore: seed learnings and install hooks"
+          git push
+
+  ivan-e2e:
+    needs: prepare-fixture
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    strategy:
+      matrix:
+        executor: [sdk, cli]
+
+    env:
+      IVAN_E2E_REPO: ariso-ai/ivan-e2e
+
+    steps:
+      - name: Checkout Ivan
+        uses: actions/checkout@v4
+        with:
+          repository: ariso-ai/ivan
+          token: ${{ secrets.PAT }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
       - name: Install GitHub CLI
         run: |
           type gh >/dev/null 2>&1 || sudo apt-get update
           type gh >/dev/null 2>&1 || sudo apt-get install -y gh jq sqlite3
 
-      - name: Build Ivan from local source
+      - name: Build Ivan
         run: |
           npm ci
           npm run build
-
-      - name: Install Ivan from local build
-        run: npm link
+          chmod +x dist/index.js
+          npm link
 
       - name: Install Claude Code CLI
-        if: matrix.executor == 'cli'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_KEY }}
         run: npm install -g @anthropic-ai/claude-code
@@ -69,20 +166,24 @@ jobs:
           EXECUTOR_TYPE: ${{ matrix.executor }}
         run: |
           mkdir -p ~/.ivan
-          cat <<'JSON' > ~/.ivan/config.json
+          cat > ~/.ivan/config.json <<EOF
           {
-            "openaiApiKey": "__OPENAI__",
-            "anthropicApiKey": "__ANTHROPIC__",
+            "openaiApiKey": "${OPENAI_KEY}",
+            "anthropicApiKey": "${ANTHROPIC_KEY}",
             "version": "1.0.0",
-            "executorType": "__EXECUTOR__",
+            "executorType": "${EXECUTOR_TYPE}",
             "githubAuthType": "pat",
-            "githubPat": "__PAT__",
+            "githubPat": "${GH_PAT}",
             "repoInstructionsDeclined": {},
             "repoInstructions": {},
             "reviewAgent": "@coderabbitai"
           }
-          JSON
-          perl -0pi -e "s/__OPENAI__/$ENV{OPENAI_KEY}/g; s/__ANTHROPIC__/$ENV{ANTHROPIC_KEY}/g; s/__PAT__/$ENV{GH_PAT}/g; s/__EXECUTOR__/$ENV{EXECUTOR_TYPE}/g" ~/.ivan/config.json
+          EOF
+
+      - name: Configure git
+        run: |
+          git config --global user.name "ivan-e2e"
+          git config --global user.email "ivan-e2e@users.noreply.github.com"
 
       - name: Register issue cleanup trap
         shell: bash
@@ -91,64 +192,83 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           if [ -n "${TEST_ISSUE_NUMBER:-}" ]; then
-            gh issue delete "$TEST_ISSUE_NUMBER" --repo "$IVAN_E2E_REPO" --yes
+            gh issue close "$TEST_ISSUE_NUMBER" --repo "$IVAN_E2E_REPO"
           fi
           BASH
           chmod +x /tmp/ivan-e2e-cleanup.sh
 
-      - name: Prepare victim repo
-        run: |
-          test -d e2e
-          git config --global user.name "ivan-e2e"
-          git config --global user.email "ivan-e2e@users.noreply.github.com"
-
       - name: Create ephemeral GitHub issue
-        id: issue
         env:
           GH_TOKEN: ${{ secrets.PAT }}
         shell: bash
         run: |
           set -euo pipefail
-          TEST_ISSUE_NUMBER="$(gh issue create \
+          TEST_ISSUE_URL="$(gh issue create \
             --repo "$IVAN_E2E_REPO" \
             --title "Add a multiply(a,b):number export to src/math.ts [e2e-$(date +%s)]" \
-            --body "Add a multiply(a, b): number export to src/math.ts" \
-            --json number --jq '.number')"
+            --body "Add a multiply(a, b): number export to src/math.ts")"
+          TEST_ISSUE_NUMBER="$(echo "$TEST_ISSUE_URL" | grep -oE '[0-9]+$')"
           test "$TEST_ISSUE_NUMBER" -gt 0
           echo "TEST_ISSUE_NUMBER=$TEST_ISSUE_NUMBER" >> "$GITHUB_ENV"
 
-      - name: Run learnings pipeline
+      - name: Clone fixture repo
         env:
           GH_TOKEN: ${{ secrets.PAT }}
-        working-directory: e2e
         run: |
-          set -euo pipefail
-          ivan learnings init --repo "$PWD"
-          ivan learnings ingest-repo --repo "$PWD" --state merged --limit 50
-          ivan learnings rebuild --repo "$PWD"
-          test -f .ivan/db.sqlite
-          ivan learnings query --repo "$PWD" --text "add a function"
-          ivan learnings install-hooks --repo "$PWD"
-          grep -q 'UserPromptSubmit' .claude/settings.json
-          grep -q 'PostToolUse' .claude/settings.json
-          git add .claude/settings.json
-          git commit -m "chore: install ivan learnings hooks" || true
-          git push || true
+          git clone "https://oauth2:$GH_TOKEN@github.com/$IVAN_E2E_REPO.git" /tmp/ivan-e2e-fixture
 
       - name: Run Ivan against fixture issue
         env:
           GH_TOKEN: ${{ secrets.PAT }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_KEY }}
-        working-directory: e2e
         run: |
           set -euo pipefail
-          ivan -c "{\"tasks\":[\"Add a multiply(a, b): number export to src/math.ts\"],\"generateSubtasks\":false,\"prStrategy\":\"single\"}" | tee /tmp/ivan-e2e-output.txt
-          grep -Eo 'https://github.com/[^ ]+/pull/[0-9]+' /tmp/ivan-e2e-output.txt
-          npm ci
+          FIXTURE_DIR=/tmp/ivan-e2e-fixture
+
+          cat > /tmp/ivan-e2e-run.sh << 'SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+          ivan -c '{"tasks":["Add a multiply(a, b): number export to src/math.ts"],"generateSubtasks":false,"prStrategy":"single"}' | tee /tmp/ivan-e2e-output.txt
+          SCRIPT
+          chmod +x /tmp/ivan-e2e-run.sh
+
+          # Both SDK and CLI executors spawn the claude binary, which refuses
+          # bypassPermissions as root. Run as a non-root user when in a root container.
+          if [ "$(id -u)" = "0" ]; then
+            useradd -m ivan-e2e 2>/dev/null || true
+            cp -rp ~/.ivan /home/ivan-e2e/.ivan
+            chown -R ivan-e2e: /home/ivan-e2e/.ivan
+            chown -R ivan-e2e: "$FIXTURE_DIR" "$GITHUB_WORKSPACE"
+            runuser -u ivan-e2e -- git config --global --add safe.directory "$FIXTURE_DIR"
+            runuser -u ivan-e2e -- git config --global --add safe.directory "$GITHUB_WORKSPACE"
+            runuser -u ivan-e2e -- /bin/bash -c "
+              export PATH='$PATH'
+              export ANTHROPIC_API_KEY='$ANTHROPIC_API_KEY'
+              export GH_TOKEN='$GH_TOKEN'
+              cd '$FIXTURE_DIR'
+              /tmp/ivan-e2e-run.sh
+            "
+            chown -R root: "$FIXTURE_DIR" "$GITHUB_WORKSPACE"
+          else
+            cd "$FIXTURE_DIR"
+            /tmp/ivan-e2e-run.sh
+          fi
+
+          # Assert PR was created in the correct repo
+          PR_URL=$(grep -Eo "https://github.com/$IVAN_E2E_REPO/pull/[0-9]+" /tmp/ivan-e2e-output.txt | head -1)
+          test -n "$PR_URL"
+          echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+          PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Typecheck PR branch
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          cd /tmp/ivan-e2e-fixture
+          gh pr checkout "$PR_NUMBER" --repo "$IVAN_E2E_REPO"
+          npm install --ignore-scripts
           npx tsc --noEmit
-          git add .ivan/lessons.jsonl .ivan/db.sqlite
-          git commit -m "chore: persist ivan learnings state" || true
-          git push || true
 
       - name: Cleanup ephemeral issue
         if: always()
