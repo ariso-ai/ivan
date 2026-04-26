@@ -1,4 +1,4 @@
-// CLI handler for `ivan learnings coding-sessions`.
+// CLI handler for `ivan learn coding-sessions`.
 // Orchestrates the full pipeline: parse → analyze → store → rebuild.
 
 import chalk from 'chalk';
@@ -30,7 +30,7 @@ interface CodingSessionsOptions {
   reset?: boolean;
 }
 
-/** Commander action handler for `ivan learnings coding-sessions`. */
+/** Commander action handler for `ivan learn coding-sessions`. */
 export async function runCodingSessionsCommand(
   options: CodingSessionsOptions
 ): Promise<void> {
@@ -64,7 +64,6 @@ export async function runCodingSessionsCommand(
 
   if (sessionFiles.length === 0) {
     console.log(chalk.yellow('No sessions found to analyze.'));
-    dbManager.close();
     return;
   }
 
@@ -132,7 +131,7 @@ export async function runCodingSessionsCommand(
 
   // Stage 2: Analyze with GPT-5.5
   const analyzer = new SessionAnalyzer();
-  const analyses: SessionAnalysis[] = [];
+  const analysisResults: Array<{ analysis: SessionAnalysis; digest: SessionDigest }> = [];
   let totalPatterns = 0;
   let totalExamples = 0;
 
@@ -147,7 +146,7 @@ export async function runCodingSessionsCommand(
 
     try {
       const analysis = await analyzer.analyzeSession(digest);
-      analyses.push(analysis);
+      analysisResults.push({ analysis, digest });
       totalPatterns += analysis.patterns.length;
       totalExamples += analysis.exampleInteractions.length;
 
@@ -163,7 +162,7 @@ export async function runCodingSessionsCommand(
   }
 
   analyzeSpinner.succeed(
-    `Analyzed ${analyses.length} sessions: ${totalPatterns} thinking patterns, ${totalExamples} example interactions`
+    `Analyzed ${analysisResults.length} sessions: ${totalPatterns} thinking patterns, ${totalExamples} example interactions`
   );
 
   if (totalPatterns === 0 && totalExamples === 0) {
@@ -176,9 +175,9 @@ export async function runCodingSessionsCommand(
   // Stage 3: Store as learning records
   const storeSpinner = ora('Storing patterns and examples...').start();
 
-  // Convert analyses to learning records
-  const newRecords = analyses.flatMap((analysis, i) =>
-    analyzer.analysisToLearningRecords(analysis, digests[i])
+  // Convert analyses to learning records (paired to avoid index misalignment)
+  const newRecords = analysisResults.flatMap(({ analysis, digest }) =>
+    analyzer.analysisToLearningRecords(analysis, digest)
   );
 
   // Read existing records, filter out old session-derived ones, merge
@@ -205,7 +204,7 @@ export async function runCodingSessionsCommand(
   // Summary
   console.log('');
   console.log(chalk.green.bold('Coding sessions analysis complete'));
-  printPatternSummary(analyses);
+  printPatternSummary(analysisResults.map((r) => r.analysis));
   } finally {
     dbManager.close();
   }
