@@ -12,6 +12,7 @@ import { migration as addRepositoryIdToJobsAndTasks } from './010_add_repository
 import { migration as addCommentIdToTasks } from './013_add_comment_id_to_tasks.js';
 import { migration as addOriginalDescriptionColumn } from './014_add_original_description_column.js';
 import { migration as createLearningsTables } from './015_create_learnings_tables.js';
+import { migration as createSessionAnalysesTable } from './016_create_session_analyses_table.js';
 
 export const migrations: Migration[] = [
   createJobsTable,
@@ -25,7 +26,8 @@ export const migrations: Migration[] = [
   createRepositoryTable,
   addRepositoryIdToJobsAndTasks,
   addCommentIdToTasks,
-  addOriginalDescriptionColumn
+  addOriginalDescriptionColumn,
+  createSessionAnalysesTable
 ];
 
 export const learningsMigrations: Migration[] = [createLearningsTables];

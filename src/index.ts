@@ -730,7 +730,7 @@ async function main() {
 
     // Check if first operand is a task description (not a recognized command)
     const recognizedCommands = [
-      'learnings',
+      'learn',
       'reconfigure',
       'config-tools',
       'config-blocked-tools',

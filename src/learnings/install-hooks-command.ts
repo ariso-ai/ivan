@@ -279,7 +279,7 @@ if [[ -z "$repo" || -z "$prompt" ]]; then
   exit 0
 fi
 
-output="$("$ivan_entry" learnings query --repo "$repo" --text "$prompt" --limit 3 2>>"$log_dir/query.stderr")" || true
+output="$("$ivan_entry" learn query --repo "$repo" --text "$prompt" --limit 3 2>>"$log_dir/query.stderr")" || true
 
 if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
   exit 0
@@ -320,7 +320,7 @@ fi
 
 query_text="recent file changes after tool: $tool_name; input: $tool_input"
 
-output="$("$ivan_entry" learnings query --repo "$repo" --text "$query_text" --limit 3 2>>"$log_dir/query.stderr")" || true
+output="$("$ivan_entry" learn query --repo "$repo" --text "$query_text" --limit 3 2>>"$log_dir/query.stderr")" || true
 
 if [[ -z "$output" || "$output" == *"No learnings matched that query."* ]]; then
   exit 0
