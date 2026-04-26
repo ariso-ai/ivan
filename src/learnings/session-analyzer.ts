@@ -303,10 +303,12 @@ export class SessionAnalyzer {
     }
 
     // Example interactions → stored as learning records with kind 'example_question'
+    // Note: user_message is intentionally excluded from persisted rationale to avoid
+    // storing raw transcript text that could contain secrets or sensitive data.
     for (const interaction of analysis.exampleInteractions) {
       const question = interaction.derived_question.trim();
       const statement = question;
-      const rationale = `Context: ${interaction.context}\nOriginal user message: "${interaction.user_message}"`;
+      const rationale = `Context: ${interaction.context}`;
       const applicability = prependProject(project, interaction.when_to_ask);
 
       records.push({
@@ -336,7 +338,7 @@ export class SessionAnalyzer {
 
 /**
  * Formats a session digest into the user content for the LLM prompt.
- * Interleaves user and assistant messages to preserve conversation flow.
+ * Uses the ordered transcript to preserve the original message sequence.
  */
 function buildUserContent(digest: SessionDigest): string {
   const lines: string[] = [];
@@ -361,45 +363,23 @@ function buildUserContent(digest: SessionDigest): string {
   lines.push('### Conversation Transcript');
   lines.push('');
 
-  // Interleave user and assistant messages in order
-  let userIdx = 0;
-  let assistantIdx = 0;
-  const maxExchanges = 30; // Cap to stay within token budget
-  let exchanges = 0;
+  const maxMessages = 60; // Cap to stay within token budget
+  const transcript = digest.transcript.slice(0, maxMessages);
 
-  while (
-    exchanges < maxExchanges &&
-    (userIdx < digest.userMessages.length ||
-      assistantIdx < digest.assistantResponses.length)
-  ) {
-    if (userIdx < digest.userMessages.length) {
-      const msg = digest.userMessages[userIdx];
-      // Truncate very long user messages
-      const truncated = msg.length > 1000 ? `${msg.slice(0, 1000)}...` : msg;
-      lines.push(`**User:** ${truncated}`);
-      lines.push('');
-      userIdx++;
-    }
-
-    if (assistantIdx < digest.assistantResponses.length) {
-      const msg = digest.assistantResponses[assistantIdx];
-      lines.push(`**Assistant:** ${msg}`);
-      lines.push('');
-      assistantIdx++;
-    }
-
-    exchanges++;
+  for (const msg of transcript) {
+    const label = msg.role === 'user' ? 'User' : 'Assistant';
+    const text =
+      msg.role === 'user' && msg.text.length > 1000
+        ? `${msg.text.slice(0, 1000)}...`
+        : msg.text;
+    lines.push(`**${label}:** ${text}`);
+    lines.push('');
   }
 
-  if (
-    userIdx < digest.userMessages.length ||
-    assistantIdx < digest.assistantResponses.length
-  ) {
-    const remaining =
-      digest.userMessages.length -
-      userIdx +
-      (digest.assistantResponses.length - assistantIdx);
-    lines.push(`[${remaining} additional messages truncated]`);
+  if (digest.transcript.length > maxMessages) {
+    lines.push(
+      `[${digest.transcript.length - maxMessages} additional messages truncated]`
+    );
   }
 
   return lines.join('\n');
@@ -407,9 +387,17 @@ function buildUserContent(digest: SessionDigest): string {
 
 /**
  * Extracts a clean project name from a Claude Code project path.
- * e.g., "-Users-erkang-Repos-ariso-agents" → "agents"
+ * e.g., "-Users-erkang-Repos-ariso-agents" → "ariso-agents"
+ * e.g., "-Users-erkang-Repos-my-cool-project" → "my-cool-project"
  */
 function extractProjectName(projectPath: string): string {
+  const reposIdx = projectPath.indexOf('-Repos-');
+  if (reposIdx !== -1) {
+    const afterRepos = projectPath.slice(reposIdx + '-Repos-'.length);
+    const trimmed = afterRepos.replace(/^-+|-+$/g, '');
+    if (trimmed) return trimmed;
+  }
+  // Fallback: last segment
   const parts = projectPath.split('-').filter(Boolean);
   return parts[parts.length - 1] ?? projectPath;
 }

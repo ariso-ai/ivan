@@ -7,6 +7,12 @@ import path from 'path';
 import readline from 'readline';
 import os from 'os';
 
+/** A single message in the ordered conversation transcript. */
+export interface TranscriptMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
 /** Clean digest of a single Claude Code session. */
 export interface SessionDigest {
   sessionId: string;
@@ -15,8 +21,10 @@ export interface SessionDigest {
   aiTitle: string | null;
   timestamp: string;
   entrypoint: string;
+  /** Ordered conversation transcript preserving original message sequence. */
+  transcript: TranscriptMessage[];
+  /** Convenience: just user text messages (derived from transcript). */
   userMessages: string[];
-  assistantResponses: string[];
   dynamics: {
     turnCount: number;
     correctionDensity: number;
@@ -146,12 +154,13 @@ export async function parseSessionFile(
     messages.push({ role, text, timestamp });
   }
 
+  const transcript: TranscriptMessage[] = messages.map((m) => ({
+    role: m.role,
+    text: m.role === 'assistant' ? m.text.slice(0, 500) : m.text
+  }));
   const userMessages = messages
     .filter((m) => m.role === 'user')
     .map((m) => m.text);
-  const assistantResponses = messages
-    .filter((m) => m.role === 'assistant')
-    .map((m) => m.text.slice(0, 500));
 
   // Pre-filter: need at least 3 genuine user text messages
   if (userMessages.length < 3) return null;
@@ -168,8 +177,8 @@ export async function parseSessionFile(
     aiTitle,
     timestamp: firstTimestamp ?? stat.birthtime.toISOString(),
     entrypoint,
+    transcript,
     userMessages,
-    assistantResponses,
     dynamics,
     fileSize: stat.size,
     fileModifiedAt: stat.mtime.toISOString()

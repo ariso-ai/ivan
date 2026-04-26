@@ -68,9 +68,10 @@ export async function runCodingSessionsCommand(
     }
 
     // Check which sessions are already analyzed (unless --force)
+    // Uses composite key (session_id|file_size|mtime) so modified transcripts get re-analyzed
     const alreadyAnalyzed = options.force
-      ? new Set<string>()
-      : loadAnalyzedSessionIds(dbManager);
+      ? new Map<string, { fileSize: number; fileModifiedAt: string }>()
+      : loadAnalyzedSessions(dbManager);
 
     // Parse sessions
     const parseSpinner = ora('Parsing session transcripts...').start();
@@ -79,9 +80,16 @@ export async function runCodingSessionsCommand(
     let skippedLowSignal = 0;
 
     for (const file of sessionFiles) {
-      if (alreadyAnalyzed.has(file.sessionId)) {
-        skippedAlready++;
-        continue;
+      const cached = alreadyAnalyzed.get(file.sessionId);
+      if (cached) {
+        const stat = fs.statSync(file.filePath);
+        if (
+          cached.fileSize === stat.size &&
+          cached.fileModifiedAt === stat.mtime.toISOString()
+        ) {
+          skippedAlready++;
+          continue;
+        }
       }
 
       try {
@@ -204,9 +212,10 @@ export async function runCodingSessionsCommand(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       rebuildSpinner.fail(`Rebuild failed: ${msg}`);
+      return;
     }
 
-    // Summary
+    // Summary (only on full success)
     console.log('');
     console.log(chalk.green.bold('Coding sessions analysis complete'));
     printPatternSummary(analysisResults.map((r) => r.analysis));
@@ -231,15 +240,30 @@ function loadExistingNonSessionRecords(repoPath: string) {
   return dataset.learnings.filter((r) => r.source_type !== 'coding_session');
 }
 
-function loadAnalyzedSessionIds(dbManager: DatabaseManager): Set<string> {
+function loadAnalyzedSessions(
+  dbManager: DatabaseManager
+): Map<string, { fileSize: number; fileModifiedAt: string }> {
   try {
     const db = dbManager.getDatabase();
     const rows = db
-      .prepare('SELECT session_id FROM session_analyses')
-      .all() as Array<{ session_id: string }>;
-    return new Set(rows.map((r) => r.session_id));
+      .prepare(
+        'SELECT session_id, file_size, file_modified_at FROM session_analyses'
+      )
+      .all() as Array<{
+      session_id: string;
+      file_size: number;
+      file_modified_at: string;
+    }>;
+    const map = new Map<string, { fileSize: number; fileModifiedAt: string }>();
+    for (const r of rows) {
+      map.set(r.session_id, {
+        fileSize: r.file_size,
+        fileModifiedAt: r.file_modified_at
+      });
+    }
+    return map;
   } catch {
-    return new Set();
+    return new Map();
   }
 }
 
