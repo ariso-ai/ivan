@@ -114,7 +114,17 @@ export async function runCodingSessionsCommand(
     );
 
     if (digests.length === 0) {
-      console.log(chalk.green('All sessions already analyzed. Nothing to do.'));
+      if (skippedAlready > 0) {
+        console.log(
+          chalk.green('All sessions already analyzed. Nothing to do.')
+        );
+      } else {
+        console.log(
+          chalk.yellow(
+            'No sessions with sufficient signal to analyze (all filtered as low-signal).'
+          )
+        );
+      }
       return;
     }
 
@@ -191,8 +201,9 @@ export async function runCodingSessionsCommand(
       analyzer.analysisToLearningRecords(analysis, digest)
     );
 
-    // Read existing records, filter out old session-derived ones, merge
-    const existingRecords = loadExistingNonSessionRecords(repoPath);
+    // Merge: keep all existing records except those being replaced by new ones
+    const newRecordIds = new Set(newRecords.map((r) => r.id));
+    const existingRecords = loadExistingRecords(repoPath, newRecordIds);
     const mergedRecords = [...existingRecords, ...newRecords];
 
     writeLearningRecords(repoPath, mergedRecords);
@@ -225,10 +236,11 @@ export async function runCodingSessionsCommand(
 }
 
 /**
- * Reads existing learning records from lessons.jsonl, excluding any
- * session-derived records (source_type === 'coding_session').
+ * Reads existing learning records, excluding any whose ID is in `replaceIds`.
+ * This preserves both PR-derived records AND previously cached session-derived
+ * records from earlier runs, only replacing records that were just re-generated.
  */
-function loadExistingNonSessionRecords(repoPath: string) {
+function loadExistingRecords(repoPath: string, replaceIds: Set<string>) {
   const filePath = resolveCanonicalLearningsPath(
     path.resolve(repoPath),
     'lessons.jsonl'
@@ -237,7 +249,7 @@ function loadExistingNonSessionRecords(repoPath: string) {
   if (!fs.existsSync(filePath)) return [];
 
   const dataset = loadCanonicalRecords(repoPath);
-  return dataset.learnings.filter((r) => r.source_type !== 'coding_session');
+  return dataset.learnings.filter((r) => !replaceIds.has(r.id));
 }
 
 function loadAnalyzedSessions(
@@ -273,6 +285,17 @@ function saveSessionAnalysis(
   analysis: SessionAnalysis
 ): void {
   try {
+    // Redact user_message from example interactions before persisting
+    const sanitizedAnalysis = {
+      ...analysis,
+      exampleInteractions: analysis.exampleInteractions.map((e) => ({
+        context: e.context,
+        derived_question: e.derived_question,
+        when_to_ask: e.when_to_ask,
+        confidence: e.confidence
+      }))
+    };
+
     const db = dbManager.getDatabase();
     db.prepare(
       `INSERT OR REPLACE INTO session_analyses
@@ -288,7 +311,7 @@ function saveSessionAnalysis(
       digest.aiTitle,
       digest.timestamp,
       analysis.patterns.length,
-      JSON.stringify(analysis),
+      JSON.stringify(sanitizedAnalysis),
       new Date().toISOString()
     );
   } catch {
