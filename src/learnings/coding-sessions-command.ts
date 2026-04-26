@@ -8,7 +8,7 @@ import path from 'path';
 import {
   discoverSessionFiles,
   parseSessionFile,
-  type SessionDigest,
+  type SessionDigest
 } from './session-parser.js';
 import { SessionAnalyzer, type SessionAnalysis } from './session-analyzer.js';
 import { writeLearningRecords } from './learning-writer.js';
@@ -17,7 +17,7 @@ import { loadCanonicalRecords } from './parser.js';
 import { resolveCanonicalLearningsPath } from './paths.js';
 import {
   ensureLearningsDirectories,
-  resolveLearningsRepositoryContext,
+  resolveLearningsRepositoryContext
 } from './repository.js';
 import { DatabaseManager } from '../database.js';
 
@@ -50,161 +50,166 @@ export async function runCodingSessionsCommand(
   await dbManager.runMigrations();
 
   try {
-  // Stage 1: Discover and parse sessions
-  const spinner = ora('Discovering Claude Code sessions...').start();
+    // Stage 1: Discover and parse sessions
+    const spinner = ora('Discovering Claude Code sessions...').start();
 
-  const sessionFiles = discoverSessionFiles({
-    project: options.project,
-    recentDays: options.recent ? parseInt(options.recent) : undefined,
-  });
+    const sessionFiles = discoverSessionFiles({
+      project: options.project,
+      recentDays: options.recent ? parseInt(options.recent) : undefined
+    });
 
-  spinner.succeed(
-    `Found ${sessionFiles.length} session files${options.project ? ` (project: ${options.project})` : ''}`
-  );
+    spinner.succeed(
+      `Found ${sessionFiles.length} session files${options.project ? ` (project: ${options.project})` : ''}`
+    );
 
-  if (sessionFiles.length === 0) {
-    console.log(chalk.yellow('No sessions found to analyze.'));
-    return;
-  }
-
-  // Check which sessions are already analyzed (unless --force)
-  const alreadyAnalyzed = options.force
-    ? new Set<string>()
-    : loadAnalyzedSessionIds(dbManager);
-
-  // Parse sessions
-  const parseSpinner = ora('Parsing session transcripts...').start();
-  const digests: SessionDigest[] = [];
-  let skippedAlready = 0;
-  let skippedLowSignal = 0;
-
-  for (const file of sessionFiles) {
-    if (alreadyAnalyzed.has(file.sessionId)) {
-      skippedAlready++;
-      continue;
+    if (sessionFiles.length === 0) {
+      console.log(chalk.yellow('No sessions found to analyze.'));
+      return;
     }
 
-    try {
-      const digest = await parseSessionFile(
-        file.filePath,
-        file.projectPath,
-        file.sessionId
-      );
-      if (digest) {
-        digests.push(digest);
-      } else {
+    // Check which sessions are already analyzed (unless --force)
+    const alreadyAnalyzed = options.force
+      ? new Set<string>()
+      : loadAnalyzedSessionIds(dbManager);
+
+    // Parse sessions
+    const parseSpinner = ora('Parsing session transcripts...').start();
+    const digests: SessionDigest[] = [];
+    let skippedAlready = 0;
+    let skippedLowSignal = 0;
+
+    for (const file of sessionFiles) {
+      if (alreadyAnalyzed.has(file.sessionId)) {
+        skippedAlready++;
+        continue;
+      }
+
+      try {
+        const digest = await parseSessionFile(
+          file.filePath,
+          file.projectPath,
+          file.sessionId
+        );
+        if (digest) {
+          digests.push(digest);
+        } else {
+          skippedLowSignal++;
+        }
+      } catch {
+        // Skip unparseable sessions
         skippedLowSignal++;
       }
-    } catch {
-      // Skip unparseable sessions
-      skippedLowSignal++;
     }
-  }
 
-  parseSpinner.succeed(
-    `Parsed ${digests.length} qualifying sessions (${skippedAlready} cached, ${skippedLowSignal} low-signal)`
-  );
-
-  if (digests.length === 0) {
-    console.log(chalk.green('All sessions already analyzed. Nothing to do.'));
-    return;
-  }
-
-  // Dry run: show what would be analyzed
-  if (options.dryRun) {
-    console.log('');
-    console.log(chalk.blue.bold('Dry run — sessions that would be analyzed:'));
-    console.log('');
-    for (const d of digests) {
-      const title = d.aiTitle ?? 'Untitled';
-      const proj = extractProjectName(d.projectPath);
-      console.log(
-        `  ${chalk.cyan(proj)} ${chalk.white(title)} (${d.userMessages.length} user msgs, correction density: ${(d.dynamics.correctionDensity * 100).toFixed(0)}%)`
-      );
-    }
-    console.log('');
-    console.log(
-      `Total: ${digests.length} sessions would be sent to GPT-5.5`
+    parseSpinner.succeed(
+      `Parsed ${digests.length} qualifying sessions (${skippedAlready} cached, ${skippedLowSignal} low-signal)`
     );
-    return;
-  }
 
-  // Stage 2: Analyze with GPT-5.5
-  const analyzer = new SessionAnalyzer();
-  const analysisResults: Array<{ analysis: SessionAnalysis; digest: SessionDigest }> = [];
-  let totalPatterns = 0;
-  let totalExamples = 0;
+    if (digests.length === 0) {
+      console.log(chalk.green('All sessions already analyzed. Nothing to do.'));
+      return;
+    }
 
-  console.log('');
-  const analyzeSpinner = ora(
-    `Analyzing session 1/${digests.length} with GPT-5.5...`
-  ).start();
+    // Dry run: show what would be analyzed
+    if (options.dryRun) {
+      console.log('');
+      console.log(
+        chalk.blue.bold('Dry run — sessions that would be analyzed:')
+      );
+      console.log('');
+      for (const d of digests) {
+        const title = d.aiTitle ?? 'Untitled';
+        const proj = extractProjectName(d.projectPath);
+        console.log(
+          `  ${chalk.cyan(proj)} ${chalk.white(title)} (${d.userMessages.length} user msgs, correction density: ${(d.dynamics.correctionDensity * 100).toFixed(0)}%)`
+        );
+      }
+      console.log('');
+      console.log(`Total: ${digests.length} sessions would be sent to GPT-5.5`);
+      return;
+    }
 
-  for (let i = 0; i < digests.length; i++) {
-    const digest = digests[i];
-    analyzeSpinner.text = `Analyzing session ${i + 1}/${digests.length}: ${digest.aiTitle ?? 'Untitled'}`;
+    // Stage 2: Analyze with GPT-5.5
+    const analyzer = new SessionAnalyzer();
+    const analysisResults: Array<{
+      analysis: SessionAnalysis;
+      digest: SessionDigest;
+    }> = [];
+    let totalPatterns = 0;
+    let totalExamples = 0;
 
+    console.log('');
+    const analyzeSpinner = ora(
+      `Analyzing session 1/${digests.length} with GPT-5.5...`
+    ).start();
+
+    for (let i = 0; i < digests.length; i++) {
+      const digest = digests[i];
+      analyzeSpinner.text = `Analyzing session ${i + 1}/${digests.length}: ${digest.aiTitle ?? 'Untitled'}`;
+
+      try {
+        const analysis = await analyzer.analyzeSession(digest);
+        analysisResults.push({ analysis, digest });
+        totalPatterns += analysis.patterns.length;
+        totalExamples += analysis.exampleInteractions.length;
+
+        // Track in main DB
+        saveSessionAnalysis(dbManager, digest, analysis);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        analyzeSpinner.warn(
+          `Failed to analyze session ${digest.sessionId}: ${msg}`
+        );
+        analyzeSpinner.start();
+      }
+    }
+
+    analyzeSpinner.succeed(
+      `Analyzed ${analysisResults.length} sessions: ${totalPatterns} thinking patterns, ${totalExamples} example interactions`
+    );
+
+    if (totalPatterns === 0 && totalExamples === 0) {
+      console.log(
+        chalk.yellow('No thinking patterns or example interactions found.')
+      );
+      return;
+    }
+
+    // Stage 3: Store as learning records
+    const storeSpinner = ora('Storing patterns and examples...').start();
+
+    // Convert analyses to learning records (paired to avoid index misalignment)
+    const newRecords = analysisResults.flatMap(({ analysis, digest }) =>
+      analyzer.analysisToLearningRecords(analysis, digest)
+    );
+
+    // Read existing records, filter out old session-derived ones, merge
+    const existingRecords = loadExistingNonSessionRecords(repoPath);
+    const mergedRecords = [...existingRecords, ...newRecords];
+
+    writeLearningRecords(repoPath, mergedRecords);
+    storeSpinner.succeed(
+      `Stored ${newRecords.length} thinking patterns (${mergedRecords.length} total learnings)`
+    );
+
+    // Stage 4: Rebuild SQLite with embeddings
+    const rebuildSpinner = ora(
+      'Rebuilding database with embeddings...'
+    ).start();
     try {
-      const analysis = await analyzer.analyzeSession(digest);
-      analysisResults.push({ analysis, digest });
-      totalPatterns += analysis.patterns.length;
-      totalExamples += analysis.exampleInteractions.length;
-
-      // Track in main DB
-      saveSessionAnalysis(dbManager, digest, analysis);
+      const result = await rebuildLearningsDatabase(repoPath);
+      rebuildSpinner.succeed(
+        `Database rebuilt: ${result.learningCount} learnings, ${result.embeddingsGenerated} new embeddings`
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      analyzeSpinner.warn(
-        `Failed to analyze session ${digest.sessionId}: ${msg}`
-      );
-      analyzeSpinner.start();
+      rebuildSpinner.fail(`Rebuild failed: ${msg}`);
     }
-  }
 
-  analyzeSpinner.succeed(
-    `Analyzed ${analysisResults.length} sessions: ${totalPatterns} thinking patterns, ${totalExamples} example interactions`
-  );
-
-  if (totalPatterns === 0 && totalExamples === 0) {
-    console.log(
-      chalk.yellow('No thinking patterns or example interactions found.')
-    );
-    return;
-  }
-
-  // Stage 3: Store as learning records
-  const storeSpinner = ora('Storing patterns and examples...').start();
-
-  // Convert analyses to learning records (paired to avoid index misalignment)
-  const newRecords = analysisResults.flatMap(({ analysis, digest }) =>
-    analyzer.analysisToLearningRecords(analysis, digest)
-  );
-
-  // Read existing records, filter out old session-derived ones, merge
-  const existingRecords = loadExistingNonSessionRecords(repoPath);
-  const mergedRecords = [...existingRecords, ...newRecords];
-
-  writeLearningRecords(repoPath, mergedRecords);
-  storeSpinner.succeed(
-    `Stored ${newRecords.length} thinking patterns (${mergedRecords.length} total learnings)`
-  );
-
-  // Stage 4: Rebuild SQLite with embeddings
-  const rebuildSpinner = ora('Rebuilding database with embeddings...').start();
-  try {
-    const result = await rebuildLearningsDatabase(repoPath);
-    rebuildSpinner.succeed(
-      `Database rebuilt: ${result.learningCount} learnings, ${result.embeddingsGenerated} new embeddings`
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    rebuildSpinner.fail(`Rebuild failed: ${msg}`);
-  }
-
-  // Summary
-  console.log('');
-  console.log(chalk.green.bold('Coding sessions analysis complete'));
-  printPatternSummary(analysisResults.map((r) => r.analysis));
+    // Summary
+    console.log('');
+    console.log(chalk.green.bold('Coding sessions analysis complete'));
+    printPatternSummary(analysisResults.map((r) => r.analysis));
   } finally {
     dbManager.close();
   }
@@ -223,9 +228,7 @@ function loadExistingNonSessionRecords(repoPath: string) {
   if (!fs.existsSync(filePath)) return [];
 
   const dataset = loadCanonicalRecords(repoPath);
-  return dataset.learnings.filter(
-    (r) => r.source_type !== 'coding_session'
-  );
+  return dataset.learnings.filter((r) => r.source_type !== 'coding_session');
 }
 
 function loadAnalyzedSessionIds(dbManager: DatabaseManager): Set<string> {
@@ -292,7 +295,7 @@ function printPatternSummary(analyses: SessionAnalysis[]): void {
     thinking_architecture: 'Architecture',
     thinking_product: 'Product & UX',
     thinking_quality: 'Quality & Debugging',
-    thinking_process: 'Process & Decisions',
+    thinking_process: 'Process & Decisions'
   };
 
   if (Object.keys(byKind).length > 0) {

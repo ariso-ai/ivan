@@ -60,22 +60,22 @@ const ANALYSIS_SCHEMA = {
               'thinking_architecture',
               'thinking_product',
               'thinking_quality',
-              'thinking_process',
-            ],
+              'thinking_process'
+            ]
           },
           confidence: { type: 'number' },
           rationale: { anyOf: [{ type: 'null' }, { type: 'string' }] },
-          applicability: { anyOf: [{ type: 'null' }, { type: 'string' }] },
+          applicability: { anyOf: [{ type: 'null' }, { type: 'string' }] }
         },
         required: [
           'statement',
           'kind',
           'confidence',
           'rationale',
-          'applicability',
+          'applicability'
         ],
-        additionalProperties: false,
-      },
+        additionalProperties: false
+      }
     },
     example_interactions: {
       type: 'array',
@@ -86,21 +86,21 @@ const ANALYSIS_SCHEMA = {
           user_message: { type: 'string' },
           derived_question: { type: 'string' },
           when_to_ask: { type: 'string' },
-          confidence: { type: 'number' },
+          confidence: { type: 'number' }
         },
         required: [
           'context',
           'user_message',
           'derived_question',
           'when_to_ask',
-          'confidence',
+          'confidence'
         ],
-        additionalProperties: false,
-      },
-    },
+        additionalProperties: false
+      }
+    }
   },
   required: ['has_signal', 'session_topic', 'patterns', 'example_interactions'],
-  additionalProperties: false,
+  additionalProperties: false
 } as const;
 
 const SYSTEM_PROMPT = `\
@@ -217,13 +217,13 @@ export class SessionAnalyzer {
         json_schema: {
           name: 'session_analysis',
           strict: true,
-          schema: ANALYSIS_SCHEMA,
-        },
+          schema: ANALYSIS_SCHEMA
+        }
       },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
-      ],
+        { role: 'user', content: userContent }
+      ]
     });
 
     let parsed: {
@@ -243,7 +243,7 @@ export class SessionAnalyzer {
         hasSignal: false,
         sessionTopic: '',
         patterns: [],
-        exampleInteractions: [],
+        exampleInteractions: []
       };
     }
 
@@ -255,10 +255,8 @@ export class SessionAnalyzer {
         (p) => p.statement && p.statement.trim().length >= 10
       ),
       exampleInteractions: (parsed.example_interactions ?? []).filter(
-        (e) =>
-          e.derived_question &&
-          e.derived_question.trim().length >= 10
-      ),
+        (e) => e.derived_question && e.derived_question.trim().length >= 10
+      )
     };
   }
 
@@ -281,10 +279,7 @@ export class SessionAnalyzer {
     // Thinking patterns
     for (const pattern of analysis.patterns) {
       const trimmed = pattern.statement.trim();
-      const applicability = prependProject(
-        project,
-        pattern.applicability
-      );
+      const applicability = prependProject(project, pattern.applicability);
 
       records.push({
         type: 'learning',
@@ -303,7 +298,7 @@ export class SessionAnalyzer {
         confidence: Math.max(0.35, Math.min(0.95, pattern.confidence)),
         status: 'active',
         created_at: digest.timestamp ?? now,
-        updated_at: now,
+        updated_at: now
       });
     }
 
@@ -312,10 +307,7 @@ export class SessionAnalyzer {
       const question = interaction.derived_question.trim();
       const statement = question;
       const rationale = `Context: ${interaction.context}\nOriginal user message: "${interaction.user_message}"`;
-      const applicability = prependProject(
-        project,
-        interaction.when_to_ask
-      );
+      const applicability = prependProject(project, interaction.when_to_ask);
 
       records.push({
         type: 'learning',
@@ -334,7 +326,7 @@ export class SessionAnalyzer {
         confidence: Math.max(0.35, Math.min(0.95, interaction.confidence)),
         status: 'active',
         created_at: digest.timestamp ?? now,
-        updated_at: now,
+        updated_at: now
       });
     }
 

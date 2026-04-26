@@ -82,7 +82,7 @@ export function discoverSessionFiles(options?: {
       results.push({
         filePath,
         projectPath: dirName,
-        sessionId,
+        sessionId
       });
     }
   }
@@ -172,7 +172,7 @@ export async function parseSessionFile(
     assistantResponses,
     dynamics,
     fileSize: stat.size,
-    fileModifiedAt: stat.mtime.toISOString(),
+    fileModifiedAt: stat.mtime.toISOString()
   };
 }
 
@@ -291,9 +291,7 @@ function computeDynamics(messages: ParsedMessage[]): SessionDigest['dynamics'] {
     const prev = userMsgs[i - 1].text.toLowerCase();
     const curr = userMsgs[i].text.toLowerCase();
     // Very rough: if fewer than 2 shared words (of 4+ chars), it's a topic shift
-    const prevWords = new Set(
-      prev.split(/\s+/).filter((w) => w.length >= 4)
-    );
+    const prevWords = new Set(prev.split(/\s+/).filter((w) => w.length >= 4));
     const currWords = curr.split(/\s+/).filter((w) => w.length >= 4);
     const shared = currWords.filter((w) => prevWords.has(w)).length;
     if (shared < 2 && prevWords.size > 2) topicShifts++;
@@ -305,6 +303,6 @@ function computeDynamics(messages: ParsedMessage[]): SessionDigest['dynamics'] {
     questionCount,
     avgUserMsgLength,
     hasEscalationArc,
-    topicShifts,
+    topicShifts
   };
 }

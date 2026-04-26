@@ -20,9 +20,7 @@ import { runCodingSessionsCommand } from './coding-sessions-command.js';
 export function registerLearningsCommands(program: Command): void {
   const learn = program
     .command('learn')
-    .description(
-      'Learn from PRs, coding sessions, and repo history'
-    );
+    .description('Learn from PRs, coding sessions, and repo history');
 
   learn
     .command('init')
