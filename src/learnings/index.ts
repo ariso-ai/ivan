@@ -1,4 +1,4 @@
-// Entry point for the `learnings` command group.
+// Entry point for the `learn` command group.
 // Registers all subcommands on the Commander program and re-exports the public API
 // used by other parts of ivan (task executor, hooks, etc.).
 
@@ -14,16 +14,16 @@ import { queryLearnings } from './query.js';
 import { runQueryCommand } from './query-command.js';
 import { rebuildLearningsDatabase } from './builder.js';
 import { runRebuildCommand } from './rebuild-command.js';
+import { runCodingSessionsCommand } from './coding-sessions-command.js';
 
-/** Registers the `learnings` subcommand tree (init, rebuild, query, ingest-pr, ingest-repo, install-hooks) on `program`. */
+/** Registers the `learn` subcommand tree on `program`. */
 export function registerLearningsCommands(program: Command): void {
-  const learnings = program
-    .command('learnings')
-    .description(
-      'Manage repo-local learnings records and derived .ivan/db.sqlite'
-    );
+  const learn = program
+    .command('learn')
+    .alias('learnings')
+    .description('Learn from PRs, coding sessions, and repo history');
 
-  learnings
+  learn
     .command('init')
     .description(
       'Initialize canonical learnings storage in the target repository'
@@ -31,7 +31,7 @@ export function registerLearningsCommands(program: Command): void {
     .requiredOption('--repo <path>', 'Repository root path')
     .action(runInitCommand);
 
-  learnings
+  learn
     .command('rebuild')
     .description(
       'Rebuild <repo>/.ivan/db.sqlite from canonical learnings records'
@@ -43,7 +43,7 @@ export function registerLearningsCommands(program: Command): void {
     )
     .action(runRebuildCommand);
 
-  learnings
+  learn
     .command('query')
     .description('Query the local .ivan/db.sqlite without live GitHub access')
     .requiredOption('--repo <path>', 'Repository root path')
@@ -51,7 +51,7 @@ export function registerLearningsCommands(program: Command): void {
     .option('--limit <number>', 'Maximum learnings to return', '5')
     .action(runQueryCommand);
 
-  learnings
+  learn
     .command('ingest-pr')
     .description(
       'Fetch GitHub PR evidence and write canonical evidence records'
@@ -60,7 +60,7 @@ export function registerLearningsCommands(program: Command): void {
     .requiredOption('--pr <number>', 'Pull request number')
     .action(runIngestPrCommand);
 
-  learnings
+  learn
     .command('ingest-repo')
     .description(
       'Fetch evidence for all PRs in a repo and extract learnings in one pass'
@@ -74,13 +74,29 @@ export function registerLearningsCommands(program: Command): void {
     )
     .action(runIngestRepoCommand);
 
-  learnings
+  learn
     .command('install-hooks')
     .description(
       'Install Claude Code hook scripts for UserPromptSubmit and PostToolUse(Edit|Write|MultiEdit)'
     )
     .requiredOption('--repo <path>', 'Repository root path')
     .action(runInstallHooksCommand);
+
+  learn
+    .command('coding-sessions')
+    .description(
+      'Analyze local Claude Code sessions to extract thinking patterns and example interactions'
+    )
+    .requiredOption('--repo <path>', 'Repository root path')
+    .option('--project <name>', 'Only analyze sessions from a specific project')
+    .option('--recent <days>', 'Only analyze sessions from the last N days')
+    .option('--dry-run', 'Show what would be analyzed without making API calls')
+    .option('--force', 'Re-analyze all sessions, ignoring cache')
+    .option(
+      '--reset',
+      'Clear session analysis cache and session-derived learnings'
+    )
+    .action(runCodingSessionsCommand);
 }
 
 export {

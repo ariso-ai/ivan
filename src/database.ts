@@ -33,6 +33,10 @@ export class DatabaseManager {
     return this.db;
   }
 
+  getDatabase(): Database.Database {
+    return this.sqlite;
+  }
+
   close(): void {
     this.sqlite.close();
   }

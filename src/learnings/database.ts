@@ -81,7 +81,7 @@ export function openLearningsDatabase(
   const dbPath = getLearningsDbPath(repoPath);
   if (!fs.existsSync(dbPath)) {
     throw new Error(
-      `Missing ${dbPath}. Run "ivan learnings rebuild --repo ${path.resolve(repoPath)}" first.`
+      `Missing ${dbPath}. Run "ivan learn rebuild --repo ${path.resolve(repoPath)}" first.`
     );
   }
 
