@@ -264,6 +264,12 @@ ivan learnings rebuild --repo /path/to/repo
 ivan learnings query --repo /path/to/repo --text "locks await"
 ```
 
+Validate the checked-in end-to-end learnings fixture:
+
+```bash
+npm run test:e2e:learnings -- --dry-run
+```
+
 This slice stores canonical learnings as committed JSONL files under `.ivan/` and rebuilds a derived local `.ivan/db.sqlite` for query-time retrieval. Queries read only the local derived database; they do not fetch live GitHub data.
 
 `ivan learnings install-hooks --repo ...` installs the recommended Claude Code retrieval surface into the target repo's `.claude/settings.json`:
