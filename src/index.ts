@@ -147,7 +147,7 @@ program
 
     console.log('');
     console.log(chalk.cyan('Claude Model:'));
-    const model = config.claudeModel || 'claude-sonnet-4-5-20250929';
+    const model = config.claudeModel || 'claude-sonnet-4-6';
     console.log('  ' + model);
 
     console.log('');
@@ -214,10 +214,11 @@ program
   .argument('[pr-number]', 'Optional PR number to address')
   .option('--from-user <username>', 'Filter PRs by author GitHub username')
   .option('--yes', 'Skip interactive prompts and process all PRs')
+  .option('--non-interactive', 'Accept all comments without prompting')
   .action(
     async (
       prNumber?: string,
-      options?: { fromUser?: string; yes?: boolean }
+      options?: { fromUser?: string; yes?: boolean; nonInteractive?: boolean }
     ) => {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
@@ -234,7 +235,7 @@ program
       await addressExecutor.executeWorkflow(
         prNumber ? parseInt(prNumber) : undefined,
         options?.fromUser,
-        options?.yes
+        options?.yes || options?.nonInteractive
       );
     }
   );

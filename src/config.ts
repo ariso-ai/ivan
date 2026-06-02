@@ -659,19 +659,19 @@ export class ConfigManager {
 
     const models = [
       {
-        name: 'Claude Sonnet 4.5 - Recommended for most tasks',
-        value: 'claude-sonnet-4-5-20250929',
-        short: 'Claude Sonnet 4.5'
+        name: 'Claude Sonnet 4.6 - Recommended for most tasks',
+        value: 'claude-sonnet-4-6',
+        short: 'Claude Sonnet 4.6'
       },
       {
-        name: 'Claude 3.5 Haiku - Faster, good for simpler tasks',
-        value: 'claude-3-5-haiku-20241022',
-        short: 'Claude 3.5 Haiku'
+        name: 'Claude Haiku 4.5 - Faster, good for simpler tasks',
+        value: 'claude-haiku-4-5-20251001',
+        short: 'Claude Haiku 4.5'
       },
       {
-        name: 'Claude Opus 4.1 - Most capable, but slower',
-        value: 'claude-opus-4-1-20250805',
-        short: 'Claude Opus 4.1'
+        name: 'Claude Opus 4.8 - Most capable, but slower',
+        value: 'claude-opus-4-8',
+        short: 'Claude Opus 4.8'
       }
     ];
 
@@ -681,7 +681,7 @@ export class ConfigManager {
         name: 'model',
         message: 'Select Claude model:',
         choices: models,
-        default: 'claude-sonnet-4-5-20250929'
+        default: 'claude-sonnet-4-6'
       }
     ]);
 
@@ -702,7 +702,7 @@ export class ConfigManager {
 
   getClaudeModel(): string {
     const config = this.getConfig();
-    return config?.claudeModel || 'claude-sonnet-4-5-20250929';
+    return config?.claudeModel || 'claude-sonnet-4-6';
   }
 
   async promptForExecutorType(): Promise<void> {
