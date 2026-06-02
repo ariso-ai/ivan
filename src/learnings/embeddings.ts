@@ -3,6 +3,7 @@
 // Embeddings are cached in JSONL source files so the API is only called once per record.
 
 import OpenAI from 'openai';
+import { ConfigManager } from '../config.js';
 import type { LearningRecord } from './record-types.js';
 
 export const EMBEDDING_MODEL = 'text-embedding-3-small';
@@ -10,7 +11,21 @@ export const EMBEDDING_DIMENSIONS = 1536;
 
 let _client: OpenAI | undefined;
 function getClient(): OpenAI {
-  if (!_client) _client = new OpenAI();
+  if (!_client) {
+    const envKey = process.env['OPENAI_API_KEY'];
+    if (envKey) {
+      _client = new OpenAI();
+    } else {
+      const config = new ConfigManager().getConfig();
+      const apiKey = config?.openaiApiKey;
+      if (!apiKey) {
+        throw new Error(
+          'No OpenAI API key found. Set OPENAI_API_KEY or run "ivan reconfigure".'
+        );
+      }
+      _client = new OpenAI({ apiKey });
+    }
+  }
   return _client;
 }
 
