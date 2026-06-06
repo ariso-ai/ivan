@@ -19,6 +19,9 @@ import {
   createRepositoryManager
 } from './service-factory.js';
 import { PromptRewriter } from './prompt-rewriter.js';
+import { CollaborativeExecutor } from './collaborative-executor.js';
+import type { ExecutionMode } from '../types/non-interactive-config.js';
+import type { TurnResult } from './executor-factory.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -30,6 +33,7 @@ export class TaskExecutor {
   private workingDir: string;
   private repoInstructions: string | undefined;
   private baseBranch: string | undefined;
+  private executionMode: ExecutionMode;
 
   constructor() {
     this.jobManager = new JobManager();
@@ -38,6 +42,42 @@ export class TaskExecutor {
     this.workingDir = '';
     this.repoInstructions = undefined;
     this.baseBranch = undefined;
+    this.executionMode = 'simple';
+  }
+
+  /**
+   * Runs the implementation for a task, branching on execution mode:
+   * - 'simple': a single one-shot hand-off to Claude Code (default)
+   * - 'expert': a collaborative architect↔implementer loop informed by learnings
+   */
+  private async runImplementation(
+    taskWithInstructions: string,
+    executionPath: string,
+    sessionId?: string
+  ): Promise<TurnResult> {
+    if (this.executionMode === 'expert') {
+      const collaborative = new CollaborativeExecutor(
+        this.getClaudeExecutor(),
+        this.configManager.getCollaborativeConfig()
+      );
+      return collaborative.run({
+        taskDescription: taskWithInstructions,
+        executionPath,
+        learningsRepoPath: this.workingDir,
+        getDiff: () => {
+          if (!this.gitManager) {
+            throw new Error('GitManager not initialized');
+          }
+          return this.gitManager.getDiff();
+        },
+        incomingSessionId: sessionId
+      });
+    }
+    return this.getClaudeExecutor().executeTask(
+      taskWithInstructions,
+      executionPath,
+      sessionId
+    );
   }
 
   private getClaudeExecutor(): IClaudeExecutor {
@@ -56,10 +96,21 @@ export class TaskExecutor {
 
   async executeWorkflow(
     rewritePrompt: boolean = false,
-    baseBranch?: string
+    baseBranch?: string,
+    mode: ExecutionMode = 'simple'
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
+      this.executionMode = mode;
+
+      if (mode === 'expert') {
+        console.log(
+          chalk.magenta.bold(
+            '🧠 Expert mode: Ivan will act as a principal engineer, ' +
+              'critiquing the design and implementation across rounds.'
+          )
+        );
+      }
 
       console.log(chalk.blue.bold('🚀 Starting Ivan workflow'));
       console.log('');
@@ -428,7 +479,7 @@ export class TaskExecutor {
 
       // Use worktree path for Claude execution, falling back to workingDir if needed
       const executionPath = worktreePath || this.workingDir;
-      const result = await this.getClaudeExecutor().executeTask(
+      const result = await this.runImplementation(
         taskWithInstructions,
         executionPath
       );
@@ -731,7 +782,7 @@ export class TaskExecutor {
         // Use worktree path for Claude execution
         const executionPath = worktreePath || this.workingDir;
         // Pass session ID to maintain context between tasks
-        const result = await this.getClaudeExecutor().executeTask(
+        const result = await this.runImplementation(
           taskWithInstructions,
           executionPath,
           sessionId
@@ -977,6 +1028,7 @@ export class TaskExecutor {
   ): Promise<void> {
     try {
       this.baseBranch = config.baseBranch?.trim() || undefined;
+      this.executionMode = config.mode || 'simple';
 
       // Quiet mode: suppress all intermediate output
       const executor = this.getClaudeExecutor();

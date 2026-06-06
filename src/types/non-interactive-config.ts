@@ -1,3 +1,5 @@
+export type ExecutionMode = 'simple' | 'expert';
+
 export interface NonInteractiveConfig {
   /**
    * Task descriptions - can be a single task or multiple tasks
@@ -41,4 +43,11 @@ export interface NonInteractiveConfig {
    * and reformat the ticket as a structured Task/Acceptance Criteria prompt for Claude Code.
    */
   rewritePrompt?: boolean;
+
+  /**
+   * Execution mode.
+   * - 'simple': one-shot hand-off to Claude Code (default)
+   * - 'expert': collaborative architect↔implementer loop informed by learnings
+   */
+  mode?: ExecutionMode;
 }

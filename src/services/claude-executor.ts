@@ -3,7 +3,11 @@ import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
 import { execSync } from 'child_process';
-import type { IClaudeExecutor } from './executor-factory.js';
+import type {
+  IClaudeExecutor,
+  TurnOptions,
+  TurnResult
+} from './executor-factory.js';
 
 export class ClaudeExecutor implements IClaudeExecutor {
   public quietMode: boolean = false;
@@ -33,7 +37,26 @@ export class ClaudeExecutor implements IClaudeExecutor {
     taskDescription: string,
     workingDir: string,
     sessionId?: string
-  ): Promise<{ log: string; lastMessage: string; sessionId: string }> {
+  ): Promise<TurnResult> {
+    return this.executeTurn(taskDescription, workingDir, {
+      sessionId,
+      permissionMode: 'bypassPermissions'
+    });
+  }
+
+  async executeTurn(
+    taskDescription: string,
+    workingDir: string,
+    options: TurnOptions = {}
+  ): Promise<TurnResult> {
+    const {
+      sessionId,
+      permissionMode = 'bypassPermissions',
+      systemPrompt,
+      model: modelOverride,
+      readOnly = false
+    } = options;
+
     if (!this.quietMode) {
       console.log(
         chalk.blue(`🤖 Executing task with Claude Code: ${taskDescription}`)
@@ -74,8 +97,14 @@ export class ClaudeExecutor implements IClaudeExecutor {
       const blockedTools =
         await this.configManager.getRepoBlockedTools(originalRepoPath);
 
-      // Always block EnterPlanMode and AskUserQuestion globally
-      const globallyBlockedTools = ['EnterPlanMode', 'AskUserQuestion'];
+      // Always block EnterPlanMode and AskUserQuestion globally. In read-only
+      // (architect) turns, also block file-mutating tools so the reviewer can
+      // inspect the worktree without changing it.
+      const globallyBlockedTools = [
+        'EnterPlanMode',
+        'AskUserQuestion',
+        ...(readOnly ? ['Edit', 'Write', 'NotebookEdit'] : [])
+      ];
 
       // Combine globally blocked tools with repository-specific blocked tools
       const allBlockedTools = blockedTools
@@ -118,8 +147,8 @@ export class ClaudeExecutor implements IClaudeExecutor {
         }
       }
 
-      // Get the selected model
-      const model = this.configManager.getClaudeModel();
+      // Get the selected model (architect turns may override it)
+      const model = modelOverride || this.configManager.getClaudeModel();
 
       if (!this.quietMode) {
         console.log(chalk.gray(`Working directory: ${workingDir}`));
@@ -160,9 +189,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
             // 2) (Optional) If you sometimes hop folders, explicitly whitelist them:
             additionalDirectories: [workingDir],
 
-            // 3) Allow edit tools in headless mode:
-            //    Use 'acceptEdits' for safer default; 'bypassPermissions' is most permissive.
-            permissionMode: 'bypassPermissions',
+            // 3) Permission mode: 'plan' for design dialogue (no edits),
+            //    'bypassPermissions' for implementation turns.
+            permissionMode,
+            ...(systemPrompt !== undefined && { systemPrompt }),
             ...(allowedTools !== undefined && { allowedTools }),
             disallowedTools: allBlockedTools,
             model: model,

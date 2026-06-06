@@ -7,7 +7,10 @@ import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
-import type { NonInteractiveConfig } from './types/non-interactive-config.js';
+import type {
+  NonInteractiveConfig,
+  ExecutionMode
+} from './types/non-interactive-config.js';
 import { registerLearningsCommands } from './learnings/index.js';
 import {
   readFileSync,
@@ -36,6 +39,10 @@ program
   .option(
     '--rewrite-prompt',
     'Rewrite verbose task descriptions before execution using GPT-4o-mini'
+  )
+  .option(
+    '--mode <mode>',
+    'Execution mode: "simple" (one-shot hand-off, default) or "expert" (collaborative architect↔implementer loop informed by learnings)'
   );
 
 registerLearningsCommands(program);
@@ -655,12 +662,15 @@ async function runNonInteractive(configInput: string): Promise<void> {
     }
 
     // Apply --rewrite-prompt flag if passed on CLI
-    const { rewritePrompt, baseBranch } = program.opts<{
+    const { rewritePrompt, baseBranch, mode } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
+      mode?: string;
     }>();
     if (rewritePrompt) config.rewritePrompt = true;
     if (baseBranch) config.baseBranch = baseBranch;
+    // CLI --mode overrides the config file; config value wins only if no flag.
+    if (mode !== undefined) config.mode = resolveMode(mode);
 
     // Validate config
     if (
@@ -709,16 +719,32 @@ async function runNonInteractive(configInput: string): Promise<void> {
   }
 }
 
+function resolveMode(raw: string | undefined): ExecutionMode {
+  const value = (raw || 'simple').toLowerCase();
+  if (value !== 'simple' && value !== 'expert') {
+    throw new Error(
+      `Invalid --mode "${raw}". Valid values are "simple" or "expert".`
+    );
+  }
+  return value;
+}
+
 async function main() {
   try {
     const args = process.argv.slice(2);
 
     // Parse known options early; operands are everything left after stripping flags
     const { operands } = program.parseOptions(args);
-    const { rewritePrompt: hasRewriteFlag, baseBranch } = program.opts<{
+    const {
+      rewritePrompt: hasRewriteFlag,
+      baseBranch,
+      mode: modeFlag
+    } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
+      mode?: string;
     }>();
+    const mode = resolveMode(modeFlag);
 
     // Check for -c/--config flag
     const configFlagIndex = args.findIndex(
@@ -759,6 +785,7 @@ async function main() {
       const config: NonInteractiveConfig = {
         tasks: [taskDescription],
         rewritePrompt: hasRewriteFlag,
+        mode,
         ...(baseBranch && { baseBranch })
       };
 
@@ -807,7 +834,7 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow(hasRewriteFlag, baseBranch);
+      await taskExecutor.executeWorkflow(hasRewriteFlag, baseBranch, mode);
       return;
     }
 

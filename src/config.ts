@@ -19,6 +19,17 @@ interface Config {
   repoAllowedTools?: { [repoPath: string]: string[] };
   repoBlockedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
+  collaborative?: {
+    architectModel?: string;
+    maxDesignRounds?: number;
+    maxReviewRounds?: number;
+  };
+}
+
+export interface CollaborativeConfig {
+  architectModel: string;
+  maxDesignRounds: number;
+  maxReviewRounds: number;
 }
 
 export class ConfigManager {
@@ -703,6 +714,21 @@ export class ConfigManager {
   getClaudeModel(): string {
     const config = this.getConfig();
     return config?.claudeModel || 'claude-sonnet-4-6';
+  }
+
+  /**
+   * Settings for "expert" (collaborative) execution mode, where a separate
+   * architect Claude session critiques the implementer across design and review
+   * rounds. Defaults favor a strong reasoning model for the architect role.
+   */
+  getCollaborativeConfig(): CollaborativeConfig {
+    const config = this.getConfig();
+    const c = config?.collaborative;
+    return {
+      architectModel: c?.architectModel || 'claude-opus-4-8',
+      maxDesignRounds: c?.maxDesignRounds ?? 3,
+      maxReviewRounds: c?.maxReviewRounds ?? 2
+    };
   }
 
   async promptForExecutorType(): Promise<void> {
