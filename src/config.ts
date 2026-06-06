@@ -23,6 +23,7 @@ interface Config {
     architectModel?: string;
     maxDesignRounds?: number;
     maxReviewRounds?: number;
+    captureLearnings?: boolean;
   };
 }
 
@@ -30,6 +31,7 @@ export interface CollaborativeConfig {
   architectModel: string;
   maxDesignRounds: number;
   maxReviewRounds: number;
+  captureLearnings: boolean;
 }
 
 export class ConfigManager {
@@ -741,7 +743,8 @@ export class ConfigManager {
     return {
       architectModel: c?.architectModel?.trim() || 'claude-opus-4-8',
       maxDesignRounds: sanitizeRounds(c?.maxDesignRounds, 5),
-      maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3)
+      maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3),
+      captureLearnings: c?.captureLearnings ?? true
     };
   }
 
