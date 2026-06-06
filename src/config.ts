@@ -720,14 +720,18 @@ export class ConfigManager {
    * Settings for "expert" (collaborative) execution mode, where a separate
    * architect Claude session critiques the implementer across design and review
    * rounds. Defaults favor a strong reasoning model for the architect role.
+   *
+   * maxDesignRounds / maxReviewRounds are SAFETY CEILINGS, not target counts:
+   * each loop ends as soon as the architect approves, so simple tasks finish in
+   * one round and only genuinely hard ones approach the cap.
    */
   getCollaborativeConfig(): CollaborativeConfig {
     const config = this.getConfig();
     const c = config?.collaborative;
     return {
       architectModel: c?.architectModel || 'claude-opus-4-8',
-      maxDesignRounds: c?.maxDesignRounds ?? 3,
-      maxReviewRounds: c?.maxReviewRounds ?? 2
+      maxDesignRounds: c?.maxDesignRounds ?? 5,
+      maxReviewRounds: c?.maxReviewRounds ?? 3
     };
   }
 

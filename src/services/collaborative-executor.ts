@@ -16,10 +16,15 @@ const ARCHITECT_SYSTEM_PROMPT = `You are a principal engineer reviewing a teamma
 
 You are not the implementer — you do not write the code. Your job is to think critically: challenge questionable decisions, surface risks and edge cases, point out where the work diverges from the team's established lessons, and propose simpler or safer alternatives. Be specific and concrete; vague approval is worse than useless. You may read and inspect the codebase, but never modify it.
 
-When you finish, end your message with exactly one line, nothing after it:
-VERDICT: APPROVE
-or
-VERDICT: REVISE`;
+When you finish, end your message with exactly one line, nothing after it — one of:
+VERDICT: APPROVE            (the work is sound; proceed)
+VERDICT: APPROVE_WITH_NITS  (only minor, non-blocking suggestions remain — they can be folded in without another round)
+VERDICT: REVISE            (a blocking problem must be fixed before proceeding)
+
+Calibrate your verdict deliberately, because each REVISE costs a full revision round:
+- Reserve REVISE for genuinely blocking issues: incorrectness, a wrong or risky approach, violated conventions, or real unaddressed risk.
+- If the work is good enough to proceed and your remaining concerns are minor, stylistic, speculative, or better handled later, use APPROVE_WITH_NITS instead of spending another round.
+- Iterate as many rounds as the problem genuinely needs, but do not manufacture concerns to keep iterating. When a design is sound, approve it.`;
 
 const MAX_DIFF_CHARS = 60000;
 
@@ -39,8 +44,15 @@ export interface CollaborativeRunParams {
   incomingSessionId?: string;
 }
 
+/**
+ * - `approve`: sound, proceed.
+ * - `nits`: approved, but minor non-blocking notes to fold in without another round.
+ * - `revise`: a blocking concern that warrants another revision round.
+ */
+type VerdictDecision = 'approve' | 'nits' | 'revise';
+
 interface Verdict {
-  approve: boolean;
+  decision: VerdictDecision;
   /** The architect's full message, fed back to the implementer when revising. */
   notes: string;
 }
@@ -87,6 +99,9 @@ export class CollaborativeExecutor {
     let architectSession: string | undefined;
 
     // ----- Phase 1: design dialogue -----
+    // The number of rounds is not fixed: the loop ends as soon as the architect
+    // approves (or approves with nits), stops early if a concern is repeated
+    // unresolved, and only otherwise runs up to maxDesignRounds as a safety cap.
     this.header('📐 Design dialogue');
     let plan = await this.turn(
       this.planPrompt(taskDescription, brief),
@@ -96,6 +111,8 @@ export class CollaborativeExecutor {
     );
     record('Implementer — proposed plan', plan);
 
+    let designNits: string | undefined;
+    let previousDesignConcern: string | undefined;
     for (let round = 1; round <= this.config.maxDesignRounds; round++) {
       this.header(`🏛️  Architect — design review (round ${round})`);
       const review = await this.turn(
@@ -113,18 +130,40 @@ export class CollaborativeExecutor {
       const verdict = this.parseVerdict(review);
       record(`Architect — design review (round ${round})`, review);
 
-      if (verdict.approve) {
+      if (verdict.decision === 'approve') {
         console.log(chalk.green('✅ Architect approved the design.'));
         break;
       }
+      if (verdict.decision === 'nits') {
+        console.log(
+          chalk.green(
+            '✅ Architect approved the design with minor notes (folded into implementation).'
+          )
+        );
+        designNits = verdict.notes;
+        break;
+      }
+      // Blocking (revise).
       if (round === this.config.maxDesignRounds) {
         console.log(
           chalk.yellow(
-            '⚠️  Design rounds exhausted; proceeding with the latest plan.'
+            `⚠️  Design still has blocking concerns after ${round} round(s) (safety cap reached); proceeding with the latest plan.`
           )
         );
         break;
       }
+      if (
+        previousDesignConcern &&
+        this.isRepeatConcern(previousDesignConcern, verdict.notes)
+      ) {
+        console.log(
+          chalk.yellow(
+            '⚠️  Architect repeated the same unresolved concern; further design rounds are unlikely to help. Proceeding.'
+          )
+        );
+        break;
+      }
+      previousDesignConcern = verdict.notes;
 
       this.header(`🔨 Implementer — revising plan (round ${round})`);
       plan = await this.turn(
@@ -139,7 +178,7 @@ export class CollaborativeExecutor {
     // ----- Phase 2: implementation -----
     this.header('🛠️  Implementation');
     const implLog = await this.turn(
-      this.implementPrompt(),
+      this.implementPrompt(designNits),
       executionPath,
       { sessionId: implSession, permissionMode: 'bypassPermissions' },
       (r) => (implSession = r.sessionId)
@@ -147,6 +186,10 @@ export class CollaborativeExecutor {
     record('Implementer — implementation', implLog);
 
     // ----- Phase 3: code-review dialogue -----
+    // Same dynamic termination as the design phase: ends on approval, accepts
+    // minor nits without another round, stops on a repeated unresolved concern,
+    // and uses maxReviewRounds only as a safety cap.
+    let previousReviewConcern: string | undefined;
     for (let round = 1; round <= this.config.maxReviewRounds; round++) {
       const diff = this.truncateDiff(getDiff());
       if (!diff.trim()) {
@@ -172,18 +215,39 @@ export class CollaborativeExecutor {
       const verdict = this.parseVerdict(review);
       record(`Architect — code review (round ${round})`, review);
 
-      if (verdict.approve) {
+      if (verdict.decision === 'approve') {
         console.log(chalk.green('✅ Architect approved the implementation.'));
         break;
       }
-      if (round === this.config.maxReviewRounds) {
+      if (verdict.decision === 'nits') {
         console.log(
-          chalk.yellow(
-            '⚠️  Review rounds exhausted; proceeding with the current implementation.'
+          chalk.green(
+            '✅ Architect approved the implementation with minor notes; not spending another round.'
           )
         );
         break;
       }
+      // Blocking (revise).
+      if (round === this.config.maxReviewRounds) {
+        console.log(
+          chalk.yellow(
+            `⚠️  Implementation still has blocking concerns after ${round} round(s) (safety cap reached); proceeding.`
+          )
+        );
+        break;
+      }
+      if (
+        previousReviewConcern &&
+        this.isRepeatConcern(previousReviewConcern, verdict.notes)
+      ) {
+        console.log(
+          chalk.yellow(
+            '⚠️  Architect repeated the same unresolved concern; further review rounds are unlikely to help. Proceeding.'
+          )
+        );
+        break;
+      }
+      previousReviewConcern = verdict.notes;
 
       this.header(`🔨 Implementer — applying review changes (round ${round})`);
       const revisionLog = await this.turn(
@@ -247,11 +311,46 @@ export class CollaborativeExecutor {
   }
 
   private parseVerdict(message: string): Verdict {
-    const match = message.match(/VERDICT:\s*(APPROVE|APPROVED|REVISE)/i);
+    // Order matters: APPROVE_WITH_NITS must be tested before APPROVE.
+    const match = message.match(
+      /VERDICT:\s*(APPROVE_WITH_NITS|APPROVE|APPROVED|REVISE)/i
+    );
     // Default to approve when no explicit verdict is found, to avoid burning
     // rounds on an ambiguous response.
-    const approve = match ? /APPROVE/i.test(match[1]) : true;
-    return { approve, notes: message };
+    let decision: VerdictDecision = 'approve';
+    if (match) {
+      const token = match[1].toUpperCase();
+      if (token === 'REVISE') decision = 'revise';
+      else if (token === 'APPROVE_WITH_NITS') decision = 'nits';
+      else decision = 'approve';
+    }
+    return { decision, notes: message };
+  }
+
+  /**
+   * Best-effort detection of a repeated, unresolved concern. If the architect's
+   * new critique is lexically near-identical to the previous round's, the
+   * implementer likely could not resolve it and further rounds won't help, so we
+   * stop and proceed. The threshold is high to avoid halting on genuinely new
+   * feedback; the round cap remains the ultimate backstop.
+   */
+  private isRepeatConcern(previous: string, current: string): boolean {
+    const tokenize = (s: string): Set<string> =>
+      new Set(
+        s
+          .toLowerCase()
+          .replace(/verdict:\s*\w+/gi, '')
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/)
+          .filter((w) => w.length > 3)
+      );
+    const a = tokenize(previous);
+    const b = tokenize(current);
+    if (a.size === 0 || b.size === 0) return false;
+    let intersection = 0;
+    for (const word of a) if (b.has(word)) intersection++;
+    const union = a.size + b.size - intersection;
+    return union > 0 && intersection / union >= 0.85;
   }
 
   private truncateDiff(diff: string): string {
@@ -305,8 +404,14 @@ ${notes}
 Revise your technical plan to address this feedback. Do NOT implement yet — respond with the updated plan only.`;
   }
 
-  private implementPrompt(): string {
-    return `Your plan has been approved by the reviewer. Implement it in full now. Follow the agreed approach and honor the institutional knowledge discussed earlier.`;
+  private implementPrompt(nits?: string): string {
+    const base = `Your plan has been approved by the reviewer. Implement it in full now. Follow the agreed approach and honor the institutional knowledge discussed earlier.`;
+    if (!nits) return base;
+    return `${base}
+
+The reviewer approved the design but left minor, non-blocking notes. Address them where reasonable as you implement:
+
+${nits}`;
   }
 
   private codeReviewPrompt(
