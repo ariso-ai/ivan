@@ -1,11 +1,9 @@
 import chalk from 'chalk';
-import type {
-  IClaudeExecutor,
-  TurnResult
-} from './executor-factory.js';
+import type { IClaudeExecutor, TurnResult } from './executor-factory.js';
 import type { CollaborativeConfig } from '../config.js';
 import { queryLearnings } from '../learnings/index.js';
 import type { LearningsQueryResult } from '../learnings/types.js';
+import { captureLearnings } from '../learnings/critique-distiller.js';
 
 /**
  * The architect persona. A separate Claude session adopts this role to critique
@@ -72,6 +70,10 @@ export class CollaborativeExecutor {
       transcript.push(`\n=== ${heading} ===\n${body}`);
     };
 
+    // Collect architect critiques that triggered revisions for later learning capture
+    const designCritiques: string[] = [];
+    const reviewCritiques: string[] = [];
+
     this.header('🧠 Expert mode: assembling institutional knowledge');
     const brief = await this.buildBrief(learningsRepoPath, taskDescription);
     if (brief) {
@@ -125,6 +127,9 @@ export class CollaborativeExecutor {
         );
         break;
       }
+
+      // Collect this critique for later learning capture
+      designCritiques.push(verdict.notes);
 
       this.header(`🔨 Implementer — revising plan (round ${round})`);
       plan = await this.turn(
@@ -185,6 +190,9 @@ export class CollaborativeExecutor {
         break;
       }
 
+      // Collect this critique for later learning capture
+      reviewCritiques.push(verdict.notes);
+
       this.header(`🔨 Implementer — applying review changes (round ${round})`);
       const revisionLog = await this.turn(
         this.reviseCodePrompt(verdict.notes),
@@ -193,6 +201,28 @@ export class CollaborativeExecutor {
         (r) => (implSession = r.sessionId)
       );
       record(`Implementer — revisions (round ${round})`, revisionLog);
+    }
+
+    // Best-effort capture of architect critiques as learnings
+    if (
+      this.config.captureLearnings &&
+      (designCritiques.length > 0 || reviewCritiques.length > 0)
+    ) {
+      try {
+        await captureLearnings(
+          learningsRepoPath,
+          designCritiques,
+          reviewCritiques
+        );
+        console.log(
+          chalk.gray(
+            `📚 Captured ${designCritiques.length + reviewCritiques.length} critique(s) as learnings`
+          )
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(chalk.gray(`Learnings capture skipped: ${msg}`));
+      }
     }
 
     return {
