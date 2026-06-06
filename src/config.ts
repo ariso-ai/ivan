@@ -728,10 +728,20 @@ export class ConfigManager {
   getCollaborativeConfig(): CollaborativeConfig {
     const config = this.getConfig();
     const c = config?.collaborative;
+    // config.json is untyped at runtime; sanitize so malformed values can't
+    // silently degrade expert mode (e.g. a 0/negative cap skipping the loops,
+    // or a whitespace-only model string).
+    const sanitizeRounds = (
+      value: number | undefined,
+      fallback: number
+    ): number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 1
+        ? Math.floor(value)
+        : fallback;
     return {
-      architectModel: c?.architectModel || 'claude-opus-4-8',
-      maxDesignRounds: c?.maxDesignRounds ?? 5,
-      maxReviewRounds: c?.maxReviewRounds ?? 3
+      architectModel: c?.architectModel?.trim() || 'claude-opus-4-8',
+      maxDesignRounds: sanitizeRounds(c?.maxDesignRounds, 5),
+      maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3)
     };
   }
 

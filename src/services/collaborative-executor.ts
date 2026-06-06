@@ -1,8 +1,5 @@
 import chalk from 'chalk';
-import type {
-  IClaudeExecutor,
-  TurnResult
-} from './executor-factory.js';
+import type { IClaudeExecutor, TurnResult } from './executor-factory.js';
 import type { CollaborativeConfig } from '../config.js';
 import { queryLearnings } from '../learnings/index.js';
 import type { LearningsQueryResult } from '../learnings/types.js';
@@ -57,6 +54,16 @@ interface Verdict {
   notes: string;
 }
 
+export interface CollaborativeRunResult extends TurnResult {
+  /**
+   * Present when the loop proceeded despite the architect's final verdict being
+   * REVISE (round cap or stuck-detection reached). Holds the architect's
+   * unresolved concern text so the caller can surface it to the human reviewer
+   * (e.g. in the PR body) without aborting the autonomous run.
+   */
+  unresolvedConcerns?: string;
+}
+
 /**
  * Drives an "expert"-mode collaboration: a separate architect Claude session
  * critiques an implementer Claude session across a design dialogue, then the
@@ -70,7 +77,7 @@ export class CollaborativeExecutor {
     private config: CollaborativeConfig
   ) {}
 
-  async run(params: CollaborativeRunParams): Promise<TurnResult> {
+  async run(params: CollaborativeRunParams): Promise<CollaborativeRunResult> {
     const {
       taskDescription,
       executionPath,
@@ -97,6 +104,10 @@ export class CollaborativeExecutor {
 
     let implSession = incomingSessionId;
     let architectSession: string | undefined;
+    // Set when a phase proceeds despite an unresolved blocking (REVISE) verdict
+    // (round cap or stuck-detection). Surfaced to the caller so the reviewer
+    // sees what the architect rejected, without aborting the autonomous run.
+    let unresolvedConcerns: string | undefined;
 
     // ----- Phase 1: design dialogue -----
     // The number of rounds is not fixed: the loop ends as soon as the architect
@@ -150,6 +161,7 @@ export class CollaborativeExecutor {
             `⚠️  Design still has blocking concerns after ${round} round(s) (safety cap reached); proceeding with the latest plan.`
           )
         );
+        unresolvedConcerns = verdict.notes;
         break;
       }
       if (
@@ -161,6 +173,7 @@ export class CollaborativeExecutor {
             '⚠️  Architect repeated the same unresolved concern; further design rounds are unlikely to help. Proceeding.'
           )
         );
+        unresolvedConcerns = verdict.notes;
         break;
       }
       previousDesignConcern = verdict.notes;
@@ -184,6 +197,9 @@ export class CollaborativeExecutor {
       (r) => (implSession = r.sessionId)
     );
     record('Implementer — implementation', implLog);
+    // Tracks the most recent implementer output so the returned lastMessage
+    // reflects the final code after any review revisions, not the first turn.
+    let latestImplLog = implLog;
 
     // ----- Phase 3: code-review dialogue -----
     // Same dynamic termination as the design phase: ends on approval, accepts
@@ -222,9 +238,17 @@ export class CollaborativeExecutor {
       if (verdict.decision === 'nits') {
         console.log(
           chalk.green(
-            '✅ Architect approved the implementation with minor notes; not spending another round.'
+            '✅ Architect approved the implementation with minor notes; applying them without another review round.'
           )
         );
+        this.header('🔨 Implementer — applying review nits');
+        latestImplLog = await this.turn(
+          this.applyNitsPrompt(verdict.notes),
+          executionPath,
+          { sessionId: implSession, permissionMode: 'bypassPermissions' },
+          (r) => (implSession = r.sessionId)
+        );
+        record('Implementer — applied review nits', latestImplLog);
         break;
       }
       // Blocking (revise).
@@ -234,6 +258,7 @@ export class CollaborativeExecutor {
             `⚠️  Implementation still has blocking concerns after ${round} round(s) (safety cap reached); proceeding.`
           )
         );
+        unresolvedConcerns = verdict.notes;
         break;
       }
       if (
@@ -245,24 +270,26 @@ export class CollaborativeExecutor {
             '⚠️  Architect repeated the same unresolved concern; further review rounds are unlikely to help. Proceeding.'
           )
         );
+        unresolvedConcerns = verdict.notes;
         break;
       }
       previousReviewConcern = verdict.notes;
 
       this.header(`🔨 Implementer — applying review changes (round ${round})`);
-      const revisionLog = await this.turn(
+      latestImplLog = await this.turn(
         this.reviseCodePrompt(verdict.notes),
         executionPath,
         { sessionId: implSession, permissionMode: 'bypassPermissions' },
         (r) => (implSession = r.sessionId)
       );
-      record(`Implementer — revisions (round ${round})`, revisionLog);
+      record(`Implementer — revisions (round ${round})`, latestImplLog);
     }
 
     return {
       log: transcript.join('\n'),
-      lastMessage: implLog,
-      sessionId: implSession || ''
+      lastMessage: latestImplLog,
+      sessionId: implSession || '',
+      ...(unresolvedConcerns ? { unresolvedConcerns } : {})
     };
   }
 
@@ -315,9 +342,10 @@ export class CollaborativeExecutor {
     const match = message.match(
       /VERDICT:\s*(APPROVE_WITH_NITS|APPROVE|APPROVED|REVISE)/i
     );
-    // Default to approve when no explicit verdict is found, to avoid burning
-    // rounds on an ambiguous response.
-    let decision: VerdictDecision = 'approve';
+    // A missing/malformed verdict is treated as non-approval (revise): a
+    // substantive critique with a forgotten trailer must never be read as
+    // approval. The round cap bounds the downside of an over-cautious default.
+    let decision: VerdictDecision = 'revise';
     if (match) {
       const token = match[1].toUpperCase();
       if (token === 'REVISE') decision = 'revise';
@@ -440,5 +468,13 @@ Review for correctness bugs, deviations from the agreed plan, violations of the 
 ${notes}
 
 Apply these changes to the implementation now.`;
+  }
+
+  private applyNitsPrompt(notes: string): string {
+    return `Your reviewer approved the implementation with only minor, non-blocking notes:
+
+${notes}
+
+Apply these minor improvements now where reasonable. Keep the changes small and focused — do not undertake larger rework.`;
   }
 }

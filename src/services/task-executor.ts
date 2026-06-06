@@ -22,6 +22,7 @@ import { PromptRewriter } from './prompt-rewriter.js';
 import { CollaborativeExecutor } from './collaborative-executor.js';
 import type { ExecutionMode } from '../types/non-interactive-config.js';
 import type { TurnResult } from './executor-factory.js';
+import type { CollaborativeRunResult } from './collaborative-executor.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -46,6 +47,30 @@ export class TaskExecutor {
   }
 
   /**
+   * Prepends an architect's unresolved-concern warning to a PR body when expert
+   * mode proceeded past its review limit with blocking concerns still open. Keeps
+   * the run autonomous while making sure the human reviewer sees what was rejected.
+   */
+  private prependConcerns(body: string, concerns: string[]): string {
+    const valid = concerns.filter((c) => c && c.trim());
+    if (valid.length === 0) return body;
+
+    const MAX_CONCERN_LENGTH = 4000;
+    const sections = valid.map((concern) => {
+      const cleaned = concern.replace(/VERDICT:\s*\w+\s*$/gim, '').trim();
+      return cleaned.length > MAX_CONCERN_LENGTH
+        ? `${cleaned.slice(0, MAX_CONCERN_LENGTH)}\n\n…(truncated)`
+        : cleaned;
+    });
+
+    const warning =
+      '> [!WARNING]\n' +
+      '> **The architect had unresolved concerns when expert mode reached its review limit and proceeded autonomously.** Please review these before merging.';
+
+    return `${warning}\n\n${sections.join('\n\n---\n\n')}\n\n---\n\n${body}`;
+  }
+
+  /**
    * Runs the implementation for a task, branching on execution mode:
    * - 'simple': a single one-shot hand-off to Claude Code (default)
    * - 'expert': a collaborative architect↔implementer loop informed by learnings
@@ -54,7 +79,7 @@ export class TaskExecutor {
     taskWithInstructions: string,
     executionPath: string,
     sessionId?: string
-  ): Promise<TurnResult> {
+  ): Promise<TurnResult & Pick<CollaborativeRunResult, 'unresolvedConcerns'>> {
     if (this.executionMode === 'expert') {
       const collaborative = new CollaborativeExecutor(
         this.getClaudeExecutor(),
@@ -663,7 +688,11 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      const prUrl = await this.gitManager.createPullRequest(title, body);
+      const prBody = this.prependConcerns(
+        body,
+        result.unresolvedConcerns ? [result.unresolvedConcerns] : []
+      );
+      const prUrl = await this.gitManager.createPullRequest(title, prBody);
       if (spinner) spinner.succeed(`Pull request created: ${prUrl}`);
 
       await this.jobManager.updateTaskPrLink(task.uuid, prUrl);
@@ -722,6 +751,7 @@ export class TaskExecutor {
     let worktreePath: string | null = null;
     let branchName: string | null = null;
     let sessionId: string | undefined;
+    const unresolvedConcerns: string[] = [];
 
     try {
       if (!this.gitManager) {
@@ -789,6 +819,11 @@ export class TaskExecutor {
         );
         // Store the session ID for the next task
         sessionId = result.sessionId;
+        if (result.unresolvedConcerns) {
+          unresolvedConcerns.push(
+            `**${task.description}**\n\n${result.unresolvedConcerns}`
+          );
+        }
         if (spinner) {
           spinner.succeed('Claude Code execution completed');
         }
@@ -986,7 +1021,8 @@ export class TaskExecutor {
       if (spinner) spinner.succeed('PR description generated');
 
       if (!quiet) spinner = ora('Creating pull request...').start();
-      const prUrl = await this.gitManager.createPullRequest(title, body);
+      const prBody = this.prependConcerns(body, unresolvedConcerns);
+      const prUrl = await this.gitManager.createPullRequest(title, prBody);
       if (spinner) spinner.succeed(`Pull request created: ${prUrl}`);
 
       // Update all tasks with the same PR link
