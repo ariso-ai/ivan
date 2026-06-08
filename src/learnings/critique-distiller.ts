@@ -3,6 +3,7 @@
 // collaborative review feedback rather than GitHub PR discourse.
 
 import OpenAI from 'openai';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import { rebuildLearningsDatabase } from './builder.js';
 import { createDeterministicId } from './id.js';
@@ -36,54 +37,6 @@ const DistillationResponseSchema = z.object({
 });
 
 type DistillationResponse = z.infer<typeof DistillationResponseSchema>;
-
-/**
- * JSON Schema passed to OpenAI structured outputs (strict: true).
- * Derived from the Zod schema above to keep a single source of truth.
- */
-const DISTILLATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    items: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          lessons: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                statement: { type: 'string' },
-                kind: {
-                  type: 'string',
-                  enum: ['repo_convention', 'engineering_lesson']
-                },
-                confidence: { type: 'number' },
-                rationale: { anyOf: [{ type: 'null' }, { type: 'string' }] },
-                applicability: {
-                  anyOf: [{ type: 'null' }, { type: 'string' }]
-                }
-              },
-              required: [
-                'statement',
-                'kind',
-                'confidence',
-                'rationale',
-                'applicability'
-              ],
-              additionalProperties: false
-            }
-          }
-        },
-        required: ['lessons'],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ['items'],
-  additionalProperties: false
-} as const;
 
 const DISTILLATION_SYSTEM_PROMPT = `\
 You are an expert at extracting actionable engineering lessons from architect review feedback in a collaborative development process.
@@ -166,16 +119,12 @@ export class CritiqueDistiller {
       })
       .join('\n\n---\n\n');
 
-    const response = await this.getClient().chat.completions.create({
+    const response = await this.getClient().chat.completions.parse({
       model: 'gpt-4o-mini',
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'critique_distillation',
-          strict: true,
-          schema: DISTILLATION_SCHEMA
-        }
-      },
+      response_format: zodResponseFormat(
+        DistillationResponseSchema,
+        'critique_distillation'
+      ),
       messages: [
         { role: 'system', content: DISTILLATION_SYSTEM_PROMPT },
         { role: 'user', content: userContent }
@@ -184,9 +133,9 @@ export class CritiqueDistiller {
 
     let distillation: DistillationResponse;
     try {
-      distillation = DistillationResponseSchema.parse(
-        JSON.parse(response.choices[0]?.message?.content ?? '{"items":[]}')
-      );
+      const parsed = response.choices[0]?.message?.parsed;
+      if (!parsed) return [];
+      distillation = parsed;
     } catch {
       return [];
     }
