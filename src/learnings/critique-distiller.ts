@@ -3,6 +3,7 @@
 // collaborative review feedback rather than GitHub PR discourse.
 
 import OpenAI from 'openai';
+import { z } from 'zod';
 import { rebuildLearningsDatabase } from './builder.js';
 import { createDeterministicId } from './id.js';
 import { writeLearningRecords } from './learning-writer.js';
@@ -15,9 +16,30 @@ import {
 import { loadCanonicalRecords } from './parser.js';
 
 /**
- * JSON Schema passed to OpenAI structured outputs (strict: true).
- * The model is constrained to emit exactly this shape.
+ * Zod schema for the structured output returned by the distillation LLM call.
  * Returns 0..N lessons per critique (not 1:1).
+ */
+const LessonOutputSchema = z.object({
+  statement: z.string(),
+  kind: z.enum(['repo_convention', 'engineering_lesson']),
+  confidence: z.number(),
+  rationale: z.string().nullable(),
+  applicability: z.string().nullable()
+});
+
+const DistillationResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      lessons: z.array(LessonOutputSchema)
+    })
+  )
+});
+
+type DistillationResponse = z.infer<typeof DistillationResponseSchema>;
+
+/**
+ * JSON Schema passed to OpenAI structured outputs (strict: true).
+ * Derived from the Zod schema above to keep a single source of truth.
  */
 const DISTILLATION_SCHEMA = {
   type: 'object',
@@ -62,22 +84,6 @@ const DISTILLATION_SCHEMA = {
   required: ['items'],
   additionalProperties: false
 } as const;
-
-interface LessonOutput {
-  statement: string;
-  kind: 'repo_convention' | 'engineering_lesson';
-  confidence: number;
-  rationale: string | null;
-  applicability: string | null;
-}
-
-interface LessonItem {
-  lessons: LessonOutput[];
-}
-
-interface DistillationResponse {
-  items: LessonItem[];
-}
 
 const DISTILLATION_SYSTEM_PROMPT = `\
 You are an expert at extracting actionable engineering lessons from architect review feedback in a collaborative development process.
@@ -178,9 +184,9 @@ export class CritiqueDistiller {
 
     let distillation: DistillationResponse;
     try {
-      distillation = JSON.parse(
-        response.choices[0]?.message?.content ?? '{"items":[]}'
-      ) as DistillationResponse;
+      distillation = DistillationResponseSchema.parse(
+        JSON.parse(response.choices[0]?.message?.content ?? '{"items":[]}')
+      );
     } catch {
       return [];
     }
