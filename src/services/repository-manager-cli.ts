@@ -17,19 +17,14 @@ export class RepositoryManagerCLI implements IRepositoryManager {
   async getValidWorkingDirectory(): Promise<string> {
     const currentDir = process.cwd();
 
-    if (this.isValidTargetRepository(currentDir)) {
+    if (this.isGitRepository(currentDir)) {
       return currentDir;
     }
 
     console.log(
       chalk.yellow('⚠️  Current directory is not a valid target repository')
     );
-
-    if (!this.isGitRepository(currentDir)) {
-      console.log(chalk.red('❌ Not a git repository'));
-    } else if (this.isIvanRepository(currentDir)) {
-      console.log(chalk.red('❌ Cannot run Ivan on itself'));
-    }
+    console.log(chalk.red('❌ Not a git repository'));
 
     return await this.promptForRepositoryPath();
   }
@@ -44,26 +39,6 @@ export class RepositoryManagerCLI implements IRepositoryManager {
     } catch {
       return false;
     }
-  }
-
-  private isIvanRepository(dir: string): boolean {
-    try {
-      const packageJsonPath = path.join(dir, 'package.json');
-      if (!fs.existsSync(packageJsonPath)) {
-        return false;
-      }
-
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      return (
-        packageJson.name === '@ariso-ai/ivan' || packageJson.name === 'ivan'
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  private isValidTargetRepository(dir: string): boolean {
-    return this.isGitRepository(dir) && !this.isIvanRepository(dir);
   }
 
   private async promptForRepositoryPath(): Promise<string> {
@@ -101,11 +76,6 @@ export class RepositoryManagerCLI implements IRepositoryManager {
 
       if (!this.isGitRepository(fullPath)) {
         console.log(chalk.red('❌ Path is not a git repository'));
-        continue;
-      }
-
-      if (this.isIvanRepository(fullPath)) {
-        console.log(chalk.red('❌ Cannot run Ivan on itself'));
         continue;
       }
 
