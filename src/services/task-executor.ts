@@ -19,6 +19,10 @@ import {
   createRepositoryManager
 } from './service-factory.js';
 import { PromptRewriter } from './prompt-rewriter.js';
+import { CollaborativeExecutor } from './collaborative-executor.js';
+import type { ExecutionMode } from '../types/non-interactive-config.js';
+import type { TurnResult } from './executor-factory.js';
+import type { CollaborativeRunResult } from './collaborative-executor.js';
 
 export class TaskExecutor {
   private jobManager: JobManager;
@@ -30,6 +34,7 @@ export class TaskExecutor {
   private workingDir: string;
   private repoInstructions: string | undefined;
   private baseBranch: string | undefined;
+  private executionMode: ExecutionMode;
 
   constructor() {
     this.jobManager = new JobManager();
@@ -38,6 +43,66 @@ export class TaskExecutor {
     this.workingDir = '';
     this.repoInstructions = undefined;
     this.baseBranch = undefined;
+    this.executionMode = 'simple';
+  }
+
+  /**
+   * Prepends an architect's unresolved-concern warning to a PR body when expert
+   * mode proceeded past its review limit with blocking concerns still open. Keeps
+   * the run autonomous while making sure the human reviewer sees what was rejected.
+   */
+  private prependConcerns(body: string, concerns: string[]): string {
+    const valid = concerns.filter((c) => c && c.trim());
+    if (valid.length === 0) return body;
+
+    const MAX_CONCERN_LENGTH = 4000;
+    const sections = valid.map((concern) => {
+      const cleaned = concern.replace(/VERDICT:\s*\w+\s*$/gim, '').trim();
+      return cleaned.length > MAX_CONCERN_LENGTH
+        ? `${cleaned.slice(0, MAX_CONCERN_LENGTH)}\n\n…(truncated)`
+        : cleaned;
+    });
+
+    const warning =
+      '> [!WARNING]\n' +
+      '> **The architect had unresolved concerns when expert mode reached its review limit and proceeded autonomously.** Please review these before merging.';
+
+    return `${warning}\n\n${sections.join('\n\n---\n\n')}\n\n---\n\n${body}`;
+  }
+
+  /**
+   * Runs the implementation for a task, branching on execution mode:
+   * - 'simple': a single one-shot hand-off to Claude Code (default)
+   * - 'expert': a collaborative architect↔implementer loop informed by learnings
+   */
+  private async runImplementation(
+    taskWithInstructions: string,
+    executionPath: string,
+    sessionId?: string
+  ): Promise<TurnResult & Pick<CollaborativeRunResult, 'unresolvedConcerns'>> {
+    if (this.executionMode === 'expert') {
+      const collaborative = new CollaborativeExecutor(
+        this.getClaudeExecutor(),
+        this.configManager.getCollaborativeConfig()
+      );
+      return collaborative.run({
+        taskDescription: taskWithInstructions,
+        executionPath,
+        learningsRepoPath: this.workingDir,
+        getDiff: () => {
+          if (!this.gitManager) {
+            throw new Error('GitManager not initialized');
+          }
+          return this.gitManager.getDiff();
+        },
+        incomingSessionId: sessionId
+      });
+    }
+    return this.getClaudeExecutor().executeTask(
+      taskWithInstructions,
+      executionPath,
+      sessionId
+    );
   }
 
   private getClaudeExecutor(): IClaudeExecutor {
@@ -56,10 +121,21 @@ export class TaskExecutor {
 
   async executeWorkflow(
     rewritePrompt: boolean = false,
-    baseBranch?: string
+    baseBranch?: string,
+    mode: ExecutionMode = 'simple'
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
+      this.executionMode = mode;
+
+      if (mode === 'expert') {
+        console.log(
+          chalk.magenta.bold(
+            '🧠 Expert mode: Ivan will act as a principal engineer, ' +
+              'critiquing the design and implementation across rounds.'
+          )
+        );
+      }
 
       console.log(chalk.blue.bold('🚀 Starting Ivan workflow'));
       console.log('');
@@ -428,7 +504,7 @@ export class TaskExecutor {
 
       // Use worktree path for Claude execution, falling back to workingDir if needed
       const executionPath = worktreePath || this.workingDir;
-      const result = await this.getClaudeExecutor().executeTask(
+      const result = await this.runImplementation(
         taskWithInstructions,
         executionPath
       );
@@ -612,7 +688,11 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      const prUrl = await this.gitManager.createPullRequest(title, body);
+      const prBody = this.prependConcerns(
+        body,
+        result.unresolvedConcerns ? [result.unresolvedConcerns] : []
+      );
+      const prUrl = await this.gitManager.createPullRequest(title, prBody);
       if (spinner) spinner.succeed(`Pull request created: ${prUrl}`);
 
       await this.jobManager.updateTaskPrLink(task.uuid, prUrl);
@@ -671,6 +751,7 @@ export class TaskExecutor {
     let worktreePath: string | null = null;
     let branchName: string | null = null;
     let sessionId: string | undefined;
+    const unresolvedConcerns: string[] = [];
 
     try {
       if (!this.gitManager) {
@@ -731,13 +812,18 @@ export class TaskExecutor {
         // Use worktree path for Claude execution
         const executionPath = worktreePath || this.workingDir;
         // Pass session ID to maintain context between tasks
-        const result = await this.getClaudeExecutor().executeTask(
+        const result = await this.runImplementation(
           taskWithInstructions,
           executionPath,
           sessionId
         );
         // Store the session ID for the next task
         sessionId = result.sessionId;
+        if (result.unresolvedConcerns) {
+          unresolvedConcerns.push(
+            `**${task.description}**\n\n${result.unresolvedConcerns}`
+          );
+        }
         if (spinner) {
           spinner.succeed('Claude Code execution completed');
         }
@@ -935,7 +1021,8 @@ export class TaskExecutor {
       if (spinner) spinner.succeed('PR description generated');
 
       if (!quiet) spinner = ora('Creating pull request...').start();
-      const prUrl = await this.gitManager.createPullRequest(title, body);
+      const prBody = this.prependConcerns(body, unresolvedConcerns);
+      const prUrl = await this.gitManager.createPullRequest(title, prBody);
       if (spinner) spinner.succeed(`Pull request created: ${prUrl}`);
 
       // Update all tasks with the same PR link
@@ -977,6 +1064,7 @@ export class TaskExecutor {
   ): Promise<void> {
     try {
       this.baseBranch = config.baseBranch?.trim() || undefined;
+      this.executionMode = config.mode || 'simple';
 
       // Quiet mode: suppress all intermediate output
       const executor = this.getClaudeExecutor();

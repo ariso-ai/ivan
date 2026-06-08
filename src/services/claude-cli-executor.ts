@@ -3,7 +3,11 @@ import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
 import { execSync } from 'child_process';
-import type { IClaudeExecutor } from './executor-factory.js';
+import type {
+  IClaudeExecutor,
+  TurnOptions,
+  TurnResult
+} from './executor-factory.js';
 
 export class ClaudeCliExecutor implements IClaudeExecutor {
   public quietMode: boolean = false;
@@ -26,7 +30,26 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
     taskDescription: string,
     workingDir: string,
     sessionId?: string
-  ): Promise<{ log: string; lastMessage: string; sessionId: string }> {
+  ): Promise<TurnResult> {
+    return this.executeTurn(taskDescription, workingDir, {
+      sessionId,
+      permissionMode: 'bypassPermissions'
+    });
+  }
+
+  async executeTurn(
+    taskDescription: string,
+    workingDir: string,
+    options: TurnOptions = {}
+  ): Promise<TurnResult> {
+    const {
+      sessionId,
+      permissionMode = 'bypassPermissions',
+      systemPrompt,
+      model: modelOverride,
+      readOnly = false
+    } = options;
+
     console.log(
       chalk.blue(`🤖 Executing task with Claude Code CLI: ${taskDescription}`)
     );
@@ -69,8 +92,13 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       const blockedTools =
         await this.configManager.getRepoBlockedTools(originalRepoPath);
 
-      // Always block EnterPlanMode and AskUserQuestion globally
-      const globallyBlockedTools = ['EnterPlanMode', 'AskUserQuestion'];
+      // Always block EnterPlanMode and AskUserQuestion globally. In read-only
+      // (architect) turns, also block file-mutating tools.
+      const globallyBlockedTools = [
+        'EnterPlanMode',
+        'AskUserQuestion',
+        ...(readOnly ? ['Edit', 'Write', 'NotebookEdit'] : [])
+      ];
 
       // Combine globally blocked tools with repository-specific blocked tools
       const allBlockedTools = blockedTools
@@ -113,8 +141,8 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         }
       }
 
-      // Get the selected model
-      const model = this.configManager.getClaudeModel();
+      // Get the selected model (architect turns may override it)
+      const model = modelOverride || this.configManager.getClaudeModel();
 
       console.log(chalk.gray(`Working directory: ${workingDir}`));
       console.log(chalk.gray(`Model: ${model}`));
@@ -134,8 +162,13 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         '--model',
         model,
         '--permission-mode',
-        'bypassPermissions'
+        permissionMode
       ];
+
+      // Add an architect/reviewer persona or other per-turn system prompt
+      if (systemPrompt) {
+        args.push('--append-system-prompt', systemPrompt);
+      }
 
       // Add allowed tools if specified
       if (

@@ -19,6 +19,17 @@ interface Config {
   repoAllowedTools?: { [repoPath: string]: string[] };
   repoBlockedTools?: { [repoPath: string]: string[] };
   repoInstructionsDeclined?: { [repoPath: string]: boolean };
+  collaborative?: {
+    architectModel?: string;
+    maxDesignRounds?: number;
+    maxReviewRounds?: number;
+  };
+}
+
+export interface CollaborativeConfig {
+  architectModel: string;
+  maxDesignRounds: number;
+  maxReviewRounds: number;
 }
 
 export class ConfigManager {
@@ -703,6 +714,35 @@ export class ConfigManager {
   getClaudeModel(): string {
     const config = this.getConfig();
     return config?.claudeModel || 'claude-sonnet-4-6';
+  }
+
+  /**
+   * Settings for "expert" (collaborative) execution mode, where a separate
+   * architect Claude session critiques the implementer across design and review
+   * rounds. Defaults favor a strong reasoning model for the architect role.
+   *
+   * maxDesignRounds / maxReviewRounds are SAFETY CEILINGS, not target counts:
+   * each loop ends as soon as the architect approves, so simple tasks finish in
+   * one round and only genuinely hard ones approach the cap.
+   */
+  getCollaborativeConfig(): CollaborativeConfig {
+    const config = this.getConfig();
+    const c = config?.collaborative;
+    // config.json is untyped at runtime; sanitize so malformed values can't
+    // silently degrade expert mode (e.g. a 0/negative cap skipping the loops,
+    // or a whitespace-only model string).
+    const sanitizeRounds = (
+      value: number | undefined,
+      fallback: number
+    ): number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 1
+        ? Math.floor(value)
+        : fallback;
+    return {
+      architectModel: c?.architectModel?.trim() || 'claude-opus-4-8',
+      maxDesignRounds: sanitizeRounds(c?.maxDesignRounds, 5),
+      maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3)
+    };
   }
 
   async promptForExecutorType(): Promise<void> {
