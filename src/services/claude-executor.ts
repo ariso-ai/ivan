@@ -97,12 +97,15 @@ export class ClaudeExecutor implements IClaudeExecutor {
       const blockedTools =
         await this.configManager.getRepoBlockedTools(originalRepoPath);
 
-      // Always block EnterPlanMode and AskUserQuestion globally. In read-only
-      // (architect) turns, also block file-mutating tools so the reviewer can
-      // inspect the worktree without changing it.
+      // Always block EnterPlanMode and AskUserQuestion globally. Also block
+      // ExitPlanMode outside explicit plan-mode turns — otherwise the model can
+      // call it to end the turn after only planning the change, with no edits.
+      // In read-only (architect) turns, also block file-mutating tools so the
+      // reviewer can inspect the worktree without changing it.
       const globallyBlockedTools = [
         'EnterPlanMode',
         'AskUserQuestion',
+        ...(permissionMode === 'plan' ? [] : ['ExitPlanMode']),
         ...(readOnly ? ['Edit', 'Write', 'NotebookEdit'] : [])
       ];
 
@@ -121,8 +124,6 @@ export class ClaudeExecutor implements IClaudeExecutor {
             'Bash',
             'Glob',
             'Grep',
-            'ExitPlanMode',
-            'EnterPlanMode',
             'Read',
             'Edit',
             'Write',
@@ -132,9 +133,9 @@ export class ClaudeExecutor implements IClaudeExecutor {
             'WebSearch',
             'BashOutput',
             'KillShell',
-            'AskUserQuestion',
             'Skill',
-            'SlashCommand'
+            'SlashCommand',
+            ...(permissionMode === 'plan' ? ['ExitPlanMode'] : [])
           ];
           allowedTools = allTools.filter(
             (tool) => !allBlockedTools.includes(tool)
