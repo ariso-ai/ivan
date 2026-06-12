@@ -364,12 +364,10 @@ Found a bug or have an idea? [Open an issue](https://github.com/ariso-ai/ivan/is
 
 ## License
 
-Released under the **MIT License** © Ariso AI.
+Released under the **MIT License**.
 
-<div align="center">
+© ariso.ai
 
 **Built with ❤️ to make AI-powered engineering reviewable, repeatable, and a little bit wiser every day.**
 
 If Ivan ships you a good PR, give it a ⭐
-
-</div>
