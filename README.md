@@ -1,584 +1,375 @@
+<div align="center">
+
 # Ivan 🤖
 
-Your AI-Powered Development Assistant that automates complex development workflows by breaking down high-level requests into executable tasks, implementing them with AI assistance, and creating pull requests with properly formatted commits and descriptions.
+### The AI engineering teammate that ships pull requests — and remembers your team's lessons while doing it.
 
-## Installation
+Give Ivan a sentence. Ivan breaks it into PR-sized tasks, **debates its own design with a principal-engineer persona**, writes the code, reviews it, opens the PR, and then **handles the review comments too**.
+
+[![npm version](https://img.shields.io/npm/v/@ariso-ai/ivan?color=cb3837&label=npm&logo=npm)](https://www.npmjs.com/package/@ariso-ai/ivan)
+[![npm downloads](https://img.shields.io/npm/dm/@ariso-ai/ivan?color=cb3837&logo=npm)](https://www.npmjs.com/package/@ariso-ai/ivan)
+[![license](https://img.shields.io/npm/l/@ariso-ai/ivan?color=blue)](#license)
+[![Built with Claude](https://img.shields.io/badge/built%20with-Claude-d97757?logo=anthropic&logoColor=white)](https://www.anthropic.com)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
 ```bash
+npm i -g @ariso-ai/ivan && ivan "Add rate limiting to the public API"
+```
+
+[Quick Start](#-quick-start) · [Expert Mode](#-expert-mode-an-ai-that-argues-with-itself-so-you-dont-have-to) · [Institutional Memory](#-institutional-memory-ivan-learns-your-team) · [Commands](#-cli-reference) · [Contributing](#-contributing)
+
+</div>
+
+---
+
+## Why Ivan?
+
+Most AI coding tools have two problems: they **forget everything** between sessions, and they **ship code that nobody reviewed**. Ivan was built to fix both.
+
+> 🧠 **It remembers.** Ivan distills your team's real PRs and coding sessions into *institutional knowledge*, then injects those hard-won lessons into every future task. The more your team works, the smarter Ivan gets.
+>
+> 🏛️ **It reviews itself.** In **Expert mode**, a separate principal-engineer persona critiques the plan *and* the diff across multiple rounds before a single line reaches your PR — like having a senior reviewer pair with the implementer, automatically.
+>
+> 🔁 **It closes the loop.** Ivan doesn't stop at "PR opened." It addresses inline review comments, replies with the fixing commit, and can be triggered straight from a GitHub issue with `@ivan-agent /build`.
+
+Ivan runs **locally, with your credentials**, on top of [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) — bring your Anthropic API key, or a Claude Max subscription via the CLI driver.
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1. Install
 npm i -g @ariso-ai/ivan
-```
 
-On first run, Ivan will prompt you to configure API keys and preferences. You can reconfigure at any time with `ivan reconfigure`.
-
-## Quick Start
-
-### Running Tasks
-
-Execute tasks directly in your repository:
-
-```bash
-# Interactive mode - Ivan will prompt you for what to build
-ivan
-
-# Or provide a task description directly
+# 2. Run it in any git repo — Ivan walks you through API keys & preferences on first run
 ivan "Add user authentication with JWT tokens"
-
-# Or branch work off a specific local base branch instead of main
-ivan --base-branch learnings-bootstrap "Add user authentication with JWT tokens"
 ```
 
-Ivan will:
-1. Break down your request into manageable tasks
-2. Create branches and implement changes using AI
-3. Generate proper commit messages
-4. Create pull requests with detailed descriptions
+That's it. Ivan will:
 
-### Addressing PR Comments
+1. 🧩 **Break down** your request into manageable, PR-ready tasks
+2. 🌿 **Branch & implement** each one using Claude Code
+3. ✍️ **Write** conventional commit messages and a detailed PR description
+4. 📬 **Open the PR** with context-specific review instructions
 
-Automatically handle review comments on your pull requests:
+Want Ivan to think harder? Add one flag:
 
 ```bash
-# Scan all open PRs and address unresolved comments
-ivan address
-
-# Address comments on a specific PR
-ivan address 123
-
-# Only process comments from specific reviewers
-ivan address --from-user username
+ivan --mode expert "Refactor the billing module to support proration"
 ```
 
-Ivan will:
-1. Find all unaddressed inline code comments
-2. Implement fixes using AI
-3. Commit changes with co-author attribution
-4. Reply to comments with the fixing commit
+---
 
-### Automated GitHub Actions Workflow
+## 🏛️ Expert Mode: an AI that argues with itself so you don't have to
 
-Set up Ivan to automatically respond when tagged in GitHub issues:
+Ivan ships two execution modes. Pick per-run with `--mode`:
+
+| Mode | What it does | Best for |
+| --- | --- | --- |
+| **`simple`** *(default)* | A fast, one-shot hand-off to Claude Code. | Quick changes, well-scoped tasks. |
+| **`expert`** | A collaborative **architect ↔ implementer** loop, grounded in your team's learnings. | High-stakes changes where design quality matters. |
+
+In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the code. A separate **Architect** session — adopting a principal-engineer persona that *holds your team's institutional knowledge* — challenges it. They go back and forth on the **design**, then on the **diff**, and the Architect decides when the work is good enough to ship.
+
+```
+            📚 Institutional knowledge  (your past PRs + coding sessions)
+                          │  injected into every round, weighed heavily
+                          ▼
+   ┌─────────────────┐   plan ──▶ critique ──▶ revise        ┌──────────────────────┐
+   │  🔨 Implementer  │ ═══════════════════════════════════════ │  🏛️  Architect         │
+   │   writes code    │ ◀═══════════════════════════════════════ │  principal engineer    │
+   └─────────────────┘   APPROVE / APPROVE_WITH_NITS / REVISE  │  read-only, never edits│
+                          │                                    └──────────────────────┘
+                          ▼
+     📐 Design rounds  ──▶  🛠️  Implementation  ──▶  🔎 Code-review rounds  ──▶  ✅ PR
+```
+
+- The Architect is **read-only** — it inspects the codebase to ground its critique but never touches the code.
+- Every turn ends with a calibrated verdict — `APPROVE`, `APPROVE_WITH_NITS` (minor notes folded in without another round), or `REVISE` (a blocking issue worth another pass).
+- **Rounds are dynamic, not fixed.** The loop ends the moment the Architect approves, bails early if it keeps raising the same unresolved concern, and only runs to the configured cap on genuinely hard tasks. Simple changes finish in a single round.
+- By default the Architect runs on a stronger reasoning model (**Claude Opus**) while the Implementer uses your configured model — a senior reviewer + a fast builder.
+
+**Tune it** in `~/.ivan/config.json` (the round counts are *safety ceilings*, not targets):
+
+```jsonc
+{
+  "collaborative": {
+    "architectModel": "claude-opus-4-8", // the reviewer's brain
+    "maxDesignRounds": 5,                 // max design back-and-forths before building
+    "maxReviewRounds": 3                  // max code-review back-and-forths before shipping
+  }
+}
+```
+
+---
+
+## 🧠 Institutional Memory: Ivan learns your team
+
+Ivan's edge is that it doesn't start every task from zero. The `ivan learn` command builds a durable, queryable store of your team's engineering wisdom — and Expert mode reads from it on every task.
 
 ```bash
-# Add the Ivan Agent workflow to your repository
+# Initialize the learnings store in a repo
+ivan learn init --repo /path/to/repo
+
+# Learn from your merged PRs (review comments are a goldmine of lessons)
+ivan learn ingest-repo --repo /path/to/repo --state merged --limit 100
+
+# Learn from how you actually think — mine your local Claude Code sessions
+ivan learn coding-sessions --repo /path/to/repo
+
+# See what Ivan knows
+ivan learn query --repo /path/to/repo --text "error handling for async locks"
+```
+
+**How it works:**
+
+- 📥 **`ingest-pr` / `ingest-repo`** — fetches PR review feedback from GitHub and distills it into reusable *engineering lessons* and *repo conventions*.
+- 🧬 **`coding-sessions`** — analyzes your local Claude Code transcripts to extract **thinking patterns** (how you reason about architecture, product, and quality) and **example interactions** (the questions and corrections that reveal how a senior engineer thinks).
+- 💾 **Canonical & committable** — learnings are stored as plain JSONL under `.ivan/`, so they live in git, travel with the repo, and are reviewable like any other artifact. A derived local `.ivan/db.sqlite` powers fast semantic retrieval; queries never hit the network.
+- 🪝 **`install-hooks`** — wires Ivan's retrieval surface into Claude Code itself (`UserPromptSubmit` and `PostToolUse(Edit|Write|MultiEdit)`), so the right lesson surfaces at the right moment.
+
+```bash
+ivan learn install-hooks --repo /path/to/repo   # learnings show up live, mid-edit
+ivan learn rebuild --repo /path/to/repo          # rebuild the derived index
+```
+
+---
+
+## 💬 Address review comments — automatically
+
+Ivan treats review feedback and red CI as first-class workflows, not an afterthought.
+
+```bash
+ivan address                       # scan all open PRs for unaddressed comments or failing checks
+ivan address 123                   # just PR #123
+ivan address --from-user alice     # only comments from specific reviewers
+ivan address --yes                 # skip confirmation prompts
+ivan address --non-interactive     # accept all comments without prompting (CI-friendly)
+```
+
+For each unresolved inline comment, Ivan implements the fix, commits it with co-author attribution, and replies to the thread with the fixing commit — using the GitHub GraphQL API to track resolution state so it never double-handles a comment. It can also pick up **failing checks** on a PR and push fixes for them.
+
+---
+
+## ⚙️ GitHub Actions: trigger Ivan from an issue
+
+Turn any issue into a PR. Run once:
+
+```bash
 ivan add-action
 ```
 
-This creates a GitHub Actions workflow that:
-1. Triggers when someone mentions `@ivan-agent /build` in an issue
-2. Reads the issue description as the task
-3. Creates a PR with the implementation
-4. Waits 15 minutes for reviews
-5. Automatically addresses any review comments
+This installs a workflow so that when someone comments `@ivan-agent /build` on an issue, Ivan reads the issue, opens a PR, waits ~15 minutes for reviews, and then runs `ivan address` to handle any comments — fully hands-off.
 
-**Required GitHub Secrets** (set in your repository settings under Settings → Secrets and variables → Actions):
-- `OPEN_AI_KEY`: Your OpenAI API key
-- `ANTHROPIC_KEY`: Your Anthropic API key
-- `PAT`: GitHub Personal Access Token with `repo` and `pull_requests` permissions
+**Required repository secrets** (Settings → Secrets and variables → Actions):
 
-## Understanding Ivan's Drivers
+| Secret | Purpose |
+| --- | --- |
+| `ANTHROPIC_KEY` | Claude Code execution |
+| `OPEN_AI_KEY` | Commit messages & PR descriptions |
+| `PAT` | GitHub token with `repo` + `pull_requests` permissions |
 
-Ivan offers flexibility in how it authenticates and executes tasks through different driver options.
+---
 
-### Claude Execution Drivers
+## 🔌 Drivers: run it your way
 
-Choose how Ivan runs Claude Code to implement your tasks:
+Ivan is deliberately flexible about *how* it talks to Claude and to GitHub.
 
-#### SDK Mode (Default - Recommended)
-- **How it works**: Uses the Anthropic API directly via TypeScript SDK
-- **Requires**: Anthropic API key (`sk-ant-...`)
-- **Best for**: Users with API access, production environments
-- **Advantages**: Reliable, works in CI/CD, better error handling
+**Claude execution** — switch anytime with `ivan configure-executor`:
 
-#### CLI Mode
-- **How it works**: Uses the Claude Code CLI installed on your machine
-- **Requires**: Claude Code CLI installed locally
-- **Best for**: Claude Max subscribers (no API key needed)
-- **Advantages**: Real-time streaming output, no API costs for Max subscribers
+- **SDK mode** *(default)* — uses the Anthropic API directly. Reliable, CI/CD-friendly. Needs an `sk-ant-...` key.
+- **CLI mode** — drives your locally installed Claude Code CLI. **No API costs for Claude Max subscribers**, with real-time streaming output.
 
-**Switch between modes:**
+**GitHub auth** — chosen during setup:
+
+- **GitHub CLI** *(default)* — `gh auth login`, easy and secure for local use.
+- **Personal Access Token (PAT)** — for CI, Actions, and non-interactive environments.
+
+---
+
+## 🛠️ Configuration
+
+Ivan prompts for everything it needs on first run. Settings live in `~/.ivan/config.json`; the local database in `~/.ivan/db.sqlite`.
+
 ```bash
-ivan configure-executor
+ivan reconfigure              # re-run the full setup
+ivan configure-executor       # SDK (API) vs CLI (Claude Max)
+ivan choose-model             # pick the implementer model
+ivan configure-review-agent   # which bot to tag for PR reviews
+ivan show-config              # view current settings
 ```
 
-### GitHub Authentication Drivers
+**Models** (`ivan choose-model`):
 
-Choose how Ivan authenticates with GitHub:
+- **Claude Sonnet 4.6** — recommended default, great balance of speed and quality
+- **Claude Haiku 4.5** — faster, ideal for simpler tasks
+- **Claude Opus 4.8** — most capable, slower (and the default Architect in Expert mode)
 
-#### GitHub CLI (Default - Recommended)
-- **How it works**: Uses `gh auth login` for authentication
-- **Requires**: GitHub CLI installed and authenticated
-- **Best for**: Local development, interactive use
-- **Advantages**: Easy setup, secure token management
+**Per-repository settings:**
 
-**Setup:**
 ```bash
-gh auth login
+ivan edit-repo-instructions   # coding guidelines applied to every task in this repo
+ivan config-tools             # allow-list tools Claude Code may use
+ivan config-blocked-tools     # block specific tools (least-privilege by repo)
 ```
 
-#### Personal Access Token (PAT)
-- **How it works**: Uses a manually created GitHub token
-- **Requires**: GitHub PAT with `repo` and `pull_requests` permissions
-- **Best for**: CI/CD environments, GitHub Actions, automated workflows
-- **Advantages**: Works in non-interactive environments
+---
 
-**Create a PAT:** Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token
+## 📋 CLI Reference
 
-**Configure:**
+<details>
+<summary><strong>Core</strong></summary>
+
 ```bash
-ivan reconfigure  # Select PAT option during setup
+ivan                          # interactive: Ivan asks what to build
+ivan "task description"       # headless: run a task directly
+ivan --mode expert "task"     # collaborative architect ↔ implementer loop
+ivan --base-branch dev "task" # branch work off a specific local base branch
+ivan -c config.json           # run from a JSON config (CI-friendly)
+ivan -c '{"tasks":["A","B"],"mode":"expert"}'   # inline JSON config
+ivan address [PR#]            # address PR review comments or failing checks
+ivan add-action               # install the GitHub Actions workflow
 ```
 
-## Key Features
+</details>
 
-- **🧠 Intelligent Task Breakdown**: Analyzes your request and automatically breaks it down into manageable, PR-ready tasks
-- **🤖 Flexible Claude Execution**: Choose between SDK (API-based) or CLI (Claude Max) execution modes
-- **🔐 Flexible GitHub Auth**: Use GitHub CLI or Personal Access Tokens for authentication
-- **🔄 Automated Git Workflow**: Creates branches, commits changes, and opens pull requests automatically
-- **📝 Smart Commit Messages**: Generates conventional commit messages using OpenAI's GPT-4
-- **💬 PR Comment Handling**: Automatically addresses PR review comments with `ivan address` command
-- **🔍 Smart Review Requests**: Generates context-specific review instructions for each PR using AI
-- **🤖 GitHub Actions Integration**: Trigger Ivan automatically when tagged in issues
-- **🎯 Repository-Specific Instructions**: Set coding guidelines and patterns that are automatically applied to every task
-- **📊 Progress Tracking**: SQLite database tracks all jobs, tasks, execution history, and tool calls
-- **🌐 Web Interface**: Built-in web server to view and monitor jobs and tasks in your browser
-- **⚡ Interactive Prompting**: Automatically prompts for missing configuration instead of failing
-
-## Configuration
-
-Ivan automatically prompts for configuration on first use. Configuration is stored in `~/.ivan/config.json` and the database in `~/.ivan/db.sqlite`.
-
-### Reconfigure at Any Time
+<details>
+<summary><strong>Configuration</strong></summary>
 
 ```bash
-# Reconfigure all settings
 ivan reconfigure
-
-# Configure specific settings
-ivan configure-executor        # Change Claude execution mode (SDK vs CLI)
-ivan choose-model              # Select Claude model
-ivan configure-review-agent    # Set review bot to tag in PRs
-ivan show-config              # View current configuration
-```
-
-### Configuration Options
-
-- **GitHub Authentication**: GitHub CLI (`gh`) or Personal Access Token (PAT)
-- **Claude Executor Type**: SDK (API-based) or CLI (Claude Max)
-- **OpenAI API Key**: For generating commit messages and PR descriptions
-- **Anthropic API Key**: For Claude Code execution (SDK mode only)
-- **Claude Model**: Choose between Sonnet 4.5, Haiku, or Opus
-- **Repository Instructions**: Optional coding guidelines specific to each repository
-- **Tool Permissions**: Configure which tools Claude Code can use per repository
-
-## Usage Examples
-
-### Interactive Mode
-
-```bash
-# Start Ivan in any git repository
-ivan
-
-# Start Ivan and branch work from a specific local base branch
-ivan --base-branch learnings-bootstrap
-```
-
-Ivan will prompt you for what to build, then:
-1. Break down your request into individual tasks
-2. Ask if you want to wait for PR reviews
-3. Execute each task using Claude Code
-4. Create pull requests with detailed descriptions
-5. Optionally wait and automatically address comments
-
-### Non-Interactive Mode (Headless)
-
-```bash
-# Provide task description as an argument
-ivan "Add user authentication with JWT tokens"
-
-# Provide a task description and branch from a specific local base branch
-ivan --base-branch learnings-bootstrap "Add user authentication with JWT tokens"
-
-# Or use a JSON config file
-ivan -c config.json
-
-# Or provide inline JSON config
-ivan -c '{"tasks": ["Add authentication", "Add tests"], "prStrategy": "single"}'
-```
-
-Perfect for CI/CD pipelines, automated workflows, and scripting.
-
-### Task Examples
-
-Here are some example requests you can give Ivan:
-
-- "Add user authentication with JWT tokens"
-- "Refactor the database module to use TypeScript"
-- "Add comprehensive test coverage for the API endpoints"
-- "Implement a caching layer with Redis"
-- "Fix all ESLint warnings and add proper error handling"
-
-## CLI Commands Reference
-
-### Main Commands
-
-```bash
-ivan                    # Run Ivan to execute tasks (default command)
-ivan --base-branch dev  # Branch work from a specific local base branch
-ivan address [PR#]      # Address PR review comments (optionally specify PR number)
-ivan reconfigure        # Reconfigure API keys and settings
-ivan add-action         # Add Ivan Agent GitHub Action workflow to repository
-```
-
-### Configuration Commands
-
-```bash
-ivan configure-executor       # Choose Claude execution mode (SDK vs CLI)
-ivan choose-model            # Select Claude model (Sonnet, Haiku, Opus)
-ivan configure-review-agent  # Set review bot to tag in PRs
-ivan show-config            # View current configuration
-```
-
-### Repository-Specific Configuration
-
-```bash
-ivan edit-repo-instructions  # Set coding guidelines for this repository
-ivan config-tools           # Configure allowed tools for Claude Code
-ivan config-blocked-tools   # Configure blocked tools for Claude Code
-```
-
-### Web Interface
-
-```bash
-ivan web [--port <port>]      # Start the web interface
-ivan web-stop [--port <port>] # Stop the web interface
-```
-
-### Learnings MVP
-
-```bash
-ivan learnings init --repo /path/to/repo
-ivan learnings ingest-pr --repo /path/to/repo --pr 123
-ivan learnings install-hooks --repo /path/to/repo
-ivan learnings extract --repo /path/to/repo
-ivan learnings rebuild --repo /path/to/repo
-ivan learnings query --repo /path/to/repo --text "locks await"
-```
-
-This slice stores canonical learnings as committed JSONL files under `.ivan/` and rebuilds a derived local `.ivan/db.sqlite` for query-time retrieval. Queries read only the local derived database; they do not fetch live GitHub data.
-
-`ivan learnings install-hooks --repo ...` installs the recommended Claude Code retrieval surface into the target repo's `.claude/settings.json`:
-
-- `UserPromptSubmit`
-- `PostToolUse(Edit|Write|MultiEdit)`
-- `Stop`
-
-### Address Command Options
-
-```bash
-# Scan all open PRs for unaddressed comments
-ivan address
-
-# Address a specific PR
-ivan address 123
-
-# Only process comments from specific reviewers
-ivan address --from-user username
-ivan address --from-user user1 --from-user user2
-
-# Skip confirmation prompts
-ivan address --yes
-```
-
-The `--from-user` flag is useful for:
-- Working with specific team members
-- Prioritizing feedback from senior reviewers
-- Processing comments in batches by reviewer
-
-## Advanced Features
-
-### Web Interface
-
-Monitor jobs and tasks in your browser:
-
-```bash
-ivan web              # Start on port 3000
-ivan web --port 8080  # Custom port
-```
-
-Open http://localhost:3000 to see:
-- All jobs and their status
-- Task progress and execution logs
-- Pull request links
-
-### Repository-Specific Instructions
-
-Set coding guidelines automatically applied to every task:
-
-```bash
+ivan configure-executor       # SDK vs CLI
+ivan choose-model             # Sonnet / Haiku / Opus
+ivan configure-review-agent   # PR review bot
+ivan show-config
 ivan edit-repo-instructions
+ivan config-tools
+ivan config-blocked-tools
 ```
 
-Examples:
-- Coding style preferences (e.g., "Use TypeScript for all new files")
-- Framework patterns (e.g., "Follow React hooks patterns")
-- Testing requirements (e.g., "Add unit tests for new functions")
-- Documentation standards
+</details>
 
-### Tool Configuration
-
-Control which tools Claude Code can use:
+<details>
+<summary><strong>Learnings (<code>ivan learn</code>, alias <code>ivan learnings</code>)</strong></summary>
 
 ```bash
-ivan config-tools          # Configure allowed tools
-ivan config-blocked-tools  # Configure blocked tools
+ivan learn init --repo <path>
+ivan learn ingest-pr --repo <path> --pr <number>
+ivan learn ingest-repo --repo <path> [--state merged|open|closed|all] [--limit N]
+ivan learn coding-sessions --repo <path> [--project <name>] [--recent <days>] [--dry-run] [--force] [--reset]
+ivan learn install-hooks --repo <path>
+ivan learn rebuild --repo <path> [--if-stale]
+ivan learn query --repo <path> --text "<search>" [--limit N]
 ```
 
-Default: All tools allowed. Restrict for security: `["Bash", "Read", "Write", "Edit"]`
+</details>
 
-### Model Selection
+<details>
+<summary><strong>Web interface</strong></summary>
 
 ```bash
-ivan choose-model
+ivan web [--port <port>]      # monitor jobs, tasks, logs & PR links in your browser
+ivan web-stop [--port <port>]
 ```
 
-Available models:
-- **Claude Sonnet 4.5**: Recommended for most tasks (default)
-- **Claude 3.5 Haiku**: Faster, good for simpler tasks
-- **Claude Opus 4.1**: Most capable, but slower
+Open http://localhost:3000 to watch jobs, task progress, execution logs, and PR links in real time.
 
-## How It Works
+</details>
 
-### Standard Workflow
-1. **Task Analysis**: Breaks your request into PR-ready tasks
-2. **Branch Creation**: Creates a new branch for each task
-3. **Code Implementation**: Implements changes using Claude Code
-4. **Smart Commits**: Generates conventional commit messages
-5. **Pull Request**: Creates PR with detailed description and review instructions
-6. **Review Monitoring** (optional): Waits and automatically addresses comments
-7. **Cleanup**: Returns to main branch and syncs
+---
 
-### Address Workflow
-1. **PR Scanning**: Finds open PRs with unaddressed comments
-2. **Comment Detection**: Uses GitHub GraphQL API to find unresolved comments
-3. **Automated Fixes**: Implements fixes using Claude Code
-4. **Smart Replies**: Replies to comments with the fixing commit
-5. **Review Requests**: Adds context-specific review instructions
+## 🔍 How It Works
 
-### GitHub Actions Workflow (via `ivan add-action`)
-1. **Trigger**: Someone mentions `@ivan-agent /build` in an issue
-2. **Task Execution**: Reads issue body and runs `ivan` command
-3. **PR Creation**: Creates PR with implementation
-4. **Wait Period**: Waits 15 minutes for reviews
-5. **Auto-Address**: Runs `ivan address` to handle comments
-6. **Status Updates**: Comments on the issue with progress
+**Build workflow**
 
-## Architecture
+```
+request ─▶ task breakdown ─▶ branch ─▶ implement ─▶ smart commit ─▶ PR
+                                  │                                    │
+                          (expert mode: design + review rounds)  (optional: wait & auto-address)
+```
+
+**Address workflow** — finds unresolved inline comments via the GitHub GraphQL API, implements each fix, replies with the fixing commit, and adds context-specific review instructions.
+
+**Everything is tracked** — a local SQLite database records every job, task, status transition, branch, PR link, and Claude Code tool call, viewable through `ivan web`.
+
+---
+
+## 🏗️ Architecture
 
 ```
 ivan/
 ├── src/
-│   ├── database/       # SQLite schema and migrations
-│   ├── services/       # Core services
-│   │   ├── claude-executor.ts       # Claude Code SDK integration
-│   │   ├── claude-cli-executor.ts   # Claude Code CLI integration
-│   │   ├── executor-factory.ts      # Executor selection logic
-│   │   ├── openai-service.ts        # OpenAI API for commits/PRs
-│   │   ├── job-manager.ts           # Job and task management
-│   │   ├── git-manager.ts           # Git operations (supports gh CLI and PAT)
-│   │   ├── task-executor.ts         # Main workflow orchestration
-│   │   ├── address-executor.ts      # PR comment addressing workflow
-│   │   ├── address-task-executor.ts # Individual comment fix execution
-│   │   └── pr-service.ts            # PR comment and check detection
-│   ├── config.ts       # Configuration management (drivers, auth, etc.)
-│   ├── web-server.ts   # Web interface server
-│   └── index.ts        # CLI entry point
-├── .github/workflows/
-│   └── ivanagent.yml   # GitHub Actions workflow template
-├── dist/               # Compiled JavaScript
-└── ~/.ivan/            # User configuration and database
-    ├── config.json     # API keys and settings
-    │                   #   - executorType: "sdk" | "cli"
-    │                   #   - githubAuthType: "gh-cli" | "pat"
-    │                   #   - githubPat: optional PAT token
-    └── db.sqlite       # Jobs and tasks database
+│   ├── services/
+│   │   ├── task-executor.ts          # orchestrates the build workflow (simple | expert)
+│   │   ├── collaborative-executor.ts # the architect ↔ implementer loop (expert mode)
+│   │   ├── claude-executor.ts        # Claude Code SDK driver
+│   │   ├── claude-cli-executor.ts    # Claude Code CLI driver (Claude Max)
+│   │   ├── address-executor.ts       # PR comment addressing workflow
+│   │   ├── git-manager-*.ts          # git ops over gh CLI or PAT
+│   │   └── openai-service.ts         # commit messages & PR descriptions
+│   ├── learnings/                    # institutional-knowledge pipeline
+│   │   ├── ingest-*.ts               # PR & repo evidence ingestion
+│   │   ├── session-analyzer.ts       # mines Claude Code sessions for thinking patterns
+│   │   ├── extractor.ts              # distills evidence into reusable lessons
+│   │   └── builder.ts                # rebuilds the derived sqlite index
+│   ├── config.ts                     # drivers, auth, models, collaborative settings
+│   ├── web-server.ts                 # job/task dashboard
+│   └── index.ts                      # CLI entry point
+├── .github/workflows/ivanagent.yml   # @ivan-agent /build automation
+└── ~/.ivan/                          # config.json + db.sqlite (per user)
 ```
-
-## Database Schema
-
-Ivan maintains a local SQLite database to track:
-- **Jobs**: High-level user requests with timestamps and status
-- **Tasks**: Individual tasks within a job, including:
-  - Task description
-  - Task type (build or address)
-  - Execution status (not_started, active, completed)
-  - Branch name tracking
-  - Pull request links
-  - Execution logs with tool calls
-  - Timestamps
-
-## Running Locally
-
-```bash
-# Clone the repository
-git clone https://github.com/ariso-ai/ivan.git
-cd ivan
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Link globally for system-wide access
-npm link
-
-# Or run directly from the project directory
-node dist/index.js
-```
-
-## Development
-
-```bash
-# Run in development mode
-npm run dev
-
-# Watch mode for development
-npm run watch
-
-# Run linter
-npm run lint
-
-# Type checking
-npm run typecheck
-```
-
-## Advanced Features
-
-### Execution Logs and Tracking
-- All Claude Code interactions logged with tool calls
-- Visual dividers separate responses for readability
-- Tool inputs/outputs captured for debugging
-- Logs stored in database per task
-- Web interface for viewing progress
-
-### Smart Review Comments
-- AI-generated review instructions for each PR
-- Uses GPT-4o-mini to analyze diffs and generate contextual requests
-- Replies to comments include "Ivan:" prefix for attribution
-- Co-author attribution in commits
-
-### Comment Detection
-- GitHub GraphQL API for resolved status detection
-- Processes only unresolved inline code comments
-- Ignores top-level PR comments
-- Skips comments with existing replies
-
-## Security Considerations
-
-- **API Keys**: Stored locally in `~/.ivan/config.json` (not in database)
-- **Input Masking**: All API key prompts are masked during entry
-- **Local Execution**: Tasks run in your local environment with your credentials
-- **GitHub Auth**: Supports both GitHub CLI and PAT authentication
-- **Repository Secrets**: For GitHub Actions, secrets are managed through GitHub's secure secrets storage
-- **Tool Permissions**: Configure allowed/blocked tools per repository for enhanced security
-
-## Limitations
-
-- **GitHub Only**: Currently supports GitHub repositories (GitLab/Bitbucket planned)
-- **Task Complexity**: Tasks must be completable by Claude Code
-- **Internet Required**: Active connection needed for AI services
-- **GitHub Authentication**: Requires either GitHub CLI or PAT with appropriate permissions
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-MIT
-
-## Support
-
-For issues, questions, or suggestions, please open an issue on GitHub.
-
-## Troubleshooting
-
-### GitHub Authentication Issues
-
-**GitHub CLI not authenticated:**
-```bash
-gh auth login
-```
-
-**Using PAT instead of GitHub CLI:**
-```bash
-ivan reconfigure
-# Select "Personal Access Token (PAT)" option
-```
-
-**PAT not working:**
-- Verify PAT has `repo` and `pull_requests` permissions
-- Check PAT hasn't expired
-- Ensure PAT starts with `ghp_` or `github_pat_`
-
-### Claude Execution Issues
-
-**API keys not working:**
-```bash
-ivan reconfigure
-```
-
-**Claude CLI not found (CLI mode):**
-```bash
-# Install Claude Code CLI first
-# See: https://docs.anthropic.com/claude/docs/claude-code
-
-# Then configure Ivan to use CLI mode
-ivan configure-executor
-```
-
-**Executor hanging (CLI mode):**
-- Update Claude Code CLI to latest version
-- Try SDK mode: `ivan configure-executor`
-- Test `claude --print` works independently
-
-**Anthropic API rate limits:**
-- Switch to CLI mode if you have Claude Max: `ivan configure-executor`
-- Wait for rate limit to reset
-- Consider upgrading your API plan
-
-### Driver Configuration
-
-**Switch between GitHub CLI and PAT:**
-```bash
-ivan reconfigure
-# Or edit ~/.ivan/config.json and set githubAuthType: "gh-cli" or "pat"
-```
-
-**Switch between SDK and CLI mode:**
-```bash
-ivan configure-executor
-# Or view current settings with:
-ivan show-config
-```
-
-### Other Issues
-
-**Permission denied errors:**
-- Ensure you have write access to the repository
-- Check SSH keys are configured: `ssh -T git@github.com`
-- If using PAT, verify token permissions
-
-**Web server issues:**
-- Check if port is in use: `lsof -i :3000`
-- Try different port: `ivan web --port 8080`
-
-**GitHub Actions workflow not triggering:**
-- Verify secrets are set in repository settings
-- Check workflow file exists at `.github/workflows/ivanagent.yml`
-- Ensure PAT has correct permissions
-- Review Actions tab for error logs
 
 ---
 
-Built with ❤️ to make AI-powered development workflows more efficient and automated.
+## 🤝 Contributing
+
+Ivan is open source and contributions are genuinely welcome — whether it's a bug fix, a new driver, better learnings extraction, or docs.
+
+```bash
+git clone https://github.com/ariso-ai/ivan.git
+cd ivan
+npm install
+npm run build      # compile TypeScript
+npm link           # use your local build as the global `ivan`
+
+# Development
+npm run dev        # run from source with tsx
+npm run watch      # rebuild on change
+npm run lint       # eslint
+npm run typecheck  # tsc --noEmit
+npm test           # build + jest
+```
+
+Found a bug or have an idea? [Open an issue](https://github.com/ariso-ai/ivan/issues) or send a PR. If Ivan saved you time, a ⭐ on the repo helps other developers find it.
+
+---
+
+## 🔐 Security
+
+- **Keys stay local** — stored in `~/.ivan/config.json`, never in the database, and masked on entry.
+- **Your environment, your credentials** — tasks run locally; nothing is executed on someone else's infrastructure.
+- **Least privilege** — restrict Claude Code's tools per repository with `ivan config-tools` / `ivan config-blocked-tools`.
+- **CI secrets** — for GitHub Actions, keys live in GitHub's encrypted secrets store.
+
+---
+
+## 📦 Limitations
+
+- **GitHub-first** — GitLab / Bitbucket support is on the roadmap.
+- **Internet required** — Claude and OpenAI are called over the network.
+- **Scope** — tasks must be completable by Claude Code in your repo.
+
+---
+
+## License
+
+Released under the **MIT License** © Ariso AI.
+
+<div align="center">
+
+**Built with ❤️ to make AI-powered engineering reviewable, repeatable, and a little bit wiser every day.**
+
+If Ivan ships you a good PR, give it a ⭐
+
+</div>
