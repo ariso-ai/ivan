@@ -76,11 +76,11 @@ In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the c
             📚 Institutional knowledge  (your past PRs + coding sessions)
                           │  injected into every round, weighed heavily
                           ▼
-   ┌─────────────────┐   plan ──▶ critique ──▶ revise        ┌──────────────────────┐
-   │  🔨 Implementer  │ ═══════════════════════════════════════ │  🏛️  Architect         │
-   │   writes code    │ ◀═══════════════════════════════════════ │  principal engineer    │
-   └─────────────────┘   APPROVE / APPROVE_WITH_NITS / REVISE  │  read-only, never edits│
-                          │                                    └──────────────────────┘
+   ┌──────────────────┐   plan ──▶ critique ──▶ revise         ┌──────────────────────────┐
+   │  🔨 Implementer  │  ═════════════════════════════════════▶ │  🏛️  Architect           │
+   │   writes code    │ ◀═════════════════════════════════════ │  principal engineer      │
+   └──────────────────┘   APPROVE / APPROVE_WITH_NITS / REVISE │  read-only, never edits  │
+                          │                                    └──────────────────────────┘
                           ▼
      📐 Design rounds  ──▶  🛠️  Implementation  ──▶  🔎 Code-review rounds  ──▶  ✅ PR
 ```
