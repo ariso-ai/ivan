@@ -19,7 +19,7 @@ export class PRServicePAT implements IPRService {
     this.repo = repoInfo.repo;
   }
 
-  async getSpecificPRWithIssues(prNumber: number): Promise<PullRequest[]> {
+  async getSpecificPRWithIssues(prNumber: number, ignoreReplies = false): Promise<PullRequest[]> {
     try {
       // Get specific PR
       const pr = await this.githubClient.getPR(this.owner, this.repo, prNumber);
@@ -47,7 +47,7 @@ export class PRServicePAT implements IPRService {
       };
 
       // Check for unaddressed comments
-      const comments = await this.getUnaddressedComments(pr.number);
+      const comments = await this.getUnaddressedComments(pr.number, ignoreReplies);
       if (comments.length > 0) {
         pullRequest.hasUnaddressedComments = true;
         pullRequest.unaddressedComments = comments;
@@ -87,7 +87,7 @@ export class PRServicePAT implements IPRService {
     }
   }
 
-  async getOpenPRsWithIssues(fromUser?: string): Promise<PullRequest[]> {
+  async getOpenPRsWithIssues(fromUser?: string, ignoreReplies = false): Promise<PullRequest[]> {
     try {
       // Get all open PRs, optionally filtered by author
       const prs = await this.githubClient.listPRs(this.owner, this.repo, {
@@ -112,7 +112,7 @@ export class PRServicePAT implements IPRService {
         };
 
         // Check for unaddressed comments
-        const comments = await this.getUnaddressedComments(pr.number);
+        const comments = await this.getUnaddressedComments(pr.number, ignoreReplies);
         if (comments.length > 0) {
           pullRequest.hasUnaddressedComments = true;
           pullRequest.unaddressedComments = comments;
@@ -147,7 +147,7 @@ export class PRServicePAT implements IPRService {
     }
   }
 
-  async getUnaddressedComments(prNumber: number): Promise<PRComment[]> {
+  async getUnaddressedComments(prNumber: number, ignoreReplies = false): Promise<PRComment[]> {
     try {
       // Get review threads using GraphQL
       const threads = await this.githubClient.getReviewThreads(
@@ -175,8 +175,8 @@ export class PRServicePAT implements IPRService {
         // Check if there are replies (more than one comment in thread)
         const hasReplies = comments.length > 1;
 
-        if (!hasReplies && firstComment.path) {
-          // Only include if it's an inline code comment (has a path) and has no replies
+        if ((!hasReplies || ignoreReplies) && firstComment.path) {
+          // Only include if it's an inline code comment (has a path) and has no replies (unless ignoreReplies)
           unaddressedComments.push({
             id: firstComment.databaseId
               ? firstComment.databaseId.toString()
