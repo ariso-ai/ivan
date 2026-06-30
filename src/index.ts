@@ -222,10 +222,19 @@ program
   .option('--from-user <username>', 'Filter PRs by author GitHub username')
   .option('--yes', 'Skip interactive prompts and process all PRs')
   .option('--non-interactive', 'Accept all comments without prompting')
+  .option(
+    '--discussions <ids>',
+    'Comma-separated list of discussion IDs to address (e.g. discussion_r3495412327,discussion_r3495412328)'
+  )
   .action(
     async (
       prNumber?: string,
-      options?: { fromUser?: string; yes?: boolean; nonInteractive?: boolean }
+      options?: {
+        fromUser?: string;
+        yes?: boolean;
+        nonInteractive?: boolean;
+        discussions?: string;
+      }
     ) => {
       const wasConfigured = await checkConfiguration();
       if (wasConfigured) {
@@ -238,11 +247,16 @@ program
 
       await runMigrations();
 
+      const discussionIds = options?.discussions
+        ? options.discussions.split(',').map((id) => id.trim())
+        : undefined;
+
       const addressExecutor = new AddressExecutor();
       await addressExecutor.executeWorkflow(
         prNumber ? parseInt(prNumber) : undefined,
         options?.fromUser,
-        options?.yes || options?.nonInteractive
+        options?.yes || options?.nonInteractive,
+        discussionIds
       );
     }
   );

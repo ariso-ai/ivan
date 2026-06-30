@@ -41,7 +41,8 @@ export class AddressExecutor {
   async executeWorkflow(
     specificPrNumber?: number,
     fromUser?: string,
-    skipQuestions?: boolean
+    skipQuestions?: boolean,
+    discussionIds?: string[]
   ): Promise<void> {
     try {
       if (specificPrNumber) {
@@ -95,9 +96,29 @@ export class AddressExecutor {
           ? `Fetching PR #${specificPrNumber}...`
           : 'Fetching open PRs...'
       ).start();
-      const prsWithIssues = specificPrNumber
+      let prsWithIssues = specificPrNumber
         ? await this.prService.getSpecificPRWithIssues(specificPrNumber)
         : await this.prService.getOpenPRsWithIssues(fromUser);
+
+      if (discussionIds && discussionIds.length > 0) {
+        // Parse numeric IDs from formats like "discussion_r3495412327"
+        const numericIds = new Set(
+          discussionIds.map((id) => id.replace(/^discussion_r/, ''))
+        );
+        prsWithIssues = prsWithIssues
+          .map((pr) => ({
+            ...pr,
+            unaddressedComments: pr.unaddressedComments.filter((c) =>
+              numericIds.has(c.id)
+            )
+          }))
+          .map((pr) => ({
+            ...pr,
+            hasUnaddressedComments: pr.unaddressedComments.length > 0
+          }))
+          .filter((pr) => pr.hasUnaddressedComments);
+      }
+
       spinner.succeed(
         `Found ${prsWithIssues.length} PRs with unaddressed issues`
       );
