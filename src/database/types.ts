@@ -39,10 +39,24 @@ export interface Migration {
   down?: string | string[]; // optional — we never roll back schema changes
 }
 
+export interface PrReview {
+  uuid: string;
+  job_uuid: string;
+  pr_number: number;
+  pr_url: string | null;
+  pr_title: string | null;
+  status: 'not_started' | 'active' | 'completed' | 'failed';
+  review_log: string | null;
+  review_output: string | null;
+  repository_id: number | null;
+  created_at: string;
+}
+
 export interface Database {
   repositories: Repository;
   jobs: Job;
   tasks: Task;
+  pr_reviews: PrReview;
   migrations: {
     id: number;
     name: string;
