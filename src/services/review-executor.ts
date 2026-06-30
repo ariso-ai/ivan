@@ -9,7 +9,7 @@ import {
   createGitManager,
   createRepositoryManager
 } from './service-factory.js';
-import type { IRepositoryManager } from './git-interfaces.js';
+import type { IGitManager, IRepositoryManager } from './git-interfaces.js';
 
 const REVIEW_SYSTEM_PROMPT = `You are a principal engineer reviewing a pull request. Your job is to provide a thorough, actionable code review.
 
@@ -79,7 +79,7 @@ export class ReviewExecutor {
       console.log('');
 
       for (const prNumber of prNumbers) {
-        await this.reviewPR(prNumber, jobUuid, repository.id, workingDir);
+        await this.reviewPR(prNumber, jobUuid, repository.id, workingDir, gitManager);
       }
 
       console.log('');
@@ -94,7 +94,8 @@ export class ReviewExecutor {
     prNumber: number,
     jobUuid: string,
     repositoryId: number,
-    workingDir: string
+    workingDir: string,
+    gitManager: IGitManager
   ): Promise<void> {
     console.log(chalk.blue.bold(`🔍 Reviewing PR #${prNumber}...`));
 
@@ -103,10 +104,11 @@ export class ReviewExecutor {
 
     let prTitle: string | null = null;
     let prUrl: string | null = null;
+    let prBranch: string | null = null;
 
     try {
       const prJson = execSync(
-        `gh pr view ${prNumber} --json number,title,url,state`,
+        `gh pr view ${prNumber} --json number,title,url,state,headRefName`,
         { cwd: workingDir, encoding: 'utf-8' }
       );
       const prInfo = JSON.parse(prJson);
@@ -120,7 +122,8 @@ export class ReviewExecutor {
 
       prTitle = prInfo.title;
       prUrl = prInfo.url;
-      console.log(chalk.gray(`   ${prTitle}`));
+      prBranch = prInfo.headRefName;
+      console.log(chalk.gray(`   ${prTitle} (${prBranch})`));
     } catch (err) {
       console.log(chalk.red(`❌ Could not fetch PR #${prNumber}: ${err}`));
       return;
@@ -140,38 +143,20 @@ export class ReviewExecutor {
     };
 
     await db.insertInto('pr_reviews').values(review).execute();
-
     await db
       .updateTable('pr_reviews')
       .set({ status: 'active' })
       .where('uuid', '=', reviewUuid)
       .execute();
 
-    let prDiff: string;
+    // Create a worktree for the PR branch so Claude can read the actual code
+    let worktreePath: string | null = null;
     try {
-      prDiff = execSync(`gh pr diff ${prNumber}`, {
-        cwd: workingDir,
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024
-      });
-
-      if (!prDiff.trim()) {
-        console.log(chalk.yellow(`⚠️  PR #${prNumber} has no diff, skipping`));
-        await db
-          .updateTable('pr_reviews')
-          .set({ status: 'completed', review_output: 'No diff found for this PR.' })
-          .where('uuid', '=', reviewUuid)
-          .execute();
-        return;
-      }
-
-      // Truncate very large diffs
-      const MAX_DIFF_CHARS = 80000;
-      if (prDiff.length > MAX_DIFF_CHARS) {
-        prDiff = prDiff.slice(0, MAX_DIFF_CHARS) + '\n\n[... diff truncated due to size ...]';
-      }
+      console.log(chalk.cyan(`   Creating worktree for branch: ${prBranch}`));
+      worktreePath = await gitManager.createWorktree(prBranch!);
+      gitManager.switchToWorktree(worktreePath);
     } catch (err) {
-      console.log(chalk.red(`❌ Could not get diff for PR #${prNumber}: ${err}`));
+      console.log(chalk.red(`❌ Could not create worktree for PR #${prNumber}: ${err}`));
       await db
         .updateTable('pr_reviews')
         .set({ status: 'failed', review_log: String(err) })
@@ -180,23 +165,24 @@ export class ReviewExecutor {
       return;
     }
 
-    const reviewPrompt = `Please review the following pull request and provide detailed feedback.
-
-PR #${prNumber}: ${prTitle}
-URL: ${prUrl}
-
-Here is the diff:
-
-\`\`\`diff
-${prDiff}
-\`\`\`
-
-Provide a thorough code review. Be specific about any issues found, their severity, and how to fix them. If the code looks good, say so clearly with a brief explanation of why.`;
-
     try {
+      const reviewPrompt = `Please review PR #${prNumber}: "${prTitle}" (${prUrl}).
+
+You are currently checked out on the PR branch \`${prBranch}\`. Use your tools to read the code and understand what this PR changes. You can use git commands to see the diff against the base branch (e.g. \`git diff main...HEAD\` or \`git log --oneline main..HEAD\`).
+
+Provide a thorough code review covering:
+- What the PR does and whether the implementation is correct
+- Any bugs, logic errors, or edge cases
+- Security concerns
+- Performance issues
+- Adherence to codebase conventions and patterns
+- Anything else worth calling out
+
+Be specific and actionable. Reference file names and line numbers where relevant.`;
+
       const result = await this.claudeExecutor.executeTurn(
         reviewPrompt,
-        workingDir,
+        worktreePath,
         {
           systemPrompt: REVIEW_SYSTEM_PROMPT,
           readOnly: true,
@@ -222,6 +208,16 @@ Provide a thorough code review. Be specific about any issues found, their severi
         .set({ status: 'failed', review_log: String(err) })
         .where('uuid', '=', reviewUuid)
         .execute();
+    } finally {
+      // Always clean up the worktree
+      if (worktreePath) {
+        try {
+          gitManager.switchToOriginalDir();
+          await gitManager.removeWorktree(prBranch!);
+        } catch (err) {
+          console.log(chalk.yellow(`⚠️  Could not clean up worktree: ${err}`));
+        }
+      }
     }
   }
 }
