@@ -314,7 +314,9 @@ Return only the condensed output, nothing else.`;
   async extractPrComments(
     reviewOutput: string,
     prNumber: number
-  ): Promise<Array<{ path: string; line: number; criticality: string; body: string }>> {
+  ): Promise<
+    Array<{ path: string; line: number; criticality: string; body: string }>
+  > {
     await this.ensureInitialized();
     if (!this.openai) throw new Error('OpenAI client not initialized');
 
@@ -354,14 +356,24 @@ Return only the condensed output, nothing else.`;
                 items: {
                   type: 'object',
                   properties: {
-                    path: { type: 'string', description: 'File path relative to repo root' },
-                    line: { type: 'number', description: 'Line number in the new file version' },
+                    path: {
+                      type: 'string',
+                      description: 'File path relative to repo root'
+                    },
+                    line: {
+                      type: 'number',
+                      description: 'Line number in the new file version'
+                    },
                     criticality: {
                       type: 'string',
                       enum: ['trivial', 'low', 'medium', 'urgent', 'critical'],
                       description: 'Severity of the issue'
                     },
-                    body: { type: 'string', description: 'The comment body (markdown supported), without the criticality header — that is prepended separately' }
+                    body: {
+                      type: 'string',
+                      description:
+                        'The comment body (markdown supported), without the criticality header — that is prepended separately'
+                    }
                   },
                   required: ['path', 'line', 'criticality', 'body'],
                   additionalProperties: false

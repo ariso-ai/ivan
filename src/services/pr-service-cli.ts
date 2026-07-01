@@ -9,7 +9,10 @@ export class PRServiceCLI implements IPRService {
     this.workingDir = workingDir;
   }
 
-  async getSpecificPRWithIssues(prNumber: number, ignoreReplies = false): Promise<PullRequest[]> {
+  async getSpecificPRWithIssues(
+    prNumber: number,
+    ignoreReplies = false
+  ): Promise<PullRequest[]> {
     try {
       // Get specific PR
       const prJson = execSync(
@@ -44,7 +47,10 @@ export class PRServiceCLI implements IPRService {
       };
 
       // Check for unaddressed comments
-      const comments = await this.getUnaddressedComments(pr.number, ignoreReplies);
+      const comments = await this.getUnaddressedComments(
+        pr.number,
+        ignoreReplies
+      );
       if (comments.length > 0) {
         pullRequest.hasUnaddressedComments = true;
         pullRequest.unaddressedComments = comments;
@@ -81,7 +87,10 @@ export class PRServiceCLI implements IPRService {
     }
   }
 
-  async getOpenPRsWithIssues(fromUser?: string, ignoreReplies = false): Promise<PullRequest[]> {
+  async getOpenPRsWithIssues(
+    fromUser?: string,
+    ignoreReplies = false
+  ): Promise<PullRequest[]> {
     try {
       // Get all open PRs, optionally filtered by author
       let command =
@@ -113,7 +122,10 @@ export class PRServiceCLI implements IPRService {
         };
 
         // Check for unaddressed comments
-        const comments = await this.getUnaddressedComments(pr.number, ignoreReplies);
+        const comments = await this.getUnaddressedComments(
+          pr.number,
+          ignoreReplies
+        );
         if (comments.length > 0) {
           pullRequest.hasUnaddressedComments = true;
           pullRequest.unaddressedComments = comments;
@@ -148,7 +160,10 @@ export class PRServiceCLI implements IPRService {
     }
   }
 
-  async getUnaddressedComments(prNumber: number, ignoreReplies = false): Promise<PRComment[]> {
+  async getUnaddressedComments(
+    prNumber: number,
+    ignoreReplies = false
+  ): Promise<PRComment[]> {
     try {
       // Get PR owner and repo name
       const repoInfo = execSync('gh repo view --json owner,name', {

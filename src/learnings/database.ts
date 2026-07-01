@@ -67,7 +67,10 @@ export async function createFreshLearningsDatabase(
   const db = new Kysely<LearningsDatabase>({
     dialect: new SqliteDialect({ database: sqlite })
   });
-  await new MigrationManager(db as unknown as Kysely<Database>, learningsMigrations).runMigrations();
+  await new MigrationManager(
+    db as unknown as Kysely<Database>,
+    learningsMigrations
+  ).runMigrations();
   return db;
 }
 

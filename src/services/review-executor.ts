@@ -65,7 +65,10 @@ export class ReviewExecutor {
     this.openAIService = new OpenAIService();
   }
 
-  async executeReviews(prNumbers: number[], leaveComments = false): Promise<void> {
+  async executeReviews(
+    prNumbers: number[],
+    leaveComments = false
+  ): Promise<void> {
     try {
       await this.claudeExecutor.validateClaudeCodeInstallation();
       console.log(chalk.green('✅ Claude Code SDK configured'));
@@ -102,11 +105,20 @@ export class ReviewExecutor {
         })
         .execute();
 
-      console.log(chalk.blue.bold(`📝 Starting reviews for ${prNumbers.length} PR(s)...`));
+      console.log(
+        chalk.blue.bold(`📝 Starting reviews for ${prNumbers.length} PR(s)...`)
+      );
       console.log('');
 
       for (const prNumber of prNumbers) {
-        await this.reviewPR(prNumber, jobUuid, repository.id, workingDir, gitManager, leaveComments);
+        await this.reviewPR(
+          prNumber,
+          jobUuid,
+          repository.id,
+          workingDir,
+          gitManager,
+          leaveComments
+        );
       }
 
       console.log('');
@@ -143,7 +155,9 @@ export class ReviewExecutor {
 
       if (prInfo.state !== 'OPEN') {
         console.log(
-          chalk.yellow(`⚠️  PR #${prNumber} is not open (status: ${prInfo.state}), skipping`)
+          chalk.yellow(
+            `⚠️  PR #${prNumber} is not open (status: ${prInfo.state}), skipping`
+          )
         );
         return;
       }
@@ -184,7 +198,9 @@ export class ReviewExecutor {
       worktreePath = await gitManager.createWorktree(prBranch ?? '');
       gitManager.switchToWorktree(worktreePath);
     } catch (err) {
-      console.log(chalk.red(`❌ Could not create worktree for PR #${prNumber}: ${err}`));
+      console.log(
+        chalk.red(`❌ Could not create worktree for PR #${prNumber}: ${err}`)
+      );
       await db
         .updateTable('pr_reviews')
         .set({ status: 'failed', review_log: String(err) })
@@ -258,42 +274,66 @@ Be specific. Reference exact file paths and line numbers. If the PR looks solid 
     reviewOutput: string,
     workingDir: string
   ): Promise<void> {
-    console.log(chalk.cyan(`   Extracting inline comments for PR #${prNumber} via OpenAI...`));
+    console.log(
+      chalk.cyan(
+        `   Extracting inline comments for PR #${prNumber} via OpenAI...`
+      )
+    );
 
-    let comments: Array<{ path: string; line: number; criticality: string; body: string }>;
+    let comments: Array<{
+      path: string;
+      line: number;
+      criticality: string;
+      body: string;
+    }>;
     try {
-      comments = await this.openAIService.extractPrComments(reviewOutput, prNumber);
+      comments = await this.openAIService.extractPrComments(
+        reviewOutput,
+        prNumber
+      );
     } catch (err) {
-      console.log(chalk.yellow(`⚠️  Could not extract inline comments: ${err}`));
+      console.log(
+        chalk.yellow(`⚠️  Could not extract inline comments: ${err}`)
+      );
       return;
     }
 
     if (comments.length === 0) {
-      console.log(chalk.gray(`   No inline comments to post for PR #${prNumber}`));
+      console.log(
+        chalk.gray(`   No inline comments to post for PR #${prNumber}`)
+      );
       return;
     }
 
     // GitHub's pull review comment API requires the head commit SHA
     let commitId: string;
     try {
-      const prJson = execSync(
-        `gh pr view ${prNumber} --json headRefOid`,
-        { cwd: workingDir, encoding: 'utf-8' }
-      );
+      const prJson = execSync(`gh pr view ${prNumber} --json headRefOid`, {
+        cwd: workingDir,
+        encoding: 'utf-8'
+      });
       commitId = JSON.parse(prJson).headRefOid;
       if (!commitId) throw new Error('headRefOid was empty');
     } catch (err) {
-      console.log(chalk.yellow(`⚠️  Could not fetch PR head SHA, aborting inline comments: ${err}`));
+      console.log(
+        chalk.yellow(
+          `⚠️  Could not fetch PR head SHA, aborting inline comments: ${err}`
+        )
+      );
       return;
     }
 
-    console.log(chalk.cyan(`   Posting ${comments.length} inline comment(s) on PR #${prNumber}...`));
+    console.log(
+      chalk.cyan(
+        `   Posting ${comments.length} inline comment(s) on PR #${prNumber}...`
+      )
+    );
 
     const CRITICALITY_EMOJI: Record<string, string> = {
-      trivial:  '🔵',
-      low:      '🟢',
-      medium:   '🟡',
-      urgent:   '🟠',
+      trivial: '🔵',
+      low: '🟢',
+      medium: '🟡',
+      urgent: '🟠',
       critical: '🔴'
     };
 
@@ -309,23 +349,35 @@ Be specific. Reference exact file paths and line numbers. If the PR looks solid 
         try {
           execSync(
             `gh api repos/:owner/:repo/pulls/${prNumber}/comments --method POST` +
-            ` -f commit_id=${commitId}` +
-            ` -f path=${comment.path}` +
-            ` -F line=${comment.line}` +
-            ` -f side=RIGHT` +
-            ` -F body=@"${tmpFile}"`,
+              ` -f commit_id=${commitId}` +
+              ` -f path=${comment.path}` +
+              ` -F line=${comment.line}` +
+              ` -f side=RIGHT` +
+              ` -F body=@"${tmpFile}"`,
             { cwd: workingDir, encoding: 'utf-8', stdio: 'pipe' }
           );
           posted++;
         } catch (err) {
-          console.log(chalk.yellow(`   ⚠️  Could not post inline comment for ${comment.path}:${comment.line}: ${err}`));
+          console.log(
+            chalk.yellow(
+              `   ⚠️  Could not post inline comment for ${comment.path}:${comment.line}: ${err}`
+            )
+          );
           failed++;
         }
       } finally {
-        try { unlinkSync(tmpFile); } catch { /* ignore */ }
+        try {
+          unlinkSync(tmpFile);
+        } catch {
+          /* ignore */
+        }
       }
     }
 
-    console.log(chalk.green(`   ✅ Posted ${posted} comment(s)${failed > 0 ? `, ${failed} failed` : ''} on PR #${prNumber}`));
+    console.log(
+      chalk.green(
+        `   ✅ Posted ${posted} comment(s)${failed > 0 ? `, ${failed} failed` : ''} on PR #${prNumber}`
+      )
+    );
   }
 }

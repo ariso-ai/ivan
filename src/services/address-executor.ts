@@ -98,7 +98,10 @@ export class AddressExecutor {
       ).start();
       const ignoreReplies = !!(discussionIds && discussionIds.length > 0);
       let prsWithIssues = specificPrNumber
-        ? await this.prService.getSpecificPRWithIssues(specificPrNumber, ignoreReplies)
+        ? await this.prService.getSpecificPRWithIssues(
+            specificPrNumber,
+            ignoreReplies
+          )
         : await this.prService.getOpenPRsWithIssues(fromUser, ignoreReplies);
 
       if (discussionIds && discussionIds.length > 0) {

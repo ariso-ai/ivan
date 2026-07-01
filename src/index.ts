@@ -266,39 +266,49 @@ program
   .command('review')
   .description('Run Claude Code reviews on one or more pull requests')
   .argument('<pr-numbers...>', 'PR number(s) to review (e.g. 42 or 42 43 44)')
-  .option('--leave-comments', 'Post inline comments on the PR for each issue found')
-  .action(async (prNumberArgs: string[], options: { leaveComments?: boolean }) => {
-    const wasConfigured = await checkConfiguration();
-    if (wasConfigured) {
-      console.log('');
-      console.log(chalk.cyan('Run "ivan review <pr-number>" again to review PRs.'));
-      return;
-    }
-
-    await runMigrations();
-
-    const prNumbers = prNumberArgs.map((n) => {
-      const parsed = parseInt(n, 10);
-      if (isNaN(parsed) || parsed <= 0) {
-        console.error(chalk.red(`❌ Invalid PR number: ${n}`));
-        process.exit(1);
+  .option(
+    '--leave-comments',
+    'Post inline comments on the PR for each issue found'
+  )
+  .action(
+    async (prNumberArgs: string[], options: { leaveComments?: boolean }) => {
+      const wasConfigured = await checkConfiguration();
+      if (wasConfigured) {
+        console.log('');
+        console.log(
+          chalk.cyan('Run "ivan review <pr-number>" again to review PRs.')
+        );
+        return;
       }
-      return parsed;
-    });
 
-    console.log(
-      chalk.blue.bold(
-        `🔍 Reviewing ${prNumbers.length} PR(s): ${prNumbers.map((n) => `#${n}`).join(', ')}`
-      )
-    );
-    if (options.leaveComments) {
-      console.log(chalk.cyan('   Inline comments will be posted on each PR'));
+      await runMigrations();
+
+      const prNumbers = prNumberArgs.map((n) => {
+        const parsed = parseInt(n, 10);
+        if (isNaN(parsed) || parsed <= 0) {
+          console.error(chalk.red(`❌ Invalid PR number: ${n}`));
+          process.exit(1);
+        }
+        return parsed;
+      });
+
+      console.log(
+        chalk.blue.bold(
+          `🔍 Reviewing ${prNumbers.length} PR(s): ${prNumbers.map((n) => `#${n}`).join(', ')}`
+        )
+      );
+      if (options.leaveComments) {
+        console.log(chalk.cyan('   Inline comments will be posted on each PR'));
+      }
+      console.log('');
+
+      const reviewExecutor = new ReviewExecutor();
+      await reviewExecutor.executeReviews(
+        prNumbers,
+        options.leaveComments ?? false
+      );
     }
-    console.log('');
-
-    const reviewExecutor = new ReviewExecutor();
-    await reviewExecutor.executeReviews(prNumbers, options.leaveComments ?? false);
-  });
+  );
 
 program
   .command('web-stop')
