@@ -153,7 +153,7 @@ export class ReviewExecutor {
     let worktreePath: string | null = null;
     try {
       console.log(chalk.cyan(`   Creating worktree for branch: ${prBranch}`));
-      worktreePath = await gitManager.createWorktree(prBranch!);
+      worktreePath = await gitManager.createWorktree(prBranch ?? '');
       gitManager.switchToWorktree(worktreePath);
     } catch (err) {
       console.log(chalk.red(`❌ Could not create worktree for PR #${prNumber}: ${err}`));
@@ -213,7 +213,7 @@ Be specific and actionable. Reference file names and line numbers where relevant
       if (worktreePath) {
         try {
           gitManager.switchToOriginalDir();
-          await gitManager.removeWorktree(prBranch!);
+          await gitManager.removeWorktree(prBranch ?? '');
         } catch (err) {
           console.log(chalk.yellow(`⚠️  Could not clean up worktree: ${err}`));
         }

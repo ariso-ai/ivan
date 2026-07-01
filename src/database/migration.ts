@@ -1,13 +1,13 @@
 import { Kysely, sql } from 'kysely';
 import chalk from 'chalk';
-import type { Migration } from './types.js';
+import type { Database, Migration } from './types.js';
 import { migrations } from './migrations/index.js';
 
 export class MigrationManager {
-  private db: Kysely<any>;
+  private db: Kysely<Database>;
   private migrationList: Migration[];
 
-  constructor(db: Kysely<any>, migrationList: Migration[] = migrations) {
+  constructor(db: Kysely<Database>, migrationList: Migration[] = migrations) {
     this.db = db;
     this.migrationList = migrationList;
   }
