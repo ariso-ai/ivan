@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { ConfigManager } from './config.js';
 import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
+import { ReviewExecutor } from './services/review-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 import type {
@@ -260,6 +261,40 @@ program
       );
     }
   );
+
+program
+  .command('review')
+  .description('Run Claude Code reviews on one or more pull requests')
+  .argument('<pr-numbers...>', 'PR number(s) to review (e.g. 42 or 42 43 44)')
+  .action(async (prNumberArgs: string[]) => {
+    const wasConfigured = await checkConfiguration();
+    if (wasConfigured) {
+      console.log('');
+      console.log(chalk.cyan('Run "ivan review <pr-number>" again to review PRs.'));
+      return;
+    }
+
+    await runMigrations();
+
+    const prNumbers = prNumberArgs.map((n) => {
+      const parsed = parseInt(n, 10);
+      if (isNaN(parsed) || parsed <= 0) {
+        console.error(chalk.red(`❌ Invalid PR number: ${n}`));
+        process.exit(1);
+      }
+      return parsed;
+    });
+
+    console.log(
+      chalk.blue.bold(
+        `🔍 Reviewing ${prNumbers.length} PR(s): ${prNumbers.map((n) => `#${n}`).join(', ')}`
+      )
+    );
+    console.log('');
+
+    const reviewExecutor = new ReviewExecutor();
+    await reviewExecutor.executeReviews(prNumbers);
+  });
 
 program
   .command('web-stop')
@@ -785,6 +820,7 @@ async function main() {
       'web',
       'web-stop',
       'address',
+      'review',
       '--help',
       '-h',
       '--version',

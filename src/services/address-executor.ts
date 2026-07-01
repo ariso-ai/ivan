@@ -96,9 +96,10 @@ export class AddressExecutor {
           ? `Fetching PR #${specificPrNumber}...`
           : 'Fetching open PRs...'
       ).start();
+      const ignoreReplies = !!(discussionIds && discussionIds.length > 0);
       let prsWithIssues = specificPrNumber
-        ? await this.prService.getSpecificPRWithIssues(specificPrNumber)
-        : await this.prService.getOpenPRsWithIssues(fromUser);
+        ? await this.prService.getSpecificPRWithIssues(specificPrNumber, ignoreReplies)
+        : await this.prService.getOpenPRsWithIssues(fromUser, ignoreReplies);
 
       if (discussionIds && discussionIds.length > 0) {
         // Parse numeric IDs from formats like "discussion_r3495412327"
