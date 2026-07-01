@@ -266,7 +266,8 @@ program
   .command('review')
   .description('Run Claude Code reviews on one or more pull requests')
   .argument('<pr-numbers...>', 'PR number(s) to review (e.g. 42 or 42 43 44)')
-  .action(async (prNumberArgs: string[]) => {
+  .option('--leave-comments', 'Post inline comments on the PR for each issue found')
+  .action(async (prNumberArgs: string[], options: { leaveComments?: boolean }) => {
     const wasConfigured = await checkConfiguration();
     if (wasConfigured) {
       console.log('');
@@ -290,10 +291,13 @@ program
         `🔍 Reviewing ${prNumbers.length} PR(s): ${prNumbers.map((n) => `#${n}`).join(', ')}`
       )
     );
+    if (options.leaveComments) {
+      console.log(chalk.cyan('   Inline comments will be posted on each PR'));
+    }
     console.log('');
 
     const reviewExecutor = new ReviewExecutor();
-    await reviewExecutor.executeReviews(prNumbers);
+    await reviewExecutor.executeReviews(prNumbers, options.leaveComments ?? false);
   });
 
 program

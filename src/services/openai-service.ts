@@ -311,6 +311,77 @@ Return only the condensed output, nothing else.`;
     }
   }
 
+  async extractPrComments(
+    reviewOutput: string,
+    prNumber: number
+  ): Promise<Array<{ path: string; line: number; criticality: string; body: string }>> {
+    await this.ensureInitialized();
+    if (!this.openai) throw new Error('OpenAI client not initialized');
+
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You extract actionable inline PR review comments from a written code review. ' +
+            'For each concrete, fixable issue that can be pinned to a specific file and line number in the PR diff, ' +
+            'return one comment object. Omit general observations, praise, or issues too vague to locate. ' +
+            'Line numbers must correspond to lines that appear in the PR diff (changed or immediately adjacent context lines). ' +
+            'Body text should be concise, specific, and include a suggested fix where possible. ' +
+            'Assign a criticality level to each comment: ' +
+            '"trivial" (style/formatting, no functional impact), ' +
+            '"low" (minor improvement, non-breaking), ' +
+            '"medium" (should be fixed before merge, but not blocking), ' +
+            '"urgent" (likely to cause bugs or regressions), ' +
+            '"critical" (security issue, data loss risk, or definite breakage).'
+        },
+        {
+          role: 'user',
+          content: `Extract inline comments for PR #${prNumber} from this review:\n\n${reviewOutput}`
+        }
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'pr_comments',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              comments: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    path: { type: 'string', description: 'File path relative to repo root' },
+                    line: { type: 'number', description: 'Line number in the new file version' },
+                    criticality: {
+                      type: 'string',
+                      enum: ['trivial', 'low', 'medium', 'urgent', 'critical'],
+                      description: 'Severity of the issue'
+                    },
+                    body: { type: 'string', description: 'The comment body (markdown supported), without the criticality header — that is prepended separately' }
+                  },
+                  required: ['path', 'line', 'criticality', 'body'],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ['comments'],
+            additionalProperties: false
+          }
+        }
+      },
+      temperature: 0.2
+    });
+
+    const content = response.choices[0]?.message?.content?.trim();
+    if (!content) return [];
+    const parsed = JSON.parse(content);
+    return parsed.comments ?? [];
+  }
+
   async generatePullRequestDescription(
     taskDescription: string,
     diff: string,
