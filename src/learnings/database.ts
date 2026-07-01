@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import BetterSqlite3 from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
+import type { Database } from '../database/types.js';
 import * as sqliteVec from 'sqlite-vec';
 import { LEARNINGS_DB_RELATIVE_PATH } from './paths.js';
 import { MigrationManager } from '../database/migration.js';
@@ -66,7 +67,7 @@ export async function createFreshLearningsDatabase(
   const db = new Kysely<LearningsDatabase>({
     dialect: new SqliteDialect({ database: sqlite })
   });
-  await new MigrationManager(db, learningsMigrations).runMigrations();
+  await new MigrationManager(db as unknown as Kysely<Database>, learningsMigrations).runMigrations();
   return db;
 }
 
