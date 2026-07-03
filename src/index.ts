@@ -44,6 +44,10 @@ program
   .option(
     '--mode <mode>',
     'Execution mode: "simple" (one-shot hand-off, default) or "expert" (collaborative architect↔implementer loop informed by learnings)'
+  )
+  .option(
+    '--no-self-review',
+    'Skip the Claude Code code review (and fixes) Ivan runs before opening a PR'
   );
 
 registerLearningsCommands(program);
@@ -711,15 +715,18 @@ async function runNonInteractive(configInput: string): Promise<void> {
     }
 
     // Apply --rewrite-prompt flag if passed on CLI
-    const { rewritePrompt, baseBranch, mode } = program.opts<{
+    const { rewritePrompt, baseBranch, mode, selfReview } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+      selfReview: boolean;
     }>();
     if (rewritePrompt) config.rewritePrompt = true;
     if (baseBranch) config.baseBranch = baseBranch;
     // CLI --mode overrides the config file; config value wins only if no flag.
     if (mode !== undefined) config.mode = resolveMode(mode);
+    // --no-self-review can only turn it off; otherwise config/default decide.
+    if (selfReview === false) config.selfReview = false;
 
     // Validate config
     if (
@@ -787,11 +794,13 @@ async function main() {
     const {
       rewritePrompt: hasRewriteFlag,
       baseBranch,
-      mode: modeFlag
+      mode: modeFlag,
+      selfReview: selfReviewFlag
     } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+      selfReview: boolean;
     }>();
     const mode = resolveMode(modeFlag);
 
@@ -884,7 +893,12 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow(hasRewriteFlag, baseBranch, mode);
+      await taskExecutor.executeWorkflow(
+        hasRewriteFlag,
+        baseBranch,
+        mode,
+        selfReviewFlag
+      );
       return;
     }
 

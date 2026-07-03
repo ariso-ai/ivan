@@ -50,8 +50,9 @@ That's it. Ivan will:
 
 1. 🧩 **Break down** your request into manageable, PR-ready tasks
 2. 🌿 **Branch & implement** each one using Claude Code
-3. ✍️ **Write** conventional commit messages and a detailed PR description
-4. 📬 **Open the PR** with context-specific review instructions
+3. 🤖 **Self-review** the change with Claude Code — against your team's lessons and engineering best practices — and quietly fix what it finds
+4. ✍️ **Write** conventional commit messages and a detailed PR description
+5. 📬 **Open the PR** with context-specific review instructions
 
 Want Ivan to think harder? Add one flag:
 
@@ -98,6 +99,33 @@ In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the c
     "architectModel": "claude-opus-4-8", // the reviewer's brain
     "maxDesignRounds": 5,                 // max design back-and-forths before building
     "maxReviewRounds": 3                  // max code-review back-and-forths before shipping
+  }
+}
+```
+
+---
+
+## 🤖 Self-review before every PR
+
+Before Ivan opens a pull request, it does what a careful engineer does last: **asks Claude Code to review its own diff — and fixes what it finds.** This runs in *every* mode (simple, expert, loop), so even a one-shot `simple` run gets a review pass before it reaches you.
+
+A fresh, read-only reviewer session critiques the change, then the implementer session silently applies the fixes — folded into the same commit (or a follow-up commit in single-PR runs), so your PR arrives already cleaned up. The review is grounded in:
+
+- 🧠 **Your team's institutional knowledge** — the same learnings store Expert mode uses (see below), injected into the review.
+- 📐 **Engineering best practices** — an explicit bar: correctness & edge cases, security, *follow the existing patterns in the codebase*, *reuse/extract instead of reinventing*, don't over-engineer, and keep it maintainable without piling up tech debt.
+
+It's on by default and conservative — it only changes code when the review finds something genuinely worth fixing, and treats an unclear review as "ship it." Turn it off per-run or globally:
+
+```bash
+ivan "Fix the timezone bug" --no-self-review     # skip it for this run
+```
+
+```jsonc
+// ~/.ivan/config.json
+{
+  "selfReview": {
+    "enabled": true,               // set false to disable globally
+    "model": "claude-opus-4-8"     // optional: a stronger model for the reviewer (defaults to your implementer model)
   }
 }
 ```
@@ -225,6 +253,7 @@ ivan config-blocked-tools     # block specific tools (least-privilege by repo)
 ivan                          # interactive: Ivan asks what to build
 ivan "task description"       # headless: run a task directly
 ivan --mode expert "task"     # collaborative architect ↔ implementer loop
+ivan --no-self-review "task"  # skip the pre-PR Claude Code self review
 ivan --base-branch dev "task" # branch work off a specific local base branch
 ivan -c config.json           # run from a JSON config (CI-friendly)
 ivan -c '{"tasks":["A","B"],"mode":"expert"}'   # inline JSON config
@@ -284,9 +313,9 @@ Open http://localhost:3000 to watch jobs, task progress, execution logs, and PR 
 **Build workflow**
 
 ```
-request ─▶ task breakdown ─▶ branch ─▶ implement ─▶ smart commit ─▶ PR
-                                  │                                    │
-                          (expert mode: design + review rounds)  (optional: wait & auto-address)
+request ─▶ task breakdown ─▶ branch ─▶ implement ─▶ self-review + fix ─▶ smart commit ─▶ PR
+                                  │                                                        │
+                          (expert mode: design + review rounds)          (optional: wait & auto-address)
 ```
 
 **Address workflow** — finds unresolved inline comments via the GitHub GraphQL API, implements each fix, replies with the fixing commit, and adds context-specific review instructions.
@@ -303,6 +332,7 @@ ivan/
 │   ├── services/
 │   │   ├── task-executor.ts          # orchestrates the build workflow (simple | expert)
 │   │   ├── collaborative-executor.ts # the architect ↔ implementer loop (expert mode)
+│   │   ├── self-review-executor.ts   # pre-PR Claude Code self review + fixes
 │   │   ├── claude-executor.ts        # Claude Code SDK driver
 │   │   ├── claude-cli-executor.ts    # Claude Code CLI driver (Claude Max)
 │   │   ├── address-executor.ts       # PR comment addressing workflow

@@ -50,4 +50,12 @@ export interface NonInteractiveConfig {
    * - 'expert': collaborative architect↔implementer loop informed by learnings
    */
   mode?: ExecutionMode;
+
+  /**
+   * Whether Ivan runs a Claude Code self code review (and applies fixes) before
+   * opening the PR. Defaults to true; set false to skip it (mirrors
+   * --no-self-review). The global `selfReview.enabled` config is the other
+   * opt-out.
+   */
+  selfReview?: boolean;
 }

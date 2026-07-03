@@ -20,6 +20,7 @@ import {
 } from './service-factory.js';
 import { PromptRewriter } from './prompt-rewriter.js';
 import { CollaborativeExecutor } from './collaborative-executor.js';
+import { SelfReviewExecutor } from './self-review-executor.js';
 import type { ExecutionMode } from '../types/non-interactive-config.js';
 import type { TurnResult } from './executor-factory.js';
 import type { CollaborativeRunResult } from './collaborative-executor.js';
@@ -35,6 +36,9 @@ export class TaskExecutor {
   private repoInstructions: string | undefined;
   private baseBranch: string | undefined;
   private executionMode: ExecutionMode;
+  // Whether Ivan runs a Claude Code self code review (and applies fixes) before
+  // opening a PR. Resolved from config + the --no-self-review flag per run.
+  private selfReviewEnabled: boolean = true;
 
   constructor() {
     this.jobManager = new JobManager();
@@ -44,6 +48,60 @@ export class TaskExecutor {
     this.repoInstructions = undefined;
     this.baseBranch = undefined;
     this.executionMode = 'simple';
+  }
+
+  /**
+   * Resolves whether the pre-PR self review runs this session. A per-run
+   * override (the --no-self-review flag or a non-interactive `selfReview: false`)
+   * can only turn it OFF; otherwise the global config decides (default on).
+   */
+  private resolveSelfReview(perRunOverride?: boolean): boolean {
+    if (perRunOverride === false) return false;
+    return this.configManager.getSelfReviewConfig().enabled;
+  }
+
+  /**
+   * Runs the pre-PR self review: Claude Code reviews the given diff against the
+   * team's learnings and engineering best practices and silently applies fixes.
+   * Fixes are left in the worktree for the caller to commit. No-op when disabled
+   * or when there is nothing to review.
+   */
+  private async runSelfReview(
+    executionPath: string,
+    diff: string,
+    implementerSessionId?: string
+  ): Promise<void> {
+    if (!this.selfReviewEnabled || !diff.trim()) return;
+    const reviewer = new SelfReviewExecutor(
+      this.getClaudeExecutor(),
+      this.configManager.getSelfReviewConfig()
+    );
+    await reviewer.run({
+      diff,
+      executionPath,
+      learningsRepoPath: this.workingDir,
+      implementerSessionId
+    });
+  }
+
+  /**
+   * Commits everything in the worktree with retry, mirroring the per-task commit
+   * loop's tolerance of pre-commit hooks that reformat and abort the first
+   * attempt. Used for the extra commit that self-review fixes produce in the
+   * single-PR flow. Returns false if every attempt failed.
+   */
+  private async commitWithRetry(message: string): Promise<boolean> {
+    if (!this.gitManager) throw new Error('GitManager not initialized');
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await this.gitManager.commitChanges(message);
+        return true;
+      } catch {
+        // Pre-commit hook may have reformatted files; retry re-stages them.
+      }
+    }
+    return false;
   }
 
   /**
@@ -122,11 +180,13 @@ export class TaskExecutor {
   async executeWorkflow(
     rewritePrompt: boolean = false,
     baseBranch?: string,
-    mode: ExecutionMode = 'simple'
+    mode: ExecutionMode = 'simple',
+    selfReview?: boolean
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
       this.executionMode = mode;
+      this.selfReviewEnabled = this.resolveSelfReview(selfReview);
 
       if (mode === 'expert') {
         console.log(
@@ -519,6 +579,13 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
+      // Ask Claude Code to review its own change and apply fixes before the PR.
+      // Runs before the commit so fixes fold into the same commit.
+      await this.runSelfReview(
+        executionPath,
+        this.gitManager.getDiff(),
+        result.sessionId
+      );
       const changedFiles = this.gitManager.getChangedFiles();
       if (changedFiles.length === 0) {
         if (!quiet)
@@ -987,6 +1054,28 @@ export class TaskExecutor {
           );
       }
 
+      // Self-review the whole change once (all tasks are already committed), and
+      // commit any fixes as a follow-up commit before pushing.
+      if (this.selfReviewEnabled) {
+        const executionPath = worktreePath || this.workingDir;
+        const branchDiff = this.gitManager.getDiff(
+          `origin/${targetBranch}`,
+          'HEAD'
+        );
+        await this.runSelfReview(executionPath, branchDiff, sessionId);
+        const fixFiles = this.gitManager.getChangedFiles();
+        if (fixFiles.length > 0) {
+          if (!quiet) spinner = ora('Committing self-review fixes...').start();
+          const committed = await this.commitWithRetry(
+            'chore: apply self-review fixes'
+          );
+          if (spinner) {
+            if (committed) spinner.succeed('Self-review fixes committed');
+            else spinner.warn('Could not commit self-review fixes');
+          }
+        }
+      }
+
       // After all tasks are complete, create a single PR
       if (!quiet) spinner = ora('Pushing branch...').start();
       if (!this.gitManager) {
@@ -1065,6 +1154,7 @@ export class TaskExecutor {
     try {
       this.baseBranch = config.baseBranch?.trim() || undefined;
       this.executionMode = config.mode || 'simple';
+      this.selfReviewEnabled = this.resolveSelfReview(config.selfReview);
 
       // Quiet mode: suppress all intermediate output
       const executor = this.getClaudeExecutor();
