@@ -16,7 +16,7 @@ Give Ivan a sentence. Ivan breaks it into PR-sized tasks, **debates its own desi
 npm i -g @ariso-ai/ivan && ivan "Add rate limiting to the public API"
 ```
 
-[Quick Start](#-quick-start) · [Expert Mode](#-expert-mode-an-ai-that-argues-with-itself-so-you-dont-have-to) · [Institutional Memory](#-institutional-memory-ivan-learns-your-team) · [Commands](#-cli-reference) · [Contributing](#-contributing)
+[Quick Start](#-quick-start) · [Expert Mode](#-expert-mode-an-ai-that-argues-with-itself-so-you-dont-have-to) · [Loop Mode](#-loop-mode-keep-going-until-its-actually-good) · [Institutional Memory](#-institutional-memory-ivan-learns-your-team) · [Commands](#-cli-reference) · [Contributing](#-contributing)
 
 </div>
 
@@ -63,12 +63,13 @@ ivan --mode expert "Refactor the billing module to support proration"
 
 ## 🏛️ Expert Mode: an AI that argues with itself so you don't have to
 
-Ivan ships two execution modes. Pick per-run with `--mode`:
+Ivan ships three execution modes. Pick per-run with `--mode`:
 
 | Mode | What it does | Best for |
 | --- | --- | --- |
 | **`simple`** *(default)* | A fast, one-shot hand-off to Claude Code. | Quick changes, well-scoped tasks. |
 | **`expert`** | A collaborative **architect ↔ implementer** loop, grounded in your team's learnings. | High-stakes changes where design quality matters. |
+| **`loop`** | Everything `expert` does, then a **product-review loop** that pushes for feature & UX improvements. | When "correct" isn't enough and you want the result to be *good*. |
 
 In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the code. A separate **Architect** session — adopting a principal-engineer persona that *holds your team's institutional knowledge* — challenges it. They go back and forth on the **design**, then on the **diff**, and the Architect decides when the work is good enough to ship.
 
@@ -97,10 +98,50 @@ In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the c
   "collaborative": {
     "architectModel": "claude-opus-4-8", // the reviewer's brain
     "maxDesignRounds": 5,                 // max design back-and-forths before building
-    "maxReviewRounds": 3                  // max code-review back-and-forths before shipping
+    "maxReviewRounds": 3,                 // max code-review back-and-forths before shipping
+    "productModel": "claude-opus-4-8",   // loop mode's product reviewer (defaults to architectModel)
+    "maxImprovementRounds": 3,           // loop mode: max feature/UX improvement rounds
+    "uxProbe": {                          // loop mode: judge UX from the *rendered* UI (see below)
+      "enabled": false,                   //   off by default — launching a dev server is a real side effect
+      "startCommand": "npm run dev",      //   how to start the app (inferred from package.json if omitted)
+      "url": "http://localhost:3000"      //   where it serves
+    }
   }
 }
 ```
+
+---
+
+## 🔁 Loop Mode: keep going until it's actually *good*
+
+Expert mode answers *"is this correct?"* Loop mode asks the next question — *"is this good?"* — and keeps iterating until the answer is yes.
+
+`--mode loop` runs the **full expert collaboration first** (so improvements are built on a correct baseline), then adds a fourth phase: a **product-minded reviewer** looks at your original request and the implemented diff and hunts for what would make it genuinely better — in **features** and in **UX**. In-scope improvements get built; larger ideas get surfaced to the PR instead of quietly ballooning it.
+
+```bash
+ivan --mode loop "Add a CLI command to export analytics as CSV"
+```
+
+```
+   ✅ expert baseline (design → implement → review)
+                          │
+                          ▼
+   ┌──────────────────┐   what could be better?   ┌──────────────────────────┐
+   │  🔨 Implementer  │ ◀════════════════════════ │  🔭 Product reviewer      │
+   │  applies in-scope │  IMPROVE ⟳  /  SHIP ✅    │  staff eng + designer     │
+   └──────────────────┘   improvements each round │  read-only, never edits  │
+                          │
+                          ▼
+     features + UX polished in-scope   ──▶   🔭 larger ideas surfaced on the PR
+```
+
+- **Feature + UX lens.** The reviewer looks for capability gaps the request implies, plus UX quality — error / empty / loading states, sensible defaults, feedback, discoverability, accessibility, and consistency with the rest of the product. Concrete suggestions only, never vague "polish it."
+- **Scope-disciplined.** Each improvement is tagged `now` (small, safe, in-scope → built this PR) or `future` (larger or scope-broadening → **surfaced, not built**). When in doubt it defers, so your PR stays reviewable.
+- **"Future improvements" on the PR.** Deferred ideas land in a dedicated section of the PR body — proposed for you to consider, never auto-applied.
+- **Grounded in loop engineering.** A *separate, skeptical evaluator* (an independent reviewer critiques far better than a generator grading its own work), fed real ground truth (the actual diff + codebase), converging fast: it ships the moment nothing in-scope is worth adding, and `maxImprovementRounds` is only a safety cap.
+- **Visual UX probe (opt-in).** By default the reviewer judges UX from the *code*. Set `collaborative.uxProbe.enabled` and — when the repo has **Playwright** and the change touches UI — the reviewer instead **runs the app, drives Playwright to the affected screens, and reads back screenshots** to critique the *rendered* result (real error/empty/loading states, layout, spacing). That review turn is granted command execution but stays **read-only for source** (it can run the app, never edit it), and falls back to a static review if it can't launch. Off by default because starting a dev server is a real side effect.
+
+> **Why not just always loop?** Because the improvement loop costs extra tokens and time, and correctness — not extra features — is the point for most changes. Reach for `loop` when the *quality* of the result matters more than raw speed; stick with `expert` (or `simple`) otherwise.
 
 ---
 
@@ -225,6 +266,7 @@ ivan config-blocked-tools     # block specific tools (least-privilege by repo)
 ivan                          # interactive: Ivan asks what to build
 ivan "task description"       # headless: run a task directly
 ivan --mode expert "task"     # collaborative architect ↔ implementer loop
+ivan --mode loop "task"       # expert + a product-review loop for feature/UX gains
 ivan --base-branch dev "task" # branch work off a specific local base branch
 ivan -c config.json           # run from a JSON config (CI-friendly)
 ivan -c '{"tasks":["A","B"],"mode":"expert"}'   # inline JSON config
@@ -286,7 +328,7 @@ Open http://localhost:3000 to watch jobs, task progress, execution logs, and PR 
 ```
 request ─▶ task breakdown ─▶ branch ─▶ implement ─▶ smart commit ─▶ PR
                                   │                                    │
-                          (expert mode: design + review rounds)  (optional: wait & auto-address)
+              (expert: design + review rounds; loop: + improvement rounds)  (optional: wait & auto-address)
 ```
 
 **Address workflow** — finds unresolved inline comments via the GitHub GraphQL API, implements each fix, replies with the fixing commit, and adds context-specific review instructions.
@@ -301,8 +343,8 @@ request ─▶ task breakdown ─▶ branch ─▶ implement ─▶ smart commit
 ivan/
 ├── src/
 │   ├── services/
-│   │   ├── task-executor.ts          # orchestrates the build workflow (simple | expert)
-│   │   ├── collaborative-executor.ts # the architect ↔ implementer loop (expert mode)
+│   │   ├── task-executor.ts          # orchestrates the build workflow (simple | expert | loop)
+│   │   ├── collaborative-executor.ts # the architect ↔ implementer loop + improvement loop (expert/loop)
 │   │   ├── claude-executor.ts        # Claude Code SDK driver
 │   │   ├── claude-cli-executor.ts    # Claude Code CLI driver (Claude Max)
 │   │   ├── address-executor.ts       # PR comment addressing workflow

@@ -1,4 +1,4 @@
-export type ExecutionMode = 'simple' | 'expert';
+export type ExecutionMode = 'simple' | 'expert' | 'loop';
 
 export interface NonInteractiveConfig {
   /**
@@ -48,6 +48,9 @@ export interface NonInteractiveConfig {
    * Execution mode.
    * - 'simple': one-shot hand-off to Claude Code (default)
    * - 'expert': collaborative architect↔implementer loop informed by learnings
+   * - 'loop': everything 'expert' does, then an improvement loop where a
+   *   product-minded reviewer pushes for feature/UX gains within scope and
+   *   surfaces larger ideas to the PR (see CollaborativeExecutor Phase 4)
    */
   mode?: ExecutionMode;
 }
