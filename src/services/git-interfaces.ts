@@ -61,9 +61,18 @@ export interface IGitManager {
 }
 
 export interface IPRService {
-  getSpecificPRWithIssues(prNumber: number, ignoreReplies?: boolean): Promise<PullRequest[]>;
-  getOpenPRsWithIssues(fromUser?: string, ignoreReplies?: boolean): Promise<PullRequest[]>;
-  getUnaddressedComments(prNumber: number, ignoreReplies?: boolean): Promise<PRComment[]>;
+  getSpecificPRWithIssues(
+    prNumber: number,
+    ignoreReplies?: boolean
+  ): Promise<PullRequest[]>;
+  getOpenPRsWithIssues(
+    fromUser?: string,
+    ignoreReplies?: boolean
+  ): Promise<PullRequest[]>;
+  getUnaddressedComments(
+    prNumber: number,
+    ignoreReplies?: boolean
+  ): Promise<PRComment[]>;
   checkoutPRBranch(prNumber: number): Promise<void>;
   getFailingActionLogs(prNumber: number): Promise<string>;
 }
