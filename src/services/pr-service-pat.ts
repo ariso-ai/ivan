@@ -19,7 +19,10 @@ export class PRServicePAT implements IPRService {
     this.repo = repoInfo.repo;
   }
 
-  async getSpecificPRWithIssues(prNumber: number, ignoreReplies = false): Promise<PullRequest[]> {
+  async getSpecificPRWithIssues(
+    prNumber: number,
+    ignoreReplies = false
+  ): Promise<PullRequest[]> {
     try {
       // Get specific PR
       const pr = await this.githubClient.getPR(this.owner, this.repo, prNumber);
@@ -47,7 +50,10 @@ export class PRServicePAT implements IPRService {
       };
 
       // Check for unaddressed comments
-      const comments = await this.getUnaddressedComments(pr.number, ignoreReplies);
+      const comments = await this.getUnaddressedComments(
+        pr.number,
+        ignoreReplies
+      );
       if (comments.length > 0) {
         pullRequest.hasUnaddressedComments = true;
         pullRequest.unaddressedComments = comments;
@@ -87,7 +93,10 @@ export class PRServicePAT implements IPRService {
     }
   }
 
-  async getOpenPRsWithIssues(fromUser?: string, ignoreReplies = false): Promise<PullRequest[]> {
+  async getOpenPRsWithIssues(
+    fromUser?: string,
+    ignoreReplies = false
+  ): Promise<PullRequest[]> {
     try {
       // Get all open PRs, optionally filtered by author
       const prs = await this.githubClient.listPRs(this.owner, this.repo, {
@@ -112,7 +121,10 @@ export class PRServicePAT implements IPRService {
         };
 
         // Check for unaddressed comments
-        const comments = await this.getUnaddressedComments(pr.number, ignoreReplies);
+        const comments = await this.getUnaddressedComments(
+          pr.number,
+          ignoreReplies
+        );
         if (comments.length > 0) {
           pullRequest.hasUnaddressedComments = true;
           pullRequest.unaddressedComments = comments;
@@ -147,7 +159,10 @@ export class PRServicePAT implements IPRService {
     }
   }
 
-  async getUnaddressedComments(prNumber: number, ignoreReplies = false): Promise<PRComment[]> {
+  async getUnaddressedComments(
+    prNumber: number,
+    ignoreReplies = false
+  ): Promise<PRComment[]> {
     try {
       // Get review threads using GraphQL
       const threads = await this.githubClient.getReviewThreads(
