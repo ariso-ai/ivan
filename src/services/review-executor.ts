@@ -14,6 +14,8 @@ import {
   createRepositoryManager
 } from './service-factory.js';
 import type { IGitManager, IRepositoryManager } from './git-interfaces.js';
+import { queryLearnings } from '../learnings/index.js';
+import type { LearningsQueryResult } from '../learnings/types.js';
 
 const REVIEW_SYSTEM_PROMPT = `You are a principal engineer helping a human reviewer understand and evaluate a pull request.
 
@@ -210,6 +212,12 @@ export class ReviewExecutor {
     }
 
     try {
+      const learningsSection = await this.buildLearningsSection(
+        prNumber,
+        prTitle,
+        workingDir
+      );
+
       const reviewPrompt = `Please review PR #${prNumber}: "${prTitle}" (${prUrl}).
 
 You are currently checked out on the PR branch \`${prBranch}\`. Use your tools to read the code and understand what this PR changes. Start by running \`git log --oneline main..HEAD\` and \`git diff main...HEAD\` to see what changed, then read the relevant files to understand the full context.
@@ -222,7 +230,7 @@ Your review should help a human reviewer know exactly what to look at and what t
 4. **Convention notes** — anything that deviates from existing patterns in the codebase
 5. **Overall assessment** — approve, request changes, or needs discussion
 
-Be specific. Reference exact file paths and line numbers. If the PR looks solid in a particular area, say so briefly.`;
+Be specific. Reference exact file paths and line numbers. If the PR looks solid in a particular area, say so briefly.${learningsSection}`;
 
       const result = await this.claudeExecutor.executeTurn(
         reviewPrompt,
@@ -267,6 +275,68 @@ Be specific. Reference exact file paths and line numbers. If the PR looks solid 
         }
       }
     }
+  }
+
+  /**
+   * Queries the repo's learnings database (.ivan/db.sqlite) with the PR title and
+   * changed file paths, and formats the closest matches as a prompt section.
+   * Returns an empty string when there is no learnings store or nothing matches.
+   */
+  private async buildLearningsSection(
+    prNumber: number,
+    prTitle: string | null,
+    workingDir: string
+  ): Promise<string> {
+    let queryText = prTitle ?? '';
+    try {
+      const filesJson = execSync(`gh pr view ${prNumber} --json files`, {
+        cwd: workingDir,
+        encoding: 'utf-8'
+      });
+      const files: Array<{ path: string }> = JSON.parse(filesJson).files ?? [];
+      queryText = [queryText, ...files.slice(0, 50).map((f) => f.path)]
+        .filter(Boolean)
+        .join('\n');
+    } catch {
+      // Changed-file lookup is best-effort; the title alone is still a usable query.
+    }
+
+    let learnings: LearningsQueryResult[] = [];
+    try {
+      learnings = await queryLearnings(workingDir, queryText, { limit: 10 });
+    } catch {
+      // No learnings store, or it failed to open — reviews still work without it.
+      return '';
+    }
+
+    if (learnings.length === 0) {
+      return '';
+    }
+
+    console.log(
+      chalk.cyan(
+        `   Including ${learnings.length} relevant learning(s) from past reviews`
+      )
+    );
+
+    const formatted = learnings
+      .map((l) => {
+        const label = l.title || l.kind;
+        const parts = [`- [${label}] ${l.statement}`];
+        if (l.rationale) parts.push(`  Why: ${l.rationale}`);
+        if (l.applicability) parts.push(`  When: ${l.applicability}`);
+        if (l.source_url) parts.push(`  Source: ${l.source_url}`);
+        return parts.join('\n');
+      })
+      .join('\n');
+
+    return `
+
+## Learnings from past reviews
+
+The following learnings were distilled from this team's past code reviews and repository history. They are the most contextually relevant to this PR. Apply them while reviewing: check whether the changes violate any of them, and cite the learning when you flag an issue based on one.
+
+${formatted}`;
   }
 
   private async postInlineComments(

@@ -13,6 +13,7 @@ import type {
   ExecutionMode
 } from './types/non-interactive-config.js';
 import { registerLearningsCommands } from './learnings/index.js';
+import { runImportLearningsCommand } from './learnings/import-learnings-command.js';
 import {
   readFileSync,
   existsSync,
@@ -309,6 +310,18 @@ program
       );
     }
   );
+
+program
+  .command('import-learnings')
+  .description(
+    'Import learnings from a CSV file into the learnings database (skips already-imported rows)'
+  )
+  .argument('<csv-file>', 'Path to the CSV file to import')
+  .option(
+    '--repo <path>',
+    'Repository root path (defaults to the current directory)'
+  )
+  .action(runImportLearningsCommand);
 
 program
   .command('web-stop')
@@ -835,6 +848,7 @@ async function main() {
       'web-stop',
       'address',
       'review',
+      'import-learnings',
       '--help',
       '-h',
       '--version',
