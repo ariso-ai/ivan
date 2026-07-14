@@ -193,6 +193,11 @@ export class ClaudeExecutor implements IClaudeExecutor {
             // 3) Permission mode: 'plan' for design dialogue (no edits),
             //    'bypassPermissions' for implementation turns.
             permissionMode,
+
+            // Load user (~/.claude), project (.claude/settings.json), and local
+            // settings so hooks configured there are honored (the SDK skips
+            // filesystem settings by default).
+            settingSources: ['user', 'project', 'local'],
             ...(systemPrompt !== undefined && { systemPrompt }),
             ...(allowedTools !== undefined && { allowedTools }),
             disallowedTools: allBlockedTools,
@@ -349,6 +354,8 @@ export class ClaudeExecutor implements IClaudeExecutor {
               'You are a task breakdown generator. Respond only with a newline-separated list of tasks.',
             cwd: workingDir,
             model: model,
+            // Load user/project/local settings so hooks are honored
+            settingSources: ['user', 'project', 'local'],
             // Use plan mode for task breakdown
             permissionMode: 'plan'
             // No allowedTools restriction for task breakdown
