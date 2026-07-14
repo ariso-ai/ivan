@@ -23,6 +23,13 @@ interface Config {
     architectModel?: string;
     maxDesignRounds?: number;
     maxReviewRounds?: number;
+    productModel?: string;
+    maxImprovementRounds?: number;
+    uxProbe?: {
+      enabled?: boolean;
+      startCommand?: string;
+      url?: string;
+    };
   };
 }
 
@@ -30,6 +37,30 @@ export interface CollaborativeConfig {
   architectModel: string;
   maxDesignRounds: number;
   maxReviewRounds: number;
+  /**
+   * Model for the "loop"-mode product reviewer (Phase 4). An independent,
+   * skeptical evaluator works best on a strong reasoning model, so this
+   * defaults to the architect's model.
+   */
+  productModel: string;
+  /**
+   * Safety ceiling on "loop"-mode improvement rounds. Like the design/review
+   * caps this is a bound, not a target: the loop stops as soon as the reviewer
+   * ships or stops finding in-scope improvements.
+   */
+  maxImprovementRounds: number;
+  /**
+   * "loop"-mode visual UX probe. When enabled and the worktree supports
+   * Playwright, the product reviewer is told to run the app and drive Playwright
+   * to observe the *rendered* UI (screenshots it Reads back) before judging UX,
+   * and its review turn is granted command execution while staying read-only for
+   * source files. Off by default — launching a dev server is a real side effect.
+   */
+  uxProbe: {
+    enabled: boolean;
+    startCommand?: string;
+    url?: string;
+  };
 }
 
 export class ConfigManager {
@@ -738,10 +769,19 @@ export class ConfigManager {
       typeof value === 'number' && Number.isFinite(value) && value >= 1
         ? Math.floor(value)
         : fallback;
+    const architectModel = c?.architectModel?.trim() || 'claude-opus-4-8';
+    const uxProbe = c?.uxProbe;
     return {
-      architectModel: c?.architectModel?.trim() || 'claude-opus-4-8',
+      architectModel,
       maxDesignRounds: sanitizeRounds(c?.maxDesignRounds, 5),
-      maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3)
+      maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3),
+      productModel: c?.productModel?.trim() || architectModel,
+      maxImprovementRounds: sanitizeRounds(c?.maxImprovementRounds, 3),
+      uxProbe: {
+        enabled: uxProbe?.enabled === true,
+        startCommand: uxProbe?.startCommand?.trim() || undefined,
+        url: uxProbe?.url?.trim() || undefined
+      }
     };
   }
 

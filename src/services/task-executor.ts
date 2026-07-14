@@ -71,16 +71,47 @@ export class TaskExecutor {
   }
 
   /**
+   * Appends a "Future improvements" section to a PR body in "loop" mode. These
+   * are feature/UX ideas the product reviewer judged out of scope and did NOT
+   * build — surfaced for the human to consider, never auto-applied.
+   */
+  private appendImprovements(body: string, improvements: string[]): string {
+    const valid = improvements.filter((c) => c && c.trim());
+    if (valid.length === 0) return body;
+
+    const MAX_IMPROVEMENT_LENGTH = 4000;
+    const sections = valid.map((imp) => {
+      const cleaned = imp.trim();
+      return cleaned.length > MAX_IMPROVEMENT_LENGTH
+        ? `${cleaned.slice(0, MAX_IMPROVEMENT_LENGTH)}\n\n…(truncated)`
+        : cleaned;
+    });
+
+    const heading =
+      '## 🔭 Future improvements\n' +
+      "_Surfaced by Ivan's loop mode — higher-value feature/UX ideas that were out of scope for this PR. Proposed, not implemented; here for your consideration._";
+
+    return `${body}\n\n---\n\n${heading}\n\n${sections.join('\n\n')}`;
+  }
+
+  /**
    * Runs the implementation for a task, branching on execution mode:
    * - 'simple': a single one-shot hand-off to Claude Code (default)
    * - 'expert': a collaborative architect↔implementer loop informed by learnings
+   * - 'loop': everything 'expert' does, then a product-review improvement loop
    */
   private async runImplementation(
     taskWithInstructions: string,
     executionPath: string,
     sessionId?: string
-  ): Promise<TurnResult & Pick<CollaborativeRunResult, 'unresolvedConcerns'>> {
-    if (this.executionMode === 'expert') {
+  ): Promise<
+    TurnResult &
+      Pick<
+        CollaborativeRunResult,
+        'unresolvedConcerns' | 'surfacedImprovements'
+      >
+  > {
+    if (this.executionMode === 'expert' || this.executionMode === 'loop') {
       const collaborative = new CollaborativeExecutor(
         this.getClaudeExecutor(),
         this.configManager.getCollaborativeConfig()
@@ -95,7 +126,8 @@ export class TaskExecutor {
           }
           return this.gitManager.getDiff();
         },
-        incomingSessionId: sessionId
+        incomingSessionId: sessionId,
+        improve: this.executionMode === 'loop'
       });
     }
     return this.getClaudeExecutor().executeTask(
@@ -133,6 +165,14 @@ export class TaskExecutor {
           chalk.magenta.bold(
             '🧠 Expert mode: Ivan will act as a principal engineer, ' +
               'critiquing the design and implementation across rounds.'
+          )
+        );
+      } else if (mode === 'loop') {
+        console.log(
+          chalk.magenta.bold(
+            '🔁 Loop mode: Ivan critiques design and implementation like a ' +
+              'principal engineer, then loops as a product reviewer — pushing ' +
+              'for feature/UX improvements and surfacing larger ideas on the PR.'
           )
         );
       }
@@ -688,9 +728,12 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      const prBody = this.prependConcerns(
-        body,
-        result.unresolvedConcerns ? [result.unresolvedConcerns] : []
+      const prBody = this.appendImprovements(
+        this.prependConcerns(
+          body,
+          result.unresolvedConcerns ? [result.unresolvedConcerns] : []
+        ),
+        result.surfacedImprovements ? [result.surfacedImprovements] : []
       );
       const prUrl = await this.gitManager.createPullRequest(title, prBody);
       if (spinner) spinner.succeed(`Pull request created: ${prUrl}`);
@@ -752,6 +795,7 @@ export class TaskExecutor {
     let branchName: string | null = null;
     let sessionId: string | undefined;
     const unresolvedConcerns: string[] = [];
+    const surfacedImprovements: string[] = [];
 
     try {
       if (!this.gitManager) {
@@ -822,6 +866,11 @@ export class TaskExecutor {
         if (result.unresolvedConcerns) {
           unresolvedConcerns.push(
             `**${task.description}**\n\n${result.unresolvedConcerns}`
+          );
+        }
+        if (result.surfacedImprovements) {
+          surfacedImprovements.push(
+            `**${task.description}**\n\n${result.surfacedImprovements}`
           );
         }
         if (spinner) {
@@ -1021,7 +1070,10 @@ export class TaskExecutor {
       if (spinner) spinner.succeed('PR description generated');
 
       if (!quiet) spinner = ora('Creating pull request...').start();
-      const prBody = this.prependConcerns(body, unresolvedConcerns);
+      const prBody = this.appendImprovements(
+        this.prependConcerns(body, unresolvedConcerns),
+        surfacedImprovements
+      );
       const prUrl = await this.gitManager.createPullRequest(title, prBody);
       if (spinner) spinner.succeed(`Pull request created: ${prUrl}`);
 

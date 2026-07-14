@@ -44,7 +44,7 @@ program
   )
   .option(
     '--mode <mode>',
-    'Execution mode: "simple" (one-shot hand-off, default) or "expert" (collaborative architect↔implementer loop informed by learnings)'
+    'Execution mode: "simple" (one-shot hand-off, default), "expert" (collaborative architect↔implementer loop informed by learnings), or "loop" (expert, then a product-review loop pushing for feature/UX improvements)'
   );
 
 registerLearningsCommands(program);
@@ -797,9 +797,9 @@ async function runNonInteractive(configInput: string): Promise<void> {
 
 function resolveMode(raw: string | undefined): ExecutionMode {
   const value = (raw || 'simple').toLowerCase();
-  if (value !== 'simple' && value !== 'expert') {
+  if (value !== 'simple' && value !== 'expert' && value !== 'loop') {
     throw new Error(
-      `Invalid --mode "${raw}". Valid values are "simple" or "expert".`
+      `Invalid --mode "${raw}". Valid values are "simple", "expert", or "loop".`
     );
   }
   return value;
