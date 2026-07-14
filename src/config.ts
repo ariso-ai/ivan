@@ -24,12 +24,26 @@ interface Config {
     maxDesignRounds?: number;
     maxReviewRounds?: number;
   };
+  selfReview?: {
+    enabled?: boolean;
+    model?: string;
+  };
 }
 
 export interface CollaborativeConfig {
   architectModel: string;
   maxDesignRounds: number;
   maxReviewRounds: number;
+}
+
+export interface SelfReviewConfig {
+  /** Whether Ivan runs a Claude Code code review (and applies fixes) before opening a PR. */
+  enabled: boolean;
+  /**
+   * Optional model override for the reviewer turn. Defaults to the configured
+   * implementer model; set a stronger model here for a more rigorous review.
+   */
+  model?: string;
 }
 
 export class ConfigManager {
@@ -742,6 +756,20 @@ export class ConfigManager {
       architectModel: c?.architectModel?.trim() || 'claude-opus-4-8',
       maxDesignRounds: sanitizeRounds(c?.maxDesignRounds, 5),
       maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3)
+    };
+  }
+
+  /**
+   * Settings for the pre-PR self code review, where Ivan asks Claude Code to
+   * review its own changes (grounded in the team's learnings and engineering
+   * best practices) and silently apply fixes before opening the pull request.
+   * Enabled by default; opt out with `--no-self-review` or `selfReview.enabled`.
+   */
+  getSelfReviewConfig(): SelfReviewConfig {
+    const sr = this.getConfig()?.selfReview;
+    return {
+      enabled: sr?.enabled !== false,
+      model: sr?.model?.trim() || undefined
     };
   }
 
