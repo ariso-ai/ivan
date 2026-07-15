@@ -226,6 +226,7 @@ ivan                          # interactive: Ivan asks what to build
 ivan "task description"       # headless: run a task directly
 ivan --mode expert "task"     # collaborative architect ↔ implementer loop
 ivan --base-branch dev "task" # branch work off a specific local base branch
+ivan --self-review "task"     # Claude self-reviews the branch before opening the PR
 ivan -c config.json           # run from a JSON config (CI-friendly)
 ivan -c '{"tasks":["A","B"],"mode":"expert"}'   # inline JSON config
 ivan address [PR#]            # address PR review comments or failing checks

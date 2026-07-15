@@ -43,6 +43,10 @@ program
     'Rewrite verbose task descriptions before execution using GPT-4o-mini'
   )
   .option(
+    '--self-review',
+    'Have Claude self-review the changes before opening a PR'
+  )
+  .option(
     '--mode <mode>',
     'Execution mode: "simple" (one-shot hand-off, default) or "expert" (collaborative architect↔implementer loop informed by learnings)'
   );
@@ -738,13 +742,15 @@ async function runNonInteractive(configInput: string): Promise<void> {
     }
 
     // Apply --rewrite-prompt flag if passed on CLI
-    const { rewritePrompt, baseBranch, mode } = program.opts<{
+    const { rewritePrompt, baseBranch, mode, selfReview } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+      selfReview?: boolean;
     }>();
     if (rewritePrompt) config.rewritePrompt = true;
     if (baseBranch) config.baseBranch = baseBranch;
+    if (selfReview) config.selfReview = true;
     // CLI --mode overrides the config file; config value wins only if no flag.
     if (mode !== undefined) config.mode = resolveMode(mode);
 
@@ -814,11 +820,13 @@ async function main() {
     const {
       rewritePrompt: hasRewriteFlag,
       baseBranch,
-      mode: modeFlag
+      mode: modeFlag,
+      selfReview: hasSelfReviewFlag
     } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+      selfReview?: boolean;
     }>();
     const mode = resolveMode(modeFlag);
 
@@ -864,7 +872,8 @@ async function main() {
         tasks: [taskDescription],
         rewritePrompt: hasRewriteFlag,
         mode,
-        ...(baseBranch && { baseBranch })
+        ...(baseBranch && { baseBranch }),
+        ...(hasSelfReviewFlag && { selfReview: true })
       };
 
       // Check configuration before running

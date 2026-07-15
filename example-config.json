@@ -4,5 +4,6 @@
   ],
   "generateSubtasks": false,
   "prStrategy": "multiple",
-  "waitForComments": true
+  "waitForComments": true,
+  "selfReview": false
 }

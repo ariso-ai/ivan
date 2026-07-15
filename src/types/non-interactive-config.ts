@@ -26,6 +26,13 @@ export interface NonInteractiveConfig {
   waitForComments?: boolean;
 
   /**
+   * Before opening a PR, run a Claude self-review pass over the branch's changes
+   * and commit any fixes it makes (going through the pre-commit fix loop again if needed)
+   * Default: false
+   */
+  selfReview?: boolean;
+
+  /**
    * Optional: Repository path to execute tasks in
    * Defaults to current working directory
    */
