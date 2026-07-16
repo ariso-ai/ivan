@@ -343,6 +343,10 @@ npm test           # build + jest
 
 Found a bug or have an idea? [Open an issue](https://github.com/ariso-ai/ivan/issues) or send a PR. If Ivan saved you time, a ⭐ on the repo helps other developers find it.
 
+### Contributors
+
+- [maxheckel](https://github.com/maxheckel)
+
 ---
 
 ## 🔐 Security
