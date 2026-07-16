@@ -840,20 +840,14 @@ async function main() {
       rewritePrompt: hasRewriteFlag,
       baseBranch,
       mode: modeFlag,
-<<<<<<< Updated upstream
-      selfReview: hasSelfReviewFlag
-=======
+      selfReview: hasSelfReviewFlag,
       spec: specFiles
->>>>>>> Stashed changes
     } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
-<<<<<<< Updated upstream
       selfReview?: boolean;
-=======
       spec?: string[];
->>>>>>> Stashed changes
     }>();
     const mode = resolveMode(modeFlag);
     const specTasks =
@@ -956,11 +950,8 @@ async function main() {
         hasRewriteFlag,
         baseBranch,
         mode,
-<<<<<<< Updated upstream
-        hasSelfReviewFlag
-=======
+        hasSelfReviewFlag,
         specTasks
->>>>>>> Stashed changes
       );
       return;
     }

@@ -325,11 +325,8 @@ export class TaskExecutor {
     rewritePrompt: boolean = false,
     baseBranch?: string,
     mode: ExecutionMode = 'simple',
-<<<<<<< Updated upstream
-    selfReview: boolean = false
-=======
+    selfReview: boolean = false,
     prefilledTasks?: string[]
->>>>>>> Stashed changes
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
