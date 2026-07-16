@@ -43,8 +43,16 @@ program
     'Rewrite verbose task descriptions before execution using GPT-4o-mini'
   )
   .option(
+    '--self-review',
+    'Have Claude self-review the changes before opening a PR'
+  )
+  .option(
     '--mode <mode>',
     'Execution mode: "simple" (one-shot hand-off, default) or "expert" (collaborative architect↔implementer loop informed by learnings)'
+  )
+  .option(
+    '--spec <files...>',
+    'Read task descriptions from one or more files (one task per line, # comments and blank lines ignored) instead of prompting via the editor'
   );
 
 registerLearningsCommands(program);
@@ -738,13 +746,15 @@ async function runNonInteractive(configInput: string): Promise<void> {
     }
 
     // Apply --rewrite-prompt flag if passed on CLI
-    const { rewritePrompt, baseBranch, mode } = program.opts<{
+    const { rewritePrompt, baseBranch, mode, selfReview } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+      selfReview?: boolean;
     }>();
     if (rewritePrompt) config.rewritePrompt = true;
     if (baseBranch) config.baseBranch = baseBranch;
+    if (selfReview) config.selfReview = true;
     // CLI --mode overrides the config file; config value wins only if no flag.
     if (mode !== undefined) config.mode = resolveMode(mode);
 
@@ -795,6 +805,21 @@ async function runNonInteractive(configInput: string): Promise<void> {
   }
 }
 
+function readTasksFromSpecFiles(specFiles: string[]): string[] {
+  const tasks: string[] = [];
+  for (const file of specFiles) {
+    if (!existsSync(file)) {
+      throw new Error(`--spec file not found: ${file}`);
+    }
+    const content = readFileSync(file, 'utf-8').trim();
+    if (content.length === 0) {
+      throw new Error(`--spec file is empty: ${file}`);
+    }
+    tasks.push(content);
+  }
+  return tasks;
+}
+
 function resolveMode(raw: string | undefined): ExecutionMode {
   const value = (raw || 'simple').toLowerCase();
   if (value !== 'simple' && value !== 'expert') {
@@ -814,13 +839,21 @@ async function main() {
     const {
       rewritePrompt: hasRewriteFlag,
       baseBranch,
-      mode: modeFlag
+      mode: modeFlag,
+      selfReview: hasSelfReviewFlag,
+      spec: specFiles
     } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+      selfReview?: boolean;
+      spec?: string[];
     }>();
     const mode = resolveMode(modeFlag);
+    const specTasks =
+      specFiles && specFiles.length > 0
+        ? readTasksFromSpecFiles(specFiles)
+        : undefined;
 
     // Check for -c/--config flag
     const configFlagIndex = args.findIndex(
@@ -864,7 +897,8 @@ async function main() {
         tasks: [taskDescription],
         rewritePrompt: hasRewriteFlag,
         mode,
-        ...(baseBranch && { baseBranch })
+        ...(baseBranch && { baseBranch }),
+        ...(hasSelfReviewFlag && { selfReview: true })
       };
 
       // Check configuration before running
@@ -912,7 +946,13 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow(hasRewriteFlag, baseBranch, mode);
+      await taskExecutor.executeWorkflow(
+        hasRewriteFlag,
+        baseBranch,
+        mode,
+        hasSelfReviewFlag,
+        specTasks
+      );
       return;
     }
 

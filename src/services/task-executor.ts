@@ -24,6 +24,9 @@ import type { ExecutionMode } from '../types/non-interactive-config.js';
 import type { TurnResult } from './executor-factory.js';
 import type { CollaborativeRunResult } from './collaborative-executor.js';
 
+const SELF_REVIEW_PROMPT =
+  "ok review the changes in the current branch carefully. make sure it follows repo convention, reusable component/utils/etc. don't over-engineer, dont reinvent.";
+
 export class TaskExecutor {
   private jobManager: JobManager;
   private gitManager: IGitManager | null = null;
@@ -35,6 +38,7 @@ export class TaskExecutor {
   private repoInstructions: string | undefined;
   private baseBranch: string | undefined;
   private executionMode: ExecutionMode;
+  private selfReviewEnabled: boolean;
 
   constructor() {
     this.jobManager = new JobManager();
@@ -44,6 +48,7 @@ export class TaskExecutor {
     this.repoInstructions = undefined;
     this.baseBranch = undefined;
     this.executionMode = 'simple';
+    this.selfReviewEnabled = false;
   }
 
   /**
@@ -119,10 +124,209 @@ export class TaskExecutor {
     return this.openaiService;
   }
 
+  /**
+   * Commits staged changes, retrying up to three times by handing pre-commit
+   * hook failures back to Claude to fix. Returns the (possibly updated) Claude
+   * session ID so callers can keep threading conversational context.
+   */
+  private async commitWithFixLoop(
+    commitMessage: string,
+    executionPath: string,
+    taskUuid: string,
+    quiet: boolean,
+    sessionId?: string
+  ): Promise<string | undefined> {
+    let spinner = quiet ? null : ora('Committing changes...').start();
+
+    let commitAttempts = 0;
+    const maxCommitAttempts = 3;
+    let commitSucceeded = false;
+
+    while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
+      try {
+        if (!this.gitManager) {
+          throw new Error('GitManager not initialized');
+        }
+        await this.gitManager.commitChanges(commitMessage);
+        // Only show success message if spinner is running (first attempt)
+        if (spinner) {
+          if (commitAttempts === 0) {
+            spinner.succeed('Changes committed');
+          } else if (spinner.isSpinning) {
+            spinner.succeed('Commit successful after retry');
+          }
+        }
+        commitSucceeded = true;
+      } catch (commitError) {
+        commitAttempts++;
+
+        const errorMessage =
+          commitError instanceof Error
+            ? commitError.message
+            : String(commitError);
+
+        // Check if this is a pre-commit hook failure
+        if (
+          errorMessage.includes('pre-commit') &&
+          commitAttempts < maxCommitAttempts
+        ) {
+          if (spinner) {
+            spinner.fail(
+              `Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`
+            );
+            console.log(
+              chalk.yellow('🔧 Running Claude to fix pre-commit errors...')
+            );
+          }
+
+          // Extract the error details from the commit error
+          let errorDetails = errorMessage;
+
+          // Condense error details if they're too large (over 10,000 characters)
+          const MAX_ERROR_LENGTH = 10000;
+          if (errorDetails.length > MAX_ERROR_LENGTH) {
+            if (!quiet) {
+              console.log(
+                chalk.yellow(
+                  `📊 Build output is large (${errorDetails.length} chars), condensing with AI...`
+                )
+              );
+            }
+            try {
+              errorDetails = await this.getOpenAIService().condenseBuildOutput(
+                errorDetails,
+                MAX_ERROR_LENGTH
+              );
+            } catch (condenseError) {
+              // If condensation fails, just use truncation
+              console.warn(
+                chalk.yellow(
+                  'Failed to condense output, using truncation instead'
+                ),
+                condenseError
+              );
+            }
+          }
+
+          // Prepare prompt for Claude to fix the errors
+          const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
+
+          if (!quiet)
+            spinner = ora('Running Claude to fix pre-commit errors...').start();
+
+          try {
+            // Run Claude to fix the errors (pass session ID to maintain context)
+            const fixResult = await this.getClaudeExecutor().executeTask(
+              fixPrompt,
+              executionPath,
+              sessionId
+            );
+            // Update session ID
+            sessionId = fixResult.sessionId;
+            if (spinner) spinner.succeed('Claude attempted to fix the errors');
+
+            // Update the execution log with the fix attempt
+            const previousLog =
+              await this.jobManager.getTaskExecutionLog(taskUuid);
+            await this.jobManager.updateTaskExecutionLog(
+              taskUuid,
+              `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
+            );
+
+            // Try to commit again on the next iteration
+            if (!quiet) spinner = ora('Retrying commit...').start();
+          } catch (fixError) {
+            if (spinner) spinner.fail('Failed to run Claude to fix errors');
+            if (!quiet)
+              console.error(chalk.red('Claude fix attempt failed:'), fixError);
+            throw commitError; // Re-throw the original error
+          }
+        } else {
+          // Not a pre-commit error or max attempts reached
+          throw commitError;
+        }
+      }
+    }
+
+    if (!commitSucceeded) {
+      throw new Error(
+        `Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`
+      );
+    }
+
+    return sessionId;
+  }
+
+  /**
+   * Runs a Claude self-review pass over the branch's changes before a PR is
+   * opened. Any fixes the review produces are committed through the same
+   * pre-commit fix loop as the original implementation.
+   */
+  private async runSelfReview(
+    executionPath: string,
+    taskUuid: string,
+    quiet: boolean,
+    sessionId?: string
+  ): Promise<string | undefined> {
+    let spinner = quiet
+      ? null
+      : ora('Running self-review with Claude Code...').start();
+
+    const reviewResult = await this.getClaudeExecutor().executeTask(
+      SELF_REVIEW_PROMPT,
+      executionPath,
+      sessionId
+    );
+    sessionId = reviewResult.sessionId;
+    if (spinner) spinner.succeed('Self-review completed');
+
+    const previousLog = await this.jobManager.getTaskExecutionLog(taskUuid);
+    await this.jobManager.updateTaskExecutionLog(
+      taskUuid,
+      `${previousLog}\n\n--- Self-Review ---\n${reviewResult.log}`
+    );
+
+    if (!this.gitManager) {
+      throw new Error('GitManager not initialized');
+    }
+    const changedFiles = this.gitManager.getChangedFiles();
+    if (changedFiles.length === 0) {
+      if (!quiet)
+        console.log(chalk.green('✨ Self-review made no additional changes'));
+      return sessionId;
+    }
+
+    if (!quiet)
+      console.log(
+        chalk.blue(
+          `🔧 Self-review made changes to ${changedFiles.length} file(s)`
+        )
+      );
+
+    const diff = this.gitManager.getDiff();
+
+    if (!quiet) spinner = ora('Generating commit message...').start();
+    const commitMessage = await this.getOpenAIService().generateCommitMessage(
+      diff,
+      changedFiles
+    );
+    if (spinner) spinner.succeed(`Commit message generated: ${commitMessage}`);
+
+    return this.commitWithFixLoop(
+      commitMessage,
+      executionPath,
+      taskUuid,
+      quiet,
+      sessionId
+    );
+  }
+
   async executeWorkflow(
     rewritePrompt: boolean = false,
     baseBranch?: string,
-    mode: ExecutionMode = 'simple'
+    mode: ExecutionMode = 'simple',
+    selfReview: boolean = false,
+    prefilledTasks?: string[]
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
@@ -231,7 +435,8 @@ export class TaskExecutor {
 
       const { tasks, prStrategy } = await this.jobManager.promptForTasks(
         this.workingDir,
-        repository.id
+        repository.id,
+        prefilledTasks
       );
 
       console.log('');
@@ -252,16 +457,26 @@ export class TaskExecutor {
         let shouldWaitForComments = false;
         const inquirer = (await import('inquirer')).default;
 
-        const { waitForComments } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'waitForComments',
-            message:
-              'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
-            default: false
-          }
-        ]);
+        const { waitForComments, selfReview: promptedSelfReview } =
+          await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'waitForComments',
+              message:
+                'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
+              default: false
+            },
+            {
+              type: 'confirm',
+              name: 'selfReview',
+              message:
+                'Would you like Claude to self-review its changes before opening each PR?',
+              default: false,
+              when: !selfReview
+            }
+          ]);
         shouldWaitForComments = waitForComments;
+        this.selfReviewEnabled = selfReview || promptedSelfReview;
 
         // Optionally rewrite prompts before execution
         if (rewritePrompt) {
@@ -519,8 +734,16 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
+      // Uncommitted working-tree changes still waiting to be committed.
       const changedFiles = this.gitManager.getChangedFiles();
-      if (changedFiles.length === 0) {
+      // Total diff vs. the base branch: covers changes Claude already
+      // committed itself during execution (e.g. mid-task or via self-review),
+      // which leave a clean working tree but still need to be pushed/PR'd.
+      const changedFilesFromBase =
+        changedFiles.length === 0
+          ? this.gitManager.getChangedFiles(targetBranch)
+          : changedFiles;
+      if (changedFilesFromBase.length === 0) {
         if (!quiet)
           console.log(
             chalk.yellow(
@@ -531,141 +754,41 @@ export class TaskExecutor {
         return;
       }
 
-      if (!this.gitManager) {
-        throw new Error('GitManager not initialized');
-      }
-      const diff = this.gitManager.getDiff();
-
-      if (!quiet) spinner = ora('Generating commit message...').start();
-      const commitMessage = await this.getOpenAIService().generateCommitMessage(
-        diff,
-        changedFiles
-      );
-      if (spinner)
-        spinner.succeed(`Commit message generated: ${commitMessage}`);
-
-      if (!quiet) spinner = ora('Committing changes...').start();
-      if (!this.gitManager) {
-        throw new Error('GitManager not initialized');
-      }
-
-      // Try to commit, handling pre-commit hook failures
-      let commitAttempts = 0;
-      const maxCommitAttempts = 3;
-      let commitSucceeded = false;
-
-      while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
-        try {
-          await this.gitManager.commitChanges(commitMessage);
-          // Only show success message if spinner is running (first attempt)
-          if (spinner) {
-            if (commitAttempts === 0) {
-              spinner.succeed('Changes committed');
-            } else if (spinner.isSpinning) {
-              spinner.succeed('Commit successful after retry');
-            }
-          }
-          commitSucceeded = true;
-        } catch (commitError) {
-          commitAttempts++;
-
-          const errorMessage =
-            commitError instanceof Error
-              ? commitError.message
-              : String(commitError);
-
-          // Check if this is a pre-commit hook failure
-          if (
-            errorMessage.includes('pre-commit') &&
-            commitAttempts < maxCommitAttempts
-          ) {
-            if (spinner) {
-              spinner.fail(
-                `Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`
-              );
-              console.log(
-                chalk.yellow('🔧 Running Claude to fix pre-commit errors...')
-              );
-            }
-
-            // Extract the error details from the commit error
-            let errorDetails = errorMessage;
-
-            // Condense error details if they're too large (over 10,000 characters)
-            const MAX_ERROR_LENGTH = 10000;
-            if (errorDetails.length > MAX_ERROR_LENGTH) {
-              if (!quiet) {
-                console.log(
-                  chalk.yellow(
-                    `📊 Build output is large (${errorDetails.length} chars), condensing with AI...`
-                  )
-                );
-              }
-              try {
-                errorDetails =
-                  await this.getOpenAIService().condenseBuildOutput(
-                    errorDetails,
-                    MAX_ERROR_LENGTH
-                  );
-              } catch (condenseError) {
-                // If condensation fails, just use truncation
-                console.warn(
-                  chalk.yellow(
-                    'Failed to condense output, using truncation instead'
-                  ),
-                  condenseError
-                );
-              }
-            }
-
-            // Prepare prompt for Claude to fix the errors
-            const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
-
-            if (!quiet)
-              spinner = ora(
-                'Running Claude to fix pre-commit errors...'
-              ).start();
-
-            try {
-              // Run Claude to fix the errors
-              const fixResult = await this.getClaudeExecutor().executeTask(
-                fixPrompt,
-                worktreePath || this.workingDir
-              );
-              if (spinner)
-                spinner.succeed('Claude attempted to fix the errors');
-
-              // Update the execution log with the fix attempt
-              const previousLog = await this.jobManager.getTaskExecutionLog(
-                task.uuid
-              );
-              await this.jobManager.updateTaskExecutionLog(
-                task.uuid,
-                `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
-              );
-
-              // Try to commit again on the next iteration
-              if (!quiet) spinner = ora('Retrying commit...').start();
-            } catch (fixError) {
-              if (spinner) spinner.fail('Failed to run Claude to fix errors');
-              if (!quiet)
-                console.error(
-                  chalk.red('Claude fix attempt failed:'),
-                  fixError
-                );
-              throw commitError; // Re-throw the original error
-            }
-          } else {
-            // Not a pre-commit error or max attempts reached
-            throw commitError;
-          }
+      let sessionId: string | undefined = result.sessionId;
+      if (changedFiles.length === 0) {
+        if (!quiet)
+          console.log(
+            chalk.blue(
+              'ℹ️  Changes were already committed during task execution'
+            )
+          );
+      } else {
+        if (!this.gitManager) {
+          throw new Error('GitManager not initialized');
         }
+        const diff = this.gitManager.getDiff();
+
+        if (!quiet) spinner = ora('Generating commit message...').start();
+        const commitMessage =
+          await this.getOpenAIService().generateCommitMessage(
+            diff,
+            changedFiles
+          );
+        if (spinner)
+          spinner.succeed(`Commit message generated: ${commitMessage}`);
+
+        sessionId = await this.commitWithFixLoop(
+          commitMessage,
+          executionPath,
+          task.uuid,
+          quiet,
+          result.sessionId
+        );
       }
 
-      if (!commitSucceeded) {
-        throw new Error(
-          `Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`
-        );
+      // Optionally self-review the branch before opening the PR
+      if (this.selfReviewEnabled) {
+        await this.runSelfReview(executionPath, task.uuid, quiet, sessionId);
       }
 
       if (!quiet) spinner = ora('Pushing branch...').start();
@@ -675,12 +798,22 @@ export class TaskExecutor {
       await this.gitManager.pushBranch(branchName);
       if (spinner) spinner.succeed('Branch pushed to origin');
 
+      // Recompute the diff/changed files against the base branch so the PR
+      // description reflects any commits self-review made after the initial commit.
+      const finalDiff = this.gitManager.getDiff(
+        `origin/${targetBranch}`,
+        'HEAD'
+      );
+      const finalChangedFiles = this.gitManager.getChangedFiles(
+        `origin/${targetBranch}`
+      );
+
       if (!quiet) spinner = ora('Generating PR description...').start();
       const { title, body } =
         await this.getOpenAIService().generatePullRequestDescription(
           task.description,
-          diff,
-          changedFiles
+          finalDiff,
+          finalChangedFiles
         );
       if (spinner) spinner.succeed('PR description generated');
 
@@ -849,132 +982,13 @@ export class TaskExecutor {
           if (spinner)
             spinner.succeed(`Commit message generated: ${commitMessage}`);
 
-          if (!quiet) spinner = ora('Committing changes...').start();
-
-          // Try to commit, handling pre-commit hook failures
-          let commitAttempts = 0;
-          const maxCommitAttempts = 3;
-          let commitSucceeded = false;
-
-          while (commitAttempts < maxCommitAttempts && !commitSucceeded) {
-            try {
-              await this.gitManager.commitChanges(commitMessage);
-              // Only show success message if spinner is running (first attempt)
-              if (spinner) {
-                if (commitAttempts === 0) {
-                  spinner.succeed('Changes committed');
-                } else if (spinner.isSpinning) {
-                  spinner.succeed('Commit successful after retry');
-                }
-              }
-              commitSucceeded = true;
-            } catch (commitError) {
-              commitAttempts++;
-
-              const errorMessage =
-                commitError instanceof Error
-                  ? commitError.message
-                  : String(commitError);
-
-              // Check if this is a pre-commit hook failure
-              if (
-                errorMessage.includes('pre-commit') &&
-                commitAttempts < maxCommitAttempts
-              ) {
-                if (spinner) {
-                  spinner.fail(
-                    `Pre-commit hook failed (attempt ${commitAttempts}/${maxCommitAttempts})`
-                  );
-                  console.log(
-                    chalk.yellow(
-                      '🔧 Running Claude to fix pre-commit errors...'
-                    )
-                  );
-                }
-
-                // Extract the error details from the commit error
-                let errorDetails = errorMessage;
-
-                // Condense error details if they're too large (over 10,000 characters)
-                const MAX_ERROR_LENGTH = 10000;
-                if (errorDetails.length > MAX_ERROR_LENGTH) {
-                  if (!quiet) {
-                    console.log(
-                      chalk.yellow(
-                        `📊 Build output is large (${errorDetails.length} chars), condensing with AI...`
-                      )
-                    );
-                  }
-                  try {
-                    errorDetails =
-                      await this.getOpenAIService().condenseBuildOutput(
-                        errorDetails,
-                        MAX_ERROR_LENGTH
-                      );
-                  } catch (condenseError) {
-                    // If condensation fails, just use truncation
-                    console.warn(
-                      chalk.yellow(
-                        'Failed to condense output, using truncation instead'
-                      ),
-                      condenseError
-                    );
-                  }
-                }
-
-                // Prepare prompt for Claude to fix the errors
-                const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
-
-                if (!quiet)
-                  spinner = ora(
-                    'Running Claude to fix pre-commit errors...'
-                  ).start();
-
-                try {
-                  // Run Claude to fix the errors (pass session ID to maintain context)
-                  const fixResult = await this.getClaudeExecutor().executeTask(
-                    fixPrompt,
-                    executionPath,
-                    sessionId
-                  );
-                  // Update session ID
-                  sessionId = fixResult.sessionId;
-                  if (spinner)
-                    spinner.succeed('Claude attempted to fix the errors');
-
-                  // Update the execution log with the fix attempt
-                  const previousLog = await this.jobManager.getTaskExecutionLog(
-                    task.uuid
-                  );
-                  await this.jobManager.updateTaskExecutionLog(
-                    task.uuid,
-                    `${previousLog}\n\n--- Pre-commit Fix Attempt ${commitAttempts} ---\n${fixResult.log}`
-                  );
-
-                  // Try to commit again on the next iteration
-                  if (!quiet) spinner = ora('Retrying commit...').start();
-                } catch (fixError) {
-                  if (spinner)
-                    spinner.fail('Failed to run Claude to fix errors');
-                  if (!quiet)
-                    console.error(
-                      chalk.red('Claude fix attempt failed:'),
-                      fixError
-                    );
-                  throw commitError; // Re-throw the original error
-                }
-              } else {
-                // Not a pre-commit error or max attempts reached
-                throw commitError;
-              }
-            }
-          }
-
-          if (!commitSucceeded) {
-            throw new Error(
-              `Failed to commit after ${maxCommitAttempts} attempts due to pre-commit hook failures`
-            );
-          }
+          sessionId = await this.commitWithFixLoop(
+            commitMessage,
+            executionPath,
+            task.uuid,
+            quiet,
+            sessionId
+          );
         } else {
           if (!quiet)
             console.log(chalk.yellow('⚠️  No changes detected for this task'));
@@ -985,6 +999,16 @@ export class TaskExecutor {
           console.log(
             chalk.green(`✅ Task ${i + 1}/${tasks.length} completed`)
           );
+      }
+
+      // Optionally self-review the combined branch before opening the PR
+      if (this.selfReviewEnabled) {
+        sessionId = await this.runSelfReview(
+          worktreePath || this.workingDir,
+          tasks[tasks.length - 1].uuid,
+          quiet,
+          sessionId
+        );
       }
 
       // After all tasks are complete, create a single PR
@@ -1065,6 +1089,7 @@ export class TaskExecutor {
     try {
       this.baseBranch = config.baseBranch?.trim() || undefined;
       this.executionMode = config.mode || 'simple';
+      this.selfReviewEnabled = config.selfReview || false;
 
       // Quiet mode: suppress all intermediate output
       const executor = this.getClaudeExecutor();
