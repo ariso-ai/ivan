@@ -27,9 +27,7 @@ export class JobManager {
     if (prefilledTasks && prefilledTasks.length > 0) {
       inputTasks = prefilledTasks;
       console.log(
-        chalk.blue.bold(
-          `🎯 Loaded ${inputTasks.length} task(s) from --spec:`
-        )
+        chalk.blue.bold(`🎯 Loaded ${inputTasks.length} task(s) from --spec:`)
       );
       inputTasks.forEach((task, index) => {
         const firstLine = task.split('\n')[0].trim();

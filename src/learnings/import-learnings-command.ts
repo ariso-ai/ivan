@@ -232,7 +232,5 @@ function parseCsvTimestamp(value: string | undefined): string | undefined {
   }
 
   const fallback = new Date(value);
-  return Number.isNaN(fallback.getTime())
-    ? undefined
-    : fallback.toISOString();
+  return Number.isNaN(fallback.getTime()) ? undefined : fallback.toISOString();
 }
