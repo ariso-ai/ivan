@@ -233,12 +233,17 @@ export class ClaudeExecutor implements IClaudeExecutor {
               }
             }
           } else if (message.type === 'stream_event') {
-            // Stream events may contain tool results
-            if ('event' in message && message.event?.type === 'tool_result') {
+            // Stream events may contain tool results. The SDK's typed event
+            // union doesn't include 'tool_result', so widen for this check.
+            const streamEvent =
+              'event' in message
+                ? (message.event as { type?: string; result?: unknown })
+                : undefined;
+            if (streamEvent?.type === 'tool_result') {
               const toolResult = `[Tool Result]\n${
-                typeof message.event.result === 'object'
-                  ? JSON.stringify(message.event.result, null, 2)
-                  : String(message.event.result)
+                typeof streamEvent.result === 'object'
+                  ? JSON.stringify(streamEvent.result, null, 2)
+                  : String(streamEvent.result)
               }\n`;
               currentResponse += toolResult;
               // Add separation after tool result for next Claude response

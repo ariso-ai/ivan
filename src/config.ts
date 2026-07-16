@@ -4,6 +4,7 @@ import os from 'os';
 import { execSync } from 'child_process';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
+import Anthropic from '@anthropic-ai/sdk';
 import { DatabaseManager } from './database.js';
 
 interface Config {
@@ -660,6 +661,66 @@ export class ConfigManager {
     return blockedTools;
   }
 
+  private static readonly FALLBACK_MODELS = [
+    {
+      name: 'Claude Sonnet 4.6 - Recommended for most tasks',
+      value: 'claude-sonnet-4-6',
+      short: 'Claude Sonnet 4.6'
+    },
+    {
+      name: 'Claude Haiku 4.5 - Faster, good for simpler tasks',
+      value: 'claude-haiku-4-5-20251001',
+      short: 'Claude Haiku 4.5'
+    },
+    {
+      name: 'Claude Opus 4.8 - Most capable, but slower',
+      value: 'claude-opus-4-8',
+      short: 'Claude Opus 4.8'
+    }
+  ];
+
+  private async fetchAvailableModels(): Promise<
+    { name: string; value: string; short: string }[]
+  > {
+    const config = this.getConfig();
+    const apiKey =
+      config?.anthropicApiKey?.trim() || process.env.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      console.log(
+        chalk.yellow(
+          '⚠️  No Anthropic API key configured; showing a built-in model list.'
+        )
+      );
+      return ConfigManager.FALLBACK_MODELS;
+    }
+
+    try {
+      const client = new Anthropic({ apiKey });
+      const models: { name: string; value: string; short: string }[] = [];
+      // Iterating the list result auto-paginates through all models
+      for await (const model of client.models.list()) {
+        models.push({
+          name: `${model.display_name} (${model.id})`,
+          value: model.id,
+          short: model.display_name
+        });
+      }
+      if (models.length > 0) {
+        return models;
+      }
+      return ConfigManager.FALLBACK_MODELS;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(
+        chalk.yellow(
+          `⚠️  Could not fetch models from the Claude API (${message}); showing a built-in model list.`
+        )
+      );
+      return ConfigManager.FALLBACK_MODELS;
+    }
+  }
+
   async promptForModel(): Promise<void> {
     console.log(chalk.blue.bold('🤖 Choose Claude Model'));
     console.log('');
@@ -668,23 +729,8 @@ export class ConfigManager {
     );
     console.log('');
 
-    const models = [
-      {
-        name: 'Claude Sonnet 4.6 - Recommended for most tasks',
-        value: 'claude-sonnet-4-6',
-        short: 'Claude Sonnet 4.6'
-      },
-      {
-        name: 'Claude Haiku 4.5 - Faster, good for simpler tasks',
-        value: 'claude-haiku-4-5-20251001',
-        short: 'Claude Haiku 4.5'
-      },
-      {
-        name: 'Claude Opus 4.8 - Most capable, but slower',
-        value: 'claude-opus-4-8',
-        short: 'Claude Opus 4.8'
-      }
-    ];
+    const models = await this.fetchAvailableModels();
+    const currentModel = this.getClaudeModel();
 
     const answers = await inquirer.prompt([
       {
@@ -692,7 +738,9 @@ export class ConfigManager {
         name: 'model',
         message: 'Select Claude model:',
         choices: models,
-        default: 'claude-sonnet-4-6'
+        default: models.some((m) => m.value === currentModel)
+          ? currentModel
+          : models[0].value
       }
     ]);
 
