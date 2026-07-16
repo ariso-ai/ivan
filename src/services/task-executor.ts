@@ -732,8 +732,16 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
+      // Uncommitted working-tree changes still waiting to be committed.
       const changedFiles = this.gitManager.getChangedFiles();
-      if (changedFiles.length === 0) {
+      // Total diff vs. the base branch: covers changes Claude already
+      // committed itself during execution (e.g. mid-task or via self-review),
+      // which leave a clean working tree but still need to be pushed/PR'd.
+      const changedFilesFromBase =
+        changedFiles.length === 0
+          ? this.gitManager.getChangedFiles(targetBranch)
+          : changedFiles;
+      if (changedFilesFromBase.length === 0) {
         if (!quiet)
           console.log(
             chalk.yellow(
@@ -744,26 +752,37 @@ export class TaskExecutor {
         return;
       }
 
-      if (!this.gitManager) {
-        throw new Error('GitManager not initialized');
+      let sessionId: string | undefined = result.sessionId;
+      if (changedFiles.length === 0) {
+        if (!quiet)
+          console.log(
+            chalk.blue(
+              'ℹ️  Changes were already committed during task execution'
+            )
+          );
+      } else {
+        if (!this.gitManager) {
+          throw new Error('GitManager not initialized');
+        }
+        const diff = this.gitManager.getDiff();
+
+        if (!quiet) spinner = ora('Generating commit message...').start();
+        const commitMessage =
+          await this.getOpenAIService().generateCommitMessage(
+            diff,
+            changedFiles
+          );
+        if (spinner)
+          spinner.succeed(`Commit message generated: ${commitMessage}`);
+
+        sessionId = await this.commitWithFixLoop(
+          commitMessage,
+          executionPath,
+          task.uuid,
+          quiet,
+          result.sessionId
+        );
       }
-      const diff = this.gitManager.getDiff();
-
-      if (!quiet) spinner = ora('Generating commit message...').start();
-      const commitMessage = await this.getOpenAIService().generateCommitMessage(
-        diff,
-        changedFiles
-      );
-      if (spinner)
-        spinner.succeed(`Commit message generated: ${commitMessage}`);
-
-      const sessionId = await this.commitWithFixLoop(
-        commitMessage,
-        executionPath,
-        task.uuid,
-        quiet,
-        result.sessionId
-      );
 
       // Optionally self-review the branch before opening the PR
       if (this.selfReviewEnabled) {
