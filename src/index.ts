@@ -921,7 +921,12 @@ async function main() {
       await runMigrations();
 
       const taskExecutor = new TaskExecutor();
-      await taskExecutor.executeWorkflow(hasRewriteFlag, baseBranch, mode);
+      await taskExecutor.executeWorkflow(
+        hasRewriteFlag,
+        baseBranch,
+        mode,
+        hasSelfReviewFlag
+      );
       return;
     }
 

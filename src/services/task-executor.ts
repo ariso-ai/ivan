@@ -324,7 +324,8 @@ export class TaskExecutor {
   async executeWorkflow(
     rewritePrompt: boolean = false,
     baseBranch?: string,
-    mode: ExecutionMode = 'simple'
+    mode: ExecutionMode = 'simple',
+    selfReview: boolean = false
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
@@ -454,24 +455,26 @@ export class TaskExecutor {
         let shouldWaitForComments = false;
         const inquirer = (await import('inquirer')).default;
 
-        const { waitForComments, selfReview } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'waitForComments',
-            message:
-              'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
-            default: false
-          },
-          {
-            type: 'confirm',
-            name: 'selfReview',
-            message:
-              'Would you like Claude to self-review its changes before opening each PR?',
-            default: false
-          }
-        ]);
+        const { waitForComments, selfReview: promptedSelfReview } =
+          await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'waitForComments',
+              message:
+                'After completing tasks, would you like to wait 30 minutes for PR reviews and automatically address any comments?',
+              default: false
+            },
+            {
+              type: 'confirm',
+              name: 'selfReview',
+              message:
+                'Would you like Claude to self-review its changes before opening each PR?',
+              default: false,
+              when: !selfReview
+            }
+          ]);
         shouldWaitForComments = waitForComments;
-        this.selfReviewEnabled = selfReview;
+        this.selfReviewEnabled = selfReview || promptedSelfReview;
 
         // Optionally rewrite prompts before execution
         if (rewritePrompt) {
@@ -774,12 +777,19 @@ export class TaskExecutor {
       await this.gitManager.pushBranch(branchName);
       if (spinner) spinner.succeed('Branch pushed to origin');
 
+      // Recompute the diff/changed files against the base branch so the PR
+      // description reflects any commits self-review made after the initial commit.
+      const finalDiff = this.gitManager.getDiff(`origin/${targetBranch}`, 'HEAD');
+      const finalChangedFiles = this.gitManager.getChangedFiles(
+        `origin/${targetBranch}`
+      );
+
       if (!quiet) spinner = ora('Generating PR description...').start();
       const { title, body } =
         await this.getOpenAIService().generatePullRequestDescription(
           task.description,
-          diff,
-          changedFiles
+          finalDiff,
+          finalChangedFiles
         );
       if (spinner) spinner.succeed('PR description generated');
 
