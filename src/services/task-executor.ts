@@ -800,7 +800,10 @@ export class TaskExecutor {
 
       // Recompute the diff/changed files against the base branch so the PR
       // description reflects any commits self-review made after the initial commit.
-      const finalDiff = this.gitManager.getDiff(`origin/${targetBranch}`, 'HEAD');
+      const finalDiff = this.gitManager.getDiff(
+        `origin/${targetBranch}`,
+        'HEAD'
+      );
       const finalChangedFiles = this.gitManager.getChangedFiles(
         `origin/${targetBranch}`
       );
