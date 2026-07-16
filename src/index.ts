@@ -49,6 +49,10 @@ program
   .option(
     '--mode <mode>',
     'Execution mode: "simple" (one-shot hand-off, default) or "expert" (collaborative architect↔implementer loop informed by learnings)'
+  )
+  .option(
+    '--spec <files...>',
+    'Read task descriptions from one or more files (one task per line, # comments and blank lines ignored) instead of prompting via the editor'
   );
 
 registerLearningsCommands(program);
@@ -801,6 +805,21 @@ async function runNonInteractive(configInput: string): Promise<void> {
   }
 }
 
+function readTasksFromSpecFiles(specFiles: string[]): string[] {
+  const tasks: string[] = [];
+  for (const file of specFiles) {
+    if (!existsSync(file)) {
+      throw new Error(`--spec file not found: ${file}`);
+    }
+    const content = readFileSync(file, 'utf-8').trim();
+    if (content.length === 0) {
+      throw new Error(`--spec file is empty: ${file}`);
+    }
+    tasks.push(content);
+  }
+  return tasks;
+}
+
 function resolveMode(raw: string | undefined): ExecutionMode {
   const value = (raw || 'simple').toLowerCase();
   if (value !== 'simple' && value !== 'expert') {
@@ -821,14 +840,26 @@ async function main() {
       rewritePrompt: hasRewriteFlag,
       baseBranch,
       mode: modeFlag,
+<<<<<<< Updated upstream
       selfReview: hasSelfReviewFlag
+=======
+      spec: specFiles
+>>>>>>> Stashed changes
     } = program.opts<{
       rewritePrompt: boolean;
       baseBranch?: string;
       mode?: string;
+<<<<<<< Updated upstream
       selfReview?: boolean;
+=======
+      spec?: string[];
+>>>>>>> Stashed changes
     }>();
     const mode = resolveMode(modeFlag);
+    const specTasks =
+      specFiles && specFiles.length > 0
+        ? readTasksFromSpecFiles(specFiles)
+        : undefined;
 
     // Check for -c/--config flag
     const configFlagIndex = args.findIndex(
@@ -925,7 +956,11 @@ async function main() {
         hasRewriteFlag,
         baseBranch,
         mode,
+<<<<<<< Updated upstream
         hasSelfReviewFlag
+=======
+        specTasks
+>>>>>>> Stashed changes
       );
       return;
     }

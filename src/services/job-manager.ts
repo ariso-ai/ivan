@@ -19,38 +19,59 @@ export class JobManager {
 
   async promptForTasks(
     workingDir: string,
-    repositoryId: number
+    repositoryId: number,
+    prefilledTasks?: string[]
   ): Promise<{ job: Job; tasks: Task[]; prStrategy: 'multiple' | 'single' }> {
-    console.log(chalk.blue.bold('🎯 What would you like to work on today?'));
-    console.log('');
+    let inputTasks: string[];
 
-    const { taskInput } = await inquirer.prompt([
-      {
-        type: 'editor',
-        name: 'taskInput',
-        message: 'Enter task(s) - one per line (press Enter to open editor):',
-        default:
-          '# Enter your tasks below (one per line)\n# Lines starting with # will be ignored\n\n',
-        validate: (input: string) => {
-          const cleanedInput = input
-            .split('\n')
-            .filter((line) => line.trim() && !line.trim().startsWith('#'))
-            .join('\n')
-            .trim();
+    if (prefilledTasks && prefilledTasks.length > 0) {
+      inputTasks = prefilledTasks;
+      console.log(
+        chalk.blue.bold(
+          `🎯 Loaded ${inputTasks.length} task(s) from --spec:`
+        )
+      );
+      inputTasks.forEach((task, index) => {
+        const firstLine = task.split('\n')[0].trim();
+        const preview =
+          firstLine.length > 100 ? `${firstLine.slice(0, 100)}…` : firstLine;
+        const lineCount = task.split('\n').length;
+        const suffix = lineCount > 1 ? chalk.gray(` (${lineCount} lines)`) : '';
+        console.log(chalk.gray(`  ${index + 1}. ${preview}`) + suffix);
+      });
+      console.log('');
+    } else {
+      console.log(chalk.blue.bold('🎯 What would you like to work on today?'));
+      console.log('');
 
-          if (!cleanedInput || cleanedInput.length === 0) {
-            return 'Please enter at least one task';
+      const { taskInput } = await inquirer.prompt([
+        {
+          type: 'editor',
+          name: 'taskInput',
+          message: 'Enter task(s) - one per line (press Enter to open editor):',
+          default:
+            '# Enter your tasks below (one per line)\n# Lines starting with # will be ignored\n\n',
+          validate: (input: string) => {
+            const cleanedInput = input
+              .split('\n')
+              .filter((line) => line.trim() && !line.trim().startsWith('#'))
+              .join('\n')
+              .trim();
+
+            if (!cleanedInput || cleanedInput.length === 0) {
+              return 'Please enter at least one task';
+            }
+            return true;
           }
-          return true;
         }
-      }
-    ]);
+      ]);
 
-    // Parse newline-separated tasks, filtering out empty lines and comments
-    const inputTasks = taskInput
-      .split('\n')
-      .map((task: string) => task.trim())
-      .filter((task: string) => task.length > 0 && !task.startsWith('#'));
+      // Parse newline-separated tasks, filtering out empty lines and comments
+      inputTasks = taskInput
+        .split('\n')
+        .map((task: string) => task.trim())
+        .filter((task: string) => task.length > 0 && !task.startsWith('#'));
+    }
 
     let finalTasks = inputTasks;
     let prStrategy: 'multiple' | 'single' = 'multiple';

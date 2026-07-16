@@ -325,7 +325,11 @@ export class TaskExecutor {
     rewritePrompt: boolean = false,
     baseBranch?: string,
     mode: ExecutionMode = 'simple',
+<<<<<<< Updated upstream
     selfReview: boolean = false
+=======
+    prefilledTasks?: string[]
+>>>>>>> Stashed changes
   ): Promise<void> {
     try {
       this.baseBranch = baseBranch?.trim() || undefined;
@@ -434,7 +438,8 @@ export class TaskExecutor {
 
       const { tasks, prStrategy } = await this.jobManager.promptForTasks(
         this.workingDir,
-        repository.id
+        repository.id,
+        prefilledTasks
       );
 
       console.log('');
