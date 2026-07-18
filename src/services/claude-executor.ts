@@ -1,4 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
@@ -8,6 +9,11 @@ import type {
   TurnOptions,
   TurnResult
 } from './executor-factory.js';
+import {
+  InterjectionManager,
+  appendInterjections,
+  interjectionMessage
+} from './interjection-manager.js';
 
 export class ClaudeExecutor implements IClaudeExecutor {
   public quietMode: boolean = false;
@@ -174,6 +180,60 @@ export class ClaudeExecutor implements IClaudeExecutor {
       };
       process.on('SIGINT', handleInterrupt);
 
+      // Let the user interject with additional context while the task runs
+      // (like an interactive Claude Code session). Interjections are streamed
+      // into the live session mid-turn via streaming input mode.
+      const interjections = InterjectionManager.getInstance();
+      interjections.start(this.quietMode);
+      const streamingInput = interjections.isAvailable();
+      let inputDone = false;
+      let wake: (() => void) | null = null;
+      const wakeUp = () => {
+        const w = wake;
+        wake = null;
+        w?.();
+      };
+      const liveQueue: string[] = [];
+      // Interjections yielded to the SDK are queued as the *next* turn, so a
+      // result can arrive for the current turn while they are still pending.
+      // Track them so we keep the query open until they have been answered.
+      let unansweredInterjections = 0;
+      const releaseLive = interjections.setLiveListener((text) => {
+        liveQueue.push(text);
+        wakeUp();
+      });
+
+      // Include anything the user typed before this turn started listening.
+      const initialPrompt = appendInterjections(
+        taskDescription,
+        interjections.drainPending()
+      );
+
+      const makeUserMessage = (text: string): SDKUserMessage => ({
+        type: 'user',
+        message: { role: 'user', content: text },
+        parent_tool_use_id: null,
+        session_id: currentSessionId || ''
+      });
+
+      // Streaming-input mode: yield the task, then forward interjections into
+      // the live session as they arrive. Ends once the turn completes with no
+      // queued input (inputDone is set by the consuming loop below).
+      async function* promptStream(): AsyncGenerator<SDKUserMessage> {
+        yield makeUserMessage(initialPrompt);
+        for (;;) {
+          if (liveQueue.length > 0) {
+            unansweredInterjections++;
+            yield makeUserMessage(interjectionMessage(liveQueue.splice(0)));
+            continue;
+          }
+          if (inputDone) return;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      }
+
       try {
         // Change to working directory
         const originalDir = process.cwd();
@@ -181,7 +241,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
 
         // Execute the task using the SDK
         for await (const message of query({
-          prompt: taskDescription,
+          prompt: streamingInput ? promptStream() : initialPrompt,
           options: {
             abortController: abortController,
             // 1) Point Claude at the exact worktree it should edit:
@@ -255,6 +315,19 @@ export class ClaudeExecutor implements IClaudeExecutor {
               currentResponse += message.result + '\n';
               lastMessage = message.result; // Capture the last message
             }
+            // In streaming-input mode the query stays open for more input
+            // after each completed turn. End it once no interjections are
+            // queued or awaiting their answering turn; otherwise keep
+            // consuming until the turn that addresses them completes.
+            if (streamingInput) {
+              if (unansweredInterjections > 0) {
+                unansweredInterjections = 0;
+              } else if (liveQueue.length === 0) {
+                inputDone = true;
+                wakeUp();
+                break;
+              }
+            }
           } else if (message.type === 'system') {
             // System messages for initialization
             if (message.subtype === 'init') {
@@ -288,6 +361,13 @@ export class ClaudeExecutor implements IClaudeExecutor {
         // Restore original directory
         process.chdir(originalDir);
       } finally {
+        inputDone = true;
+        wakeUp();
+        releaseLive();
+        // Keep anything typed too late to stream for the next turn instead
+        // of dropping it.
+        interjections.requeue(liveQueue.splice(0));
+        interjections.stop();
         process.removeListener('SIGINT', handleInterrupt);
       }
 

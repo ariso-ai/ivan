@@ -1,9 +1,9 @@
 import chalk from 'chalk';
-import ora from 'ora';
 import { ExecutorFactory } from './executor-factory.js';
 import type { IClaudeExecutor } from './executor-factory.js';
 import { createRepositoryManager } from './service-factory.js';
 import type { IRepositoryManager } from './git-interfaces.js';
+import { claudeSpinner } from './interjection-manager.js';
 
 const RISK_ANALYSIS_SYSTEM_PROMPT = `You are a principal engineer performing a pre-deployment risk analysis of a set of proposed changes.
 
@@ -131,7 +131,7 @@ export class RiskAnalysisExecutor {
 
       for (const [i, dimension] of RISK_DIMENSIONS.entries()) {
         const branch = i === RISK_DIMENSIONS.length - 1 ? '└' : '├';
-        const spinner = ora(`${branch} ${dimension.label}`).start();
+        const spinner = claudeSpinner(`${branch} ${dimension.label}`).start();
 
         try {
           const result = await this.claudeExecutor.executeTurn(
@@ -154,7 +154,9 @@ export class RiskAnalysisExecutor {
         }
       }
 
-      const synthesisSpinner = ora('Synthesizing final risk analysis').start();
+      const synthesisSpinner = claudeSpinner(
+        'Synthesizing final risk analysis'
+      ).start();
       let finalReport: string;
       try {
         finalReport = await this.synthesize(
