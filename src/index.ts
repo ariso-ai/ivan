@@ -6,6 +6,7 @@ import { ConfigManager } from './config.js';
 import { TaskExecutor } from './services/task-executor.js';
 import { AddressExecutor } from './services/address-executor.js';
 import { ReviewExecutor } from './services/review-executor.js';
+import { RiskAnalysisExecutor } from './services/risk-analysis-executor.js';
 import { DatabaseManager } from './database.js';
 import { WebServer } from './web-server.js';
 import type {
@@ -318,6 +319,33 @@ program
       );
     }
   );
+
+program
+  .command('risk-analysis')
+  .description(
+    'Run a Claude-powered risk analysis against a list of proposed changes'
+  )
+  .argument(
+    '<changes...>',
+    'One or more change descriptions to analyze (quote each change)'
+  )
+  .action(async (changes: string[]) => {
+    const wasConfigured = await checkConfiguration();
+    if (wasConfigured) {
+      console.log('');
+      console.log(
+        chalk.cyan(
+          'Run "ivan risk-analysis <changes...>" again to analyze changes.'
+        )
+      );
+      return;
+    }
+
+    await runMigrations();
+
+    const riskAnalysisExecutor = new RiskAnalysisExecutor();
+    await riskAnalysisExecutor.executeRiskAnalysis(changes);
+  });
 
 program
   .command('import-learnings')
@@ -881,6 +909,7 @@ async function main() {
       'web-stop',
       'address',
       'review',
+      'risk-analysis',
       'import-learnings',
       '--help',
       '-h',

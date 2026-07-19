@@ -19,6 +19,7 @@ import {
   createRepositoryManager
 } from './service-factory.js';
 import { PromptRewriter } from './prompt-rewriter.js';
+import { claudeSpinner } from './interjection-manager.js';
 import { CollaborativeExecutor } from './collaborative-executor.js';
 import type { ExecutionMode } from '../types/non-interactive-config.js';
 import type { TurnResult } from './executor-factory.js';
@@ -212,7 +213,9 @@ export class TaskExecutor {
           const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
 
           if (!quiet)
-            spinner = ora('Running Claude to fix pre-commit errors...').start();
+            spinner = claudeSpinner(
+              'Running Claude to fix pre-commit errors...'
+            ).start();
 
           try {
             // Run Claude to fix the errors (pass session ID to maintain context)
@@ -270,7 +273,7 @@ export class TaskExecutor {
   ): Promise<string | undefined> {
     let spinner = quiet
       ? null
-      : ora('Running self-review with Claude Code...').start();
+      : claudeSpinner('Running self-review with Claude Code...').start();
 
     const reviewResult = await this.getClaudeExecutor().executeTask(
       SELF_REVIEW_PROMPT,
@@ -709,7 +712,8 @@ export class TaskExecutor {
 
       await this.jobManager.updateTaskBranch(task.uuid, branchName);
 
-      if (!quiet) spinner = ora('Executing task with Claude Code...').start();
+      if (!quiet)
+        spinner = claudeSpinner('Executing task with Claude Code...').start();
 
       // Append repository-specific instructions to the task if they exist
       let taskWithInstructions = task.description;
@@ -934,7 +938,8 @@ export class TaskExecutor {
         await this.jobManager.updateTaskStatus(task.uuid, 'active');
         if (spinner) spinner.succeed('Task marked as active');
 
-        if (!quiet) spinner = ora('Executing task with Claude Code...').start();
+        if (!quiet)
+          spinner = claudeSpinner('Executing task with Claude Code...').start();
 
         // Append repository-specific instructions to the task if they exist
         let taskWithInstructions = task.description;
