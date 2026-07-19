@@ -688,15 +688,15 @@ export class TaskExecutor {
 
       const targetBranch = this.baseBranch || 'main';
       if (!quiet)
-        spinner = ora(
-          `Cleaning up and syncing with ${targetBranch} branch...`
-        ).start();
+        spinner = ora(`Fetching latest ${targetBranch} branch...`).start();
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      await this.gitManager.cleanupAndSyncMain(this.baseBranch);
+      const startPoint = await this.gitManager.fetchBaseBranch(
+        this.baseBranch
+      );
       if (spinner) {
-        spinner.succeed(`Repository cleaned and synced with ${targetBranch}`);
+        spinner.succeed(`Fetched latest ${targetBranch}`);
       }
 
       if (!this.gitManager) {
@@ -706,7 +706,10 @@ export class TaskExecutor {
 
       if (!quiet)
         spinner = ora(`Creating worktree for branch: ${branchName}`).start();
-      worktreePath = await this.gitManager.createWorktree(branchName);
+      worktreePath = await this.gitManager.createWorktree(
+        branchName,
+        startPoint
+      );
       this.gitManager.switchToWorktree(worktreePath);
       if (spinner) spinner.succeed(`Worktree created: ${worktreePath}`);
 
@@ -884,7 +887,7 @@ export class TaskExecutor {
     const targetBranch = this.baseBranch || 'main';
     let spinner = quiet
       ? null
-      : ora(`Cleaning up and syncing with ${targetBranch} branch...`).start();
+      : ora(`Fetching latest ${targetBranch} branch...`).start();
     let worktreePath: string | null = null;
     let branchName: string | null = null;
     let sessionId: string | undefined;
@@ -894,9 +897,11 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      await this.gitManager.cleanupAndSyncMain(this.baseBranch);
+      const startPoint = await this.gitManager.fetchBaseBranch(
+        this.baseBranch
+      );
       if (spinner) {
-        spinner.succeed(`Repository cleaned and synced with ${targetBranch}`);
+        spinner.succeed(`Fetched latest ${targetBranch}`);
       }
 
       // Generate branch name based on all tasks
@@ -912,7 +917,10 @@ export class TaskExecutor {
 
       if (!quiet)
         spinner = ora(`Creating worktree for branch: ${branchName}`).start();
-      worktreePath = await this.gitManager.createWorktree(branchName);
+      worktreePath = await this.gitManager.createWorktree(
+        branchName,
+        startPoint
+      );
       this.gitManager.switchToWorktree(worktreePath);
       if (spinner) spinner.succeed(`Worktree created: ${worktreePath}`);
 

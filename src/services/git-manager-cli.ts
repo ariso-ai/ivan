@@ -451,10 +451,12 @@ export class GitManagerCLI implements IGitManager {
     }
   }
 
-  async cleanupAndSyncMain(baseBranch?: string): Promise<void> {
+  async fetchBaseBranch(baseBranch?: string): Promise<string> {
     const targetBranch = baseBranch?.trim() || 'main';
 
-    // Always operate on the original directory for base branch operations
+    // Always operate on the original directory for base branch operations,
+    // but never touch its checkout, staged changes, or untracked files -
+    // the user may be actively working there.
     const workDir = this.originalWorkingDir;
 
     try {
@@ -468,73 +470,48 @@ export class GitManagerCLI implements IGitManager {
     }
 
     try {
-      // Stash any uncommitted changes
-      const status = execSync('git status --porcelain', {
-        cwd: workDir,
-        encoding: 'utf8'
-      });
-
-      if (status.trim()) {
-        console.log(chalk.yellow('⚠️  Stashing uncommitted changes'));
-        execSync('git stash push -u -m "Ivan: stashing before cleanup"', {
-          cwd: workDir,
-          stdio: 'pipe'
-        });
-      }
-
-      // Remove any untracked files and directories
-      execSync('git clean -fd', {
+      // Fetching updates remote-tracking refs only; it does not touch the
+      // working tree or the currently checked-out branch.
+      execSync(`git fetch origin "${targetBranch.replace(/"/g, '\\"')}"`, {
         cwd: workDir,
         stdio: 'pipe'
       });
 
-      // Switch to the requested local base branch
-      execSync(`git checkout "${targetBranch.replace(/"/g, '\\"')}"`, {
-        cwd: workDir,
-        stdio: 'pipe'
-      });
-
-      // If the branch exists on origin, rebase against it. Otherwise use the local branch as-is.
-      let branchExistsOnOrigin = false;
       try {
         execSync(
-          `git ls-remote --exit-code --heads origin "${targetBranch.replace(/"/g, '\\"')}"`,
+          `git rev-parse --verify "origin/${targetBranch.replace(/"/g, '\\"')}"`,
           {
             cwd: workDir,
-            stdio: 'pipe'
+            stdio: 'ignore'
           }
         );
-        branchExistsOnOrigin = true;
-      } catch (lsRemoteError: unknown) {
-        const err = lsRemoteError as { status?: number };
-        if (err.status === 2) {
-          // exit code 2 = branch not found on origin; fall back to local
-          console.log(
-            chalk.gray(
-              `Branch ${targetBranch} not found on origin; using local branch as base`
-            )
-          );
-        } else {
-          throw lsRemoteError;
-        }
-      }
-
-      if (branchExistsOnOrigin) {
-        execSync(
-          `git pull --rebase origin "${targetBranch.replace(/"/g, '\\"')}"`,
-          {
-            cwd: workDir,
-            stdio: 'pipe'
-          }
+        console.log(
+          chalk.green(`✅ Fetched latest ${targetBranch} from origin`)
         );
+        return `origin/${targetBranch}`;
+      } catch {
+        // Branch doesn't exist on origin; fall back to the local branch below
       }
-
+    } catch {
       console.log(
-        chalk.green(`✅ Cleaned up and synced with ${targetBranch} branch`)
+        chalk.gray(
+          `Could not fetch ${targetBranch} from origin; using local branch as base`
+        )
       );
-    } catch (error) {
+    }
+
+    try {
+      execSync(
+        `git rev-parse --verify "${targetBranch.replace(/"/g, '\\"')}"`,
+        {
+          cwd: workDir,
+          stdio: 'ignore'
+        }
+      );
+      return targetBranch;
+    } catch {
       throw new Error(
-        `Failed to cleanup and sync base branch ${targetBranch}: ${error}`
+        `Base branch ${targetBranch} was not found locally or on origin`
       );
     }
   }
@@ -700,7 +677,10 @@ Return ONLY the review request text, without any prefix like "Please review" sin
     }
   }
 
-  async createWorktree(branchName: string): Promise<string> {
+  async createWorktree(
+    branchName: string,
+    startPoint?: string
+  ): Promise<string> {
     this.ensureGitRepo();
 
     try {
@@ -735,6 +715,8 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       // Create the worktree
       const escapedBranchName = branchName.replace(/"/g, '\\"');
       const escapedPath = worktreePath.replace(/"/g, '\\"');
+      const escapedStartPoint = startPoint?.replace(/"/g, '\\"');
+      const startPointArg = escapedStartPoint ? ` "${escapedStartPoint}"` : '';
 
       // Check if branch exists locally or on remote
       let branchExists = false;
@@ -815,7 +797,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
             chalk.gray(`Creating new branch in worktree: ${branchName}`)
           );
           execSync(
-            `git worktree add -b "${escapedBranchName}" "${escapedPath}"`,
+            `git worktree add -b "${escapedBranchName}" "${escapedPath}"${startPointArg}`,
             {
               cwd: this.originalWorkingDir,
               stdio: 'pipe'
@@ -914,7 +896,7 @@ Return ONLY the review request text, without any prefix like "Please review" sin
               chalk.gray(`Creating new branch in worktree: ${branchName}`)
             );
             execSync(
-              `git worktree add -b "${escapedBranchName}" "${escapedPath}"`,
+              `git worktree add -b "${escapedBranchName}" "${escapedPath}"${startPointArg}`,
               {
                 cwd: this.originalWorkingDir,
                 stdio: 'pipe'
