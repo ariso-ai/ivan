@@ -194,9 +194,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
         w?.();
       };
       const liveQueue: string[] = [];
-      // Interjections yielded to the SDK are queued as the *next* turn, so a
-      // result can arrive for the current turn while they are still pending.
-      // Track them so we keep the query open until they have been answered.
+      // Interjections streamed to the SDK mid-turn may be absorbed into the
+      // running turn (one result covers both) or queued as the next turn
+      // (their own result follows). Count what we streamed so the result
+      // handler knows it can't just break on the first result it sees.
       let unansweredInterjections = 0;
       const releaseLive = interjections.setLiveListener((text) => {
         liveQueue.push(text);
@@ -316,13 +317,23 @@ export class ClaudeExecutor implements IClaudeExecutor {
               lastMessage = message.result; // Capture the last message
             }
             // In streaming-input mode the query stays open for more input
-            // after each completed turn. End it once no interjections are
-            // queued or awaiting their answering turn; otherwise keep
-            // consuming until the turn that addresses them completes.
+            // after each completed turn. Decide how to end it:
             if (streamingInput) {
-              if (unansweredInterjections > 0) {
+              if (liveQueue.length > 0) {
+                // An interjection is queued but not yet delivered — it will
+                // start the next turn, so keep the query open.
+              } else if (unansweredInterjections > 0) {
+                // Interjections were streamed into the turn that just
+                // finished. The CLI either absorbed them into that turn (no
+                // further result is coming) or queued them as a follow-up
+                // turn (another result will arrive) — we can't tell which.
+                // End our input and drain instead of breaking: stdin EOF
+                // makes the CLI finish any queued turn and exit, which ends
+                // this loop either way.
                 unansweredInterjections = 0;
-              } else if (liveQueue.length === 0) {
+                inputDone = true;
+                wakeUp();
+              } else {
                 inputDone = true;
                 wakeUp();
                 break;
