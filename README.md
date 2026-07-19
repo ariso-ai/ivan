@@ -59,6 +59,14 @@ Want Ivan to think harder? Add one flag:
 ivan --mode expert "Refactor the billing module to support proration"
 ```
 
+**💬 Changed your mind mid-run?** While Ivan is working, just type a message and press Enter — your context is streamed straight into the running Claude session (SDK executor) or applied in an automatic follow-up turn (CLI executor), exactly like interjecting in an interactive Claude Code session.
+
+```
+⠸ Executing task with Claude Code...
+also add rate-limit headers to the responses ⏎
+💬 Context sent to Claude — it will be incorporated into the current task
+```
+
 ---
 
 ## 🏛️ Expert Mode: an AI that argues with itself so you don't have to

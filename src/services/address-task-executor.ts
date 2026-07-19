@@ -10,6 +10,7 @@ import { Task } from '../database.js';
 import { IGitManager, IPRService } from './git-interfaces.js';
 import { createGitManager, createPRService } from './service-factory.js';
 import { GitHubAPIClient } from './github-api-client.js';
+import { claudeSpinner } from './interjection-manager.js';
 
 export class AddressTaskExecutor {
   private jobManager: JobManager;
@@ -205,7 +206,7 @@ export class AddressTaskExecutor {
           }
 
           if (!quiet)
-            spinner = ora(
+            spinner = claudeSpinner(
               'Running Claude Code to fix test and lint failures...'
             ).start();
 
@@ -452,7 +453,9 @@ export class AddressTaskExecutor {
           }
 
           if (!quiet)
-            spinner = ora('Running Claude Code to address comment...').start();
+            spinner = claudeSpinner(
+              'Running Claude Code to address comment...'
+            ).start();
 
           // Prepare the prompt for Claude
           let prompt = 'Address the following PR review comment:\n\n';
@@ -1208,7 +1211,9 @@ Return ONLY the review request text, without any prefix like "Please review" sin
           const fixPrompt = `Fix the following pre-commit hook errors:\n\n${errorDetails}\n\nPlease fix all TypeScript errors, linting issues, and any other problems preventing the commit.`;
 
           if (!quiet)
-            spinner = ora('Running Claude to fix pre-commit errors...').start();
+            spinner = claudeSpinner(
+              'Running Claude to fix pre-commit errors...'
+            ).start();
 
           try {
             // Run Claude to fix the errors

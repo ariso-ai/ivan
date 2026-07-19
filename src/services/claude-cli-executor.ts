@@ -8,6 +8,11 @@ import type {
   TurnOptions,
   TurnResult
 } from './executor-factory.js';
+import {
+  InterjectionManager,
+  appendInterjections,
+  interjectionMessage
+} from './interjection-manager.js';
 
 export class ClaudeCliExecutor implements IClaudeExecutor {
   public quietMode: boolean = false;
@@ -152,14 +157,12 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       }
       console.log(chalk.yellow('⏳ Starting Claude Code CLI execution...'));
 
-      let lastMessage = '';
       const currentSessionId = sessionId || '';
 
-      // Build Claude CLI arguments - pass prompt as value of -p so it can't be
-      // consumed by greedy multi-value flags like --disallowed-tools
-      const args: string[] = [
-        '-p',
-        taskDescription,
+      // Per-turn flags shared by the initial run and any interjection
+      // follow-up runs. The prompt is always passed as the value of -p so it
+      // can't be consumed by greedy multi-value flags like --disallowed-tools.
+      const baseArgs: string[] = [
         '--model',
         model,
         '--permission-mode',
@@ -168,7 +171,7 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
 
       // Add an architect/reviewer persona or other per-turn system prompt
       if (systemPrompt) {
-        args.push('--append-system-prompt', systemPrompt);
+        baseArgs.push('--append-system-prompt', systemPrompt);
       }
 
       // Add allowed tools if specified
@@ -177,92 +180,57 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         allowedTools.length > 0 &&
         !allowedTools.includes('*')
       ) {
-        args.push('--allowed-tools', ...allowedTools);
+        baseArgs.push('--allowed-tools', ...allowedTools);
       }
 
       // Add disallowed tools to explicitly block them
       if (allBlockedTools.length > 0) {
-        args.push('--disallowed-tools', ...allBlockedTools);
+        baseArgs.push('--disallowed-tools', ...allBlockedTools);
       }
 
-      // Add resume flag if we have a session ID
-      if (sessionId) {
-        args.push('--resume', sessionId);
+      // Let the user interject with additional context while the task runs.
+      // `claude -p` is non-interactive, so context typed during the run is
+      // applied in an automatic follow-up turn on the same conversation.
+      const interjections = InterjectionManager.getInstance();
+      interjections.start(this.quietMode);
+      try {
+        const prompt = appendInterjections(
+          taskDescription,
+          interjections.drainPending()
+        );
+        const args = ['-p', prompt, ...baseArgs];
+
+        // Add resume flag if we have a session ID
+        if (sessionId) {
+          args.push('--resume', sessionId);
+        }
+
+        const first = await this.runCliProcess(args, workingDir);
+        let fullLog = first.output;
+        let lastMessage = first.lastMessage;
+
+        while (interjections.hasPending()) {
+          console.log(
+            chalk.cyan('↪ Applying the context you added during the run...')
+          );
+          // --continue resumes the most recent conversation in this working
+          // directory (the run that just finished) — the CLI executor never
+          // learns new session ids from -p output, so --resume can't be used.
+          const followUpArgs = [
+            '-p',
+            interjectionMessage(interjections.drainPending()),
+            ...baseArgs,
+            '--continue'
+          ];
+          const followUp = await this.runCliProcess(followUpArgs, workingDir);
+          fullLog += '\n' + followUp.output;
+          lastMessage = followUp.lastMessage;
+        }
+
+        return { log: fullLog, lastMessage, sessionId: currentSessionId };
+      } finally {
+        interjections.stop();
       }
-
-      return new Promise((resolve, reject) => {
-        // Spawn the Claude CLI process with inherited stdio for real-time output
-        const claudeProcess = spawn('claude', args, {
-          cwd: workingDir,
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
-
-        let fullOutput = '';
-        let stderr = '';
-
-        // Handle stdout - stream output in real-time
-        claudeProcess.stdout.on('data', (data) => {
-          const output = data.toString();
-          fullOutput += output;
-
-          // Stream output directly to console in real-time
-          process.stdout.write(output);
-
-          // Track the last non-empty line as lastMessage
-          const lines = output
-            .split('\n')
-            .filter((line: string) => line.trim());
-          if (lines.length > 0) {
-            lastMessage = lines[lines.length - 1].trim();
-          }
-        });
-
-        // Handle stderr - stream in real-time as well
-        claudeProcess.stderr.on('data', (data) => {
-          const output = data.toString();
-          stderr += output;
-
-          // Stream stderr to console (it may contain useful status info)
-          process.stderr.write(chalk.gray(output));
-        });
-
-        // Handle process exit
-        claudeProcess.on('close', (code) => {
-          if (code === 0) {
-            console.log(chalk.green('✅ Claude Code CLI execution completed'));
-            resolve({
-              log: fullOutput,
-              lastMessage,
-              sessionId: currentSessionId
-            });
-          } else {
-            console.error(chalk.red('❌ Claude Code CLI execution failed'));
-            if (stderr) {
-              console.error(chalk.red('Error output:'), stderr);
-            }
-            reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
-          }
-        });
-
-        // Handle process errors
-        claudeProcess.on('error', (error) => {
-          console.error(chalk.red('❌ Failed to start Claude CLI'));
-          reject(new Error(`Failed to start Claude CLI: ${error.message}`));
-        });
-
-        // Handle Ctrl+C
-        const handleInterrupt = () => {
-          claudeProcess.kill('SIGINT');
-          console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
-          reject(new Error('Task execution cancelled by user'));
-        };
-        process.on('SIGINT', handleInterrupt);
-
-        // Clean up handler when process exits
-        claudeProcess.on('close', () => {
-          process.removeListener('SIGINT', handleInterrupt);
-        });
-      });
     } catch (error: unknown) {
       const err = error as Error & { message?: string };
 
@@ -273,6 +241,80 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       console.error(chalk.red('❌ Claude Code CLI execution failed:'));
       throw new Error(`Claude Code CLI execution failed: ${err.message}`);
     }
+  }
+
+  /** Spawns one `claude` CLI run, streaming its output in real time. */
+  private runCliProcess(
+    args: string[],
+    workingDir: string
+  ): Promise<{ output: string; lastMessage: string }> {
+    return new Promise((resolve, reject) => {
+      const claudeProcess = spawn('claude', args, {
+        cwd: workingDir,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let fullOutput = '';
+      let stderr = '';
+      let lastMessage = '';
+
+      // Handle stdout - stream output in real-time
+      claudeProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        fullOutput += output;
+
+        // Stream output directly to console in real-time
+        process.stdout.write(output);
+
+        // Track the last non-empty line as lastMessage
+        const lines = output.split('\n').filter((line: string) => line.trim());
+        if (lines.length > 0) {
+          lastMessage = lines[lines.length - 1].trim();
+        }
+      });
+
+      // Handle stderr - stream in real-time as well
+      claudeProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        stderr += output;
+
+        // Stream stderr to console (it may contain useful status info)
+        process.stderr.write(chalk.gray(output));
+      });
+
+      // Handle process exit
+      claudeProcess.on('close', (code) => {
+        if (code === 0) {
+          console.log(chalk.green('✅ Claude Code CLI execution completed'));
+          resolve({ output: fullOutput, lastMessage });
+        } else {
+          console.error(chalk.red('❌ Claude Code CLI execution failed'));
+          if (stderr) {
+            console.error(chalk.red('Error output:'), stderr);
+          }
+          reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
+        }
+      });
+
+      // Handle process errors
+      claudeProcess.on('error', (error) => {
+        console.error(chalk.red('❌ Failed to start Claude CLI'));
+        reject(new Error(`Failed to start Claude CLI: ${error.message}`));
+      });
+
+      // Handle Ctrl+C
+      const handleInterrupt = () => {
+        claudeProcess.kill('SIGINT');
+        console.log(chalk.yellow('\n⚠️  Task cancelled by user (Ctrl+C)'));
+        reject(new Error('Task execution cancelled by user'));
+      };
+      process.on('SIGINT', handleInterrupt);
+
+      // Clean up handler when process exits
+      claudeProcess.on('close', () => {
+        process.removeListener('SIGINT', handleInterrupt);
+      });
+    });
   }
 
   async generateTaskBreakdown(
