@@ -48,6 +48,10 @@ export class InterjectionManager {
   private pausedSpinner: Ora | null = null;
   private keypressHandler = (str: string | undefined, key: Keypress) =>
     this.handleKeypress(str, key);
+  private selfWrite = false;
+  private inputLineVisible = false;
+  private externalMidLine = false;
+  private unhookStreams: (() => void) | null = null;
 
   /** Interjections require an interactive terminal. */
   isAvailable(): boolean {
@@ -74,6 +78,7 @@ export class InterjectionManager {
     }
     process.stdin.on('keypress', this.keypressHandler);
     process.stdin.resume();
+    this.hookOutputStreams();
     if (!this.hintShown && !quiet) {
       console.log(
         chalk.cyan(
@@ -103,8 +108,65 @@ export class InterjectionManager {
         this.buffer = '';
         this.clearInputLine();
       }
+      this.unhookStreams?.();
+      this.unhookStreams = null;
       this.resumeSpinner();
     }
+  }
+
+  /**
+   * While the user is composing, the `💬 > ` echo owns the cursor row with no
+   * trailing newline — anything the executors print (tool-usage lines,
+   * streamed CLI output) would land right after the typed text and shove the
+   * echo onto a new line. Intercept stdout/stderr so external output clears
+   * the echo, prints on its own line, and the echo is redrawn beneath it.
+   */
+  private hookOutputStreams(): void {
+    if (this.unhookStreams) return;
+    const hook = (
+      stream: typeof process.stdout | typeof process.stderr
+    ): (() => void) => {
+      const original = stream.write.bind(stream) as (
+        chunk: Uint8Array | string,
+        encoding?: unknown,
+        callback?: unknown
+      ) => boolean;
+      const manager = this;
+      stream.write = function (
+        chunk: Uint8Array | string,
+        encoding?: unknown,
+        callback?: unknown
+      ): boolean {
+        if (manager.selfWrite || manager.buffer.length === 0) {
+          return original(chunk, encoding, callback);
+        }
+        if (manager.inputLineVisible) {
+          manager.selfWrite = true;
+          original('\r\x1b[2K');
+          manager.selfWrite = false;
+          manager.inputLineVisible = false;
+        }
+        const result = original(chunk, encoding, callback);
+        const text =
+          typeof chunk === 'string'
+            ? chunk
+            : globalThis.Buffer.from(chunk).toString('utf8');
+        if (text.length > 0) {
+          manager.externalMidLine = !text.endsWith('\n');
+          if (!manager.externalMidLine) manager.render();
+        }
+        return result;
+      } as typeof stream.write;
+      return () => {
+        stream.write = original as typeof stream.write;
+      };
+    };
+    const unhookStdout = hook(process.stdout);
+    const unhookStderr = hook(process.stderr);
+    this.unhookStreams = () => {
+      unhookStdout();
+      unhookStderr();
+    };
   }
 
   /**
@@ -219,16 +281,28 @@ export class InterjectionManager {
 
   /**
    * Redraws the input line. The spinner is paused while composing, so this
-   * line owns the cursor row; streamed Claude output may still scroll it away,
-   * in which case the next keypress redraws the full buffer.
+   * line owns the cursor row; hooked stdout/stderr writes clear and redraw it
+   * around any external output so the echo always sits on the bottom line.
    */
   private render(): void {
     if (!this.listening) return;
+    this.selfWrite = true;
+    // If external output left the cursor mid-line, move past it instead of
+    // overwriting the partial line.
+    if (this.externalMidLine) {
+      process.stderr.write('\n');
+      this.externalMidLine = false;
+    }
     process.stderr.write('\r\x1b[2K' + chalk.cyan('💬 > ') + this.buffer);
+    this.selfWrite = false;
+    this.inputLineVisible = true;
   }
 
   private clearInputLine(): void {
+    this.selfWrite = true;
     process.stderr.write('\r\x1b[2K');
+    this.selfWrite = false;
+    this.inputLineVisible = false;
   }
 
   private pauseSpinner(): void {
