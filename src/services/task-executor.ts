@@ -692,9 +692,7 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      const startPoint = await this.gitManager.fetchBaseBranch(
-        this.baseBranch
-      );
+      const startPoint = await this.gitManager.fetchBaseBranch(this.baseBranch);
       if (spinner) {
         spinner.succeed(`Fetched latest ${targetBranch}`);
       }
@@ -897,9 +895,7 @@ export class TaskExecutor {
       if (!this.gitManager) {
         throw new Error('GitManager not initialized');
       }
-      const startPoint = await this.gitManager.fetchBaseBranch(
-        this.baseBranch
-      );
+      const startPoint = await this.gitManager.fetchBaseBranch(this.baseBranch);
       if (spinner) {
         spinner.succeed(`Fetched latest ${targetBranch}`);
       }
