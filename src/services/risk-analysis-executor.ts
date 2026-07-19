@@ -127,31 +127,39 @@ export class RiskAnalysisExecutor {
       this.claudeExecutor.quietMode = true;
 
       const changesSection = buildChangesSection(changes);
-      const dimensionResults: Array<{ label: string; analysis: string }> = [];
 
-      for (const [i, dimension] of RISK_DIMENSIONS.entries()) {
-        const branch = i === RISK_DIMENSIONS.length - 1 ? '└' : '├';
-        const spinner = claudeSpinner(`${branch} ${dimension.label}`).start();
+      // Run all dimensions concurrently. Individual per-dimension spinners
+      // aren't used here since ora/InterjectionManager only support a single
+      // active spinner at a time — a batch spinner covers the parallel work.
+      const batchSpinner = claudeSpinner(
+        `Analyzing ${RISK_DIMENSIONS.length} risk dimensions in parallel`
+      ).start();
 
-        try {
-          const result = await this.claudeExecutor.executeTurn(
-            `${changesSection}\n\n${dimension.prompt}`,
-            workingDir,
-            {
-              systemPrompt: RISK_ANALYSIS_SYSTEM_PROMPT,
-              readOnly: true,
-              permissionMode: 'plan'
-            }
-          );
-          dimensionResults.push({
-            label: dimension.label,
-            analysis: result.lastMessage
-          });
-          spinner.succeed(`${branch} ${dimension.label}`);
-        } catch (err) {
-          spinner.fail(`${branch} ${dimension.label}`);
-          throw err;
+      let dimensionResults: Array<{ label: string; analysis: string }>;
+      try {
+        dimensionResults = await Promise.all(
+          RISK_DIMENSIONS.map(async (dimension) => {
+            const result = await this.claudeExecutor.executeTurn(
+              `${changesSection}\n\n${dimension.prompt}`,
+              workingDir,
+              {
+                systemPrompt: RISK_ANALYSIS_SYSTEM_PROMPT,
+                readOnly: true,
+                permissionMode: 'plan'
+              }
+            );
+            return { label: dimension.label, analysis: result.lastMessage };
+          })
+        );
+        batchSpinner.succeed(
+          `Completed ${RISK_DIMENSIONS.length} risk dimension analyses`
+        );
+        for (const { label } of dimensionResults) {
+          console.log(chalk.gray(`   ✔ ${label}`));
         }
+      } catch (err) {
+        batchSpinner.fail('Risk dimension analysis failed');
+        throw err;
       }
 
       const synthesisSpinner = claudeSpinner(
