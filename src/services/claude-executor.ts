@@ -3,7 +3,7 @@ import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
-import { execSync } from 'child_process';
+import fs from 'fs';
 import type {
   IClaudeExecutor,
   TurnOptions,
@@ -80,15 +80,15 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Check if we're in a worktree by looking for .git file (not directory)
       try {
         const gitPath = path.join(workingDir, '.git');
-        const gitInfo = execSync(`cat "${gitPath}"`, {
-          encoding: 'utf8'
-        }).trim();
-        if (gitInfo.startsWith('gitdir:')) {
-          // We're in a worktree, extract the main repo path
-          const gitDirPath = gitInfo.replace('gitdir:', '').trim();
-          // Go up from .git/worktrees/<name> to get the main repo
-          if (gitDirPath.includes('/worktrees/')) {
-            originalRepoPath = path.resolve(gitDirPath, '../../..');
+        if (fs.statSync(gitPath).isFile()) {
+          const gitInfo = fs.readFileSync(gitPath, 'utf8').trim();
+          if (gitInfo.startsWith('gitdir:')) {
+            // We're in a worktree, extract the main repo path
+            const gitDirPath = gitInfo.replace('gitdir:', '').trim();
+            // Go up from .git/worktrees/<name> to get the main repo
+            if (gitDirPath.includes('/worktrees/')) {
+              originalRepoPath = path.resolve(gitDirPath, '../../..');
+            }
           }
         }
       } catch {
