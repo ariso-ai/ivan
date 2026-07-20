@@ -365,7 +365,30 @@ export class AddressTaskExecutor {
           continue;
         }
 
-        // Process each address task directly (no need to re-fetch comments from GitHub)
+        // Process each address task directly (no need to re-fetch comments from GitHub).
+        // Claude runs for every task first; a single commit is created and all
+        // comment replies are posted only after all tasks have executed.
+        const taskResults: Array<{
+          task: Task;
+          comment: {
+            author: string;
+            body: string;
+            path?: string;
+            line?: number;
+            id: string;
+          };
+          lastMessage: string;
+          madeChanges: boolean;
+        }> = [];
+
+        const snapshotWorkingTree = (): string => {
+          const cwd = worktreePath || this.workingDir;
+          return (
+            execSync('git status --porcelain', { cwd, encoding: 'utf-8' }) +
+            execSync('git diff HEAD', { cwd, encoding: 'utf-8' })
+          );
+        };
+
         for (const task of addressTasks) {
           // Skip tasks that aren't comment-related
           if (!task.description.includes('comment from @')) {
@@ -476,6 +499,8 @@ export class AddressTaskExecutor {
             prompt += `\n\nRepository-specific instructions:\n${this.repoInstructions}`;
           }
 
+          const beforeSnapshot = snapshotWorkingTree();
+
           try {
             const result = await this.getClaudeExecutor().executeTask(
               prompt,
@@ -489,343 +514,22 @@ export class AddressTaskExecutor {
 
             await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
 
-            // Use the last message from Claude's response
-            const lastMessage = result.lastMessage;
-
-            if (!this.gitManager) {
-              throw new Error('GitManager not initialized');
-            }
-            const changedFiles = this.gitManager.getChangedFiles();
-            if (changedFiles.length === 0) {
-              if (!quiet)
-                console.log(
-                  chalk.yellow(
-                    '⚠️  No changes made - Claude determined no changes were needed'
-                  )
-                );
-
-              // Reply to the comment explaining why no changes were made (only if we have a comment ID)
-              if (comment.id) {
-                if (!quiet) spinner = ora('Replying to comment...').start();
-                try {
-                  // Truncate the message if it's too long (GitHub has a 65536 character limit)
-                  const maxLength = 60000;
-                  let replyBody = `Ivan: ${lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
-
-                  if (replyBody.length > maxLength) {
-                    replyBody =
-                      replyBody.substring(0, maxLength) +
-                      '\n\n... (message truncated)';
-                  }
-
-                  // Use GitHub API client if available, otherwise fall back to gh command
-                  if (
-                    this.githubClient &&
-                    this.repoOwner &&
-                    this.repoName &&
-                    prNumber
-                  ) {
-                    await this.githubClient.addReviewThreadReply(
-                      this.repoOwner,
-                      this.repoName,
-                      parseInt(prNumber),
-                      comment.id,
-                      replyBody
-                    );
-                    if (spinner) spinner.succeed('Reply added to comment');
-                  } else {
-                    // Fallback to gh command
-                    const { writeFileSync, unlinkSync } = await import('fs');
-                    const { join } = await import('path');
-                    const { tmpdir } = await import('os');
-                    const tempFile = join(
-                      tmpdir(),
-                      `ivan-comment-${Date.now()}.txt`
-                    );
-
-                    writeFileSync(tempFile, replyBody);
-
-                    try {
-                      const repoInfo = execSync(
-                        'gh repo view --json owner,name',
-                        {
-                          cwd: worktreePath || this.workingDir,
-                          encoding: 'utf-8'
-                        }
-                      );
-                      const { owner, name: repoName } = JSON.parse(repoInfo);
-
-                      const threadQuery = `
-                      query {
-                        repository(owner: "${owner.login}", name: "${repoName}") {
-                          pullRequest(number: ${prNumber}) {
-                            reviewThreads(first: 100) {
-                              nodes {
-                                id
-                                comments(first: 100) {
-                                  nodes {
-                                    databaseId
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    `;
-
-                      const threadResult = execSync(
-                        `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
-                        {
-                          cwd: worktreePath || this.workingDir,
-                          encoding: 'utf-8'
-                        }
-                      );
-
-                      const threadData = JSON.parse(threadResult);
-                      const threads =
-                        threadData.data?.repository?.pullRequest?.reviewThreads
-                          ?.nodes || [];
-
-                      let threadId = null;
-                      for (const thread of threads) {
-                        const comments = thread.comments?.nodes || [];
-                        if (
-                          comments.some(
-                            (c: { databaseId?: number }) =>
-                              c.databaseId?.toString() === comment.id
-                          )
-                        ) {
-                          threadId = thread.id;
-                          break;
-                        }
-                      }
-
-                      if (!threadId) {
-                        throw new Error(
-                          'Could not find review thread for comment'
-                        );
-                      }
-
-                      const mutation = `
-                      mutation {
-                        addPullRequestReviewThreadReply(input: {
-                          pullRequestReviewThreadId: "${threadId}"
-                          body: ${JSON.stringify(replyBody)}
-                        }) {
-                          comment {
-                            id
-                          }
-                        }
-                      }
-                    `;
-
-                      execSync(
-                        `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
-                        {
-                          cwd: worktreePath || this.workingDir,
-                          stdio: 'pipe'
-                        }
-                      );
-                      if (spinner) spinner.succeed('Reply added to comment');
-                    } finally {
-                      unlinkSync(tempFile);
-                    }
-                  }
-                } catch (error) {
-                  if (spinner) spinner.fail('Failed to reply to comment');
-                  if (!quiet) console.error(error);
-                }
-              } else {
-                if (!quiet)
-                  console.log(
-                    chalk.yellow(
-                      '⚠️  Could not reply to comment - comment ID not found'
-                    )
-                  );
-              }
-
-              await this.jobManager.updateTaskStatus(task.uuid, 'completed');
-              continue;
+            const madeChanges = snapshotWorkingTree() !== beforeSnapshot;
+            if (!madeChanges && !quiet) {
+              console.log(
+                chalk.yellow(
+                  '⚠️  No changes made - Claude determined no changes were needed'
+                )
+              );
             }
 
-            // Create commit with co-author
-            if (!quiet) spinner = ora('Creating commit...').start();
-            const commitMessage = `Address review comment from @${comment.author}
-
-${comment.body.substring(0, 200)}${comment.body.length > 200 ? '...' : ''}
-
-Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
-
-            if (!this.gitManager) {
-              throw new Error('GitManager not initialized');
-            }
-
-            // Try to commit, handling pre-commit hook failures
-            const commitResult = await this.tryCommitWithFixes(
-              commitMessage,
+            // Defer the commit and comment reply until all tasks have executed
+            taskResults.push({
               task,
-              worktreePath || this.workingDir,
-              spinner,
-              quiet
-            );
-
-            if (commitResult.succeeded) {
-              if (spinner) spinner.succeed('Changes committed');
-            } else {
-              if (spinner)
-                spinner.fail('Failed to commit after multiple attempts');
-              throw new Error('Pre-commit hook failures could not be fixed');
-            }
-
-            // Get the commit hash
-            const commitHash = execSync('git rev-parse HEAD', {
-              cwd: worktreePath || this.workingDir,
-              encoding: 'utf-8'
-            }).trim();
-
-            // Save commit hash to task
-            await this.jobManager.updateTaskCommit(task.uuid, commitHash);
-
-            // Push the commit immediately
-            if (!quiet) spinner = ora('Pushing commit...').start();
-            try {
-              if (!this.gitManager) {
-                throw new Error('GitManager not initialized');
-              }
-              await this.gitManager.pushBranch(branch);
-              if (spinner) spinner.succeed('Commit pushed successfully');
-            } catch (error) {
-              if (spinner) spinner.fail('Failed to push commit');
-              if (!quiet) console.error(error);
-            }
-
-            // Reply to the comment with the fix (only if we have a comment ID)
-            if (comment.id) {
-              if (!quiet) spinner = ora('Replying to comment...').start();
-              try {
-                // Truncate the message if it's too long (GitHub has a 65536 character limit)
-                const maxLength = 60000;
-                let replyBody = lastMessage
-                  ? `Ivan: ${lastMessage}\n\nThis has been addressed in commit ${commitHash.substring(0, 7)}`
-                  : `Ivan: This has been addressed in commit ${commitHash.substring(0, 7)}`;
-
-                if (replyBody.length > maxLength) {
-                  replyBody =
-                    replyBody.substring(0, maxLength) +
-                    '\n\n... (message truncated)\n\n' +
-                    `This has been addressed in commit ${commitHash.substring(0, 7)}`;
-                }
-
-                // Use GitHub API client if available, otherwise fall back to gh command
-                if (
-                  this.githubClient &&
-                  this.repoOwner &&
-                  this.repoName &&
-                  prNumber
-                ) {
-                  await this.githubClient.addReviewThreadReply(
-                    this.repoOwner,
-                    this.repoName,
-                    parseInt(prNumber),
-                    comment.id,
-                    replyBody
-                  );
-                  if (spinner) spinner.succeed('Reply added to comment');
-                } else {
-                  // Fallback to gh command
-                  const repoInfo = execSync('gh repo view --json owner,name', {
-                    cwd: worktreePath || this.workingDir,
-                    encoding: 'utf-8'
-                  });
-                  const { owner, name: repoName } = JSON.parse(repoInfo);
-
-                  const threadQuery = `
-                  query {
-                    repository(owner: "${owner.login}", name: "${repoName}") {
-                      pullRequest(number: ${prNumber}) {
-                        reviewThreads(first: 100) {
-                          nodes {
-                            id
-                            comments(first: 100) {
-                              nodes {
-                                databaseId
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                `;
-
-                  const threadResult = execSync(
-                    `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
-                    {
-                      cwd: worktreePath || this.workingDir,
-                      encoding: 'utf-8'
-                    }
-                  );
-
-                  const threadData = JSON.parse(threadResult);
-                  const threads =
-                    threadData.data?.repository?.pullRequest?.reviewThreads
-                      ?.nodes || [];
-
-                  let threadId = null;
-                  for (const thread of threads) {
-                    const comments = thread.comments?.nodes || [];
-                    if (
-                      comments.some(
-                        (c: { databaseId?: number }) =>
-                          c.databaseId?.toString() === comment.id
-                      )
-                    ) {
-                      threadId = thread.id;
-                      break;
-                    }
-                  }
-
-                  if (!threadId) {
-                    throw new Error('Could not find review thread for comment');
-                  }
-
-                  const mutation = `
-                  mutation {
-                    addPullRequestReviewThreadReply(input: {
-                      pullRequestReviewThreadId: "${threadId}"
-                      body: ${JSON.stringify(replyBody)}
-                    }) {
-                      comment {
-                        id
-                      }
-                    }
-                  }
-                `;
-
-                  execSync(
-                    `gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`,
-                    {
-                      cwd: worktreePath || this.workingDir,
-                      stdio: 'pipe'
-                    }
-                  );
-                  if (spinner) spinner.succeed('Reply added to comment');
-                }
-              } catch (error) {
-                if (spinner) spinner.fail('Failed to reply to comment');
-                if (!quiet) console.error(error);
-              }
-            } else {
-              if (!quiet)
-                console.log(
-                  chalk.yellow(
-                    '⚠️  Could not reply to comment - comment ID not found'
-                  )
-                );
-            }
-
-            await this.jobManager.updateTaskStatus(task.uuid, 'completed');
+              comment,
+              lastMessage: result.lastMessage,
+              madeChanges
+            });
           } catch (error) {
             if (spinner) spinner.fail('Failed to address comment');
             if (!quiet) console.error(error);
@@ -840,10 +544,151 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
           }
         }
 
+        // Create a single commit covering all address tasks
+        let addressCommitHash: string | null = null;
+        const changedResults = taskResults.filter((r) => r.madeChanges);
+        if (changedResults.length > 0) {
+          if (!quiet) spinner = ora('Creating commit...').start();
+
+          const authors = [
+            ...new Set(changedResults.map((r) => `@${r.comment.author}`))
+          ].join(', ');
+          const commentSummaries = changedResults
+            .map(
+              (r) =>
+                `- @${r.comment.author}: ${r.comment.body.substring(0, 200)}${r.comment.body.length > 200 ? '...' : ''}`
+            )
+            .join('\n');
+          const commitMessage = `Address review comment${changedResults.length > 1 ? 's' : ''} from ${authors}
+
+${commentSummaries}
+
+Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
+
+          try {
+            // Try to commit, handling pre-commit hook failures
+            const commitResult = await this.tryCommitWithFixes(
+              commitMessage,
+              changedResults[0].task,
+              worktreePath || this.workingDir,
+              spinner,
+              quiet
+            );
+
+            if (!commitResult.succeeded) {
+              throw new Error('Pre-commit hook failures could not be fixed');
+            }
+            if (spinner) spinner.succeed('Changes committed');
+
+            // Get the commit hash and save it to every task it covers
+            addressCommitHash = execSync('git rev-parse HEAD', {
+              cwd: worktreePath || this.workingDir,
+              encoding: 'utf-8'
+            }).trim();
+
+            for (const r of changedResults) {
+              await this.jobManager.updateTaskCommit(
+                r.task.uuid,
+                addressCommitHash
+              );
+            }
+
+            // Push the commit
+            if (!quiet) spinner = ora('Pushing commit...').start();
+            try {
+              if (!this.gitManager) {
+                throw new Error('GitManager not initialized');
+              }
+              await this.gitManager.pushBranch(branch);
+              if (spinner) spinner.succeed('Commit pushed successfully');
+            } catch (error) {
+              if (spinner) spinner.fail('Failed to push commit');
+              if (!quiet) console.error(error);
+            }
+          } catch (error) {
+            if (spinner)
+              spinner.fail('Failed to commit after multiple attempts');
+            if (!quiet) console.error(error);
+
+            const errorLog =
+              error instanceof Error ? error.message : String(error);
+            for (const r of changedResults) {
+              await this.jobManager.updateTaskExecutionLog(
+                r.task.uuid,
+                `ERROR: ${errorLog}`
+              );
+              await this.jobManager.updateTaskStatus(
+                r.task.uuid,
+                'not_started'
+              );
+            }
+          }
+        }
+
+        // Reply to all comments now that the work has been committed
+        for (const r of taskResults) {
+          if (r.madeChanges && !addressCommitHash) {
+            // The commit failed and the task was reset, so don't reply
+            continue;
+          }
+
+          if (!r.comment.id) {
+            if (!quiet)
+              console.log(
+                chalk.yellow(
+                  '⚠️  Could not reply to comment - comment ID not found'
+                )
+              );
+            await this.jobManager.updateTaskStatus(r.task.uuid, 'completed');
+            continue;
+          }
+
+          if (!quiet) spinner = ora('Replying to comment...').start();
+          try {
+            // Truncate the message if it's too long (GitHub has a 65536 character limit)
+            const maxLength = 60000;
+            let replyBody: string;
+            if (r.madeChanges && addressCommitHash) {
+              const shortHash = addressCommitHash.substring(0, 7);
+              replyBody = r.lastMessage
+                ? `Ivan: ${r.lastMessage}\n\nThis has been addressed in commit ${shortHash}`
+                : `Ivan: This has been addressed in commit ${shortHash}`;
+
+              if (replyBody.length > maxLength) {
+                replyBody =
+                  replyBody.substring(0, maxLength) +
+                  '\n\n... (message truncated)\n\n' +
+                  `This has been addressed in commit ${shortHash}`;
+              }
+            } else {
+              replyBody = `Ivan: ${r.lastMessage || 'After reviewing, no code changes were necessary to address this comment.'}`;
+
+              if (replyBody.length > maxLength) {
+                replyBody =
+                  replyBody.substring(0, maxLength) +
+                  '\n\n... (message truncated)';
+              }
+            }
+
+            await this.replyToComment(
+              prNumber,
+              r.comment.id,
+              replyBody,
+              worktreePath || this.workingDir
+            );
+            if (spinner) spinner.succeed('Reply added to comment');
+          } catch (error) {
+            if (spinner) spinner.fail('Failed to reply to comment');
+            if (!quiet) console.error(error);
+          }
+
+          await this.jobManager.updateTaskStatus(r.task.uuid, 'completed');
+        }
+
         // Generate and add specific review comment (only if we have a PR number and made changes)
         if (
           prNumber &&
-          (addressTasks.length > 0 || lintAndTestTasks.length > 0)
+          (addressCommitHash !== null || lintAndTestTasks.length > 0)
         ) {
           if (!quiet) spinner = ora('Generating review request...').start();
           try {
@@ -934,6 +779,98 @@ Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com}`;
         console.error(chalk.red.bold('❌ Address workflow failed:'), error);
       throw error;
     }
+  }
+
+  private async replyToComment(
+    prNumber: string | null,
+    commentId: string,
+    replyBody: string,
+    cwd: string
+  ): Promise<void> {
+    // Use GitHub API client if available, otherwise fall back to gh command
+    if (this.githubClient && this.repoOwner && this.repoName && prNumber) {
+      await this.githubClient.addReviewThreadReply(
+        this.repoOwner,
+        this.repoName,
+        parseInt(prNumber),
+        commentId,
+        replyBody
+      );
+      return;
+    }
+
+    // Fallback to gh command
+    const repoInfo = execSync('gh repo view --json owner,name', {
+      cwd,
+      encoding: 'utf-8'
+    });
+    const { owner, name: repoName } = JSON.parse(repoInfo);
+
+    const threadQuery = `
+      query {
+        repository(owner: "${owner.login}", name: "${repoName}") {
+          pullRequest(number: ${prNumber}) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                comments(first: 100) {
+                  nodes {
+                    databaseId
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const threadResult = execSync(
+      `gh api graphql -f query='${threadQuery.replace(/'/g, "'\\''")}'`,
+      {
+        cwd,
+        encoding: 'utf-8'
+      }
+    );
+
+    const threadData = JSON.parse(threadResult);
+    const threads =
+      threadData.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+
+    let threadId = null;
+    for (const thread of threads) {
+      const comments = thread.comments?.nodes || [];
+      if (
+        comments.some(
+          (c: { databaseId?: number }) => c.databaseId?.toString() === commentId
+        )
+      ) {
+        threadId = thread.id;
+        break;
+      }
+    }
+
+    if (!threadId) {
+      throw new Error('Could not find review thread for comment');
+    }
+
+    const mutation = `
+      mutation {
+        addPullRequestReviewThreadReply(input: {
+          pullRequestReviewThreadId: "${threadId}"
+          body: ${JSON.stringify(replyBody)}
+        }) {
+          comment {
+            id
+          }
+        }
+      }
+    `;
+
+    execSync(`gh api graphql -f query='${mutation.replace(/'/g, "'\\''")}'`, {
+      cwd,
+      stdio: 'pipe'
+    });
   }
 
   private async findCommentId(
