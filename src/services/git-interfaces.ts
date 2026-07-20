@@ -50,10 +50,10 @@ export interface IGitManager {
   getDiff(from?: string, to?: string): string;
   getCurrentBranch(): string;
   getMainBranch(): string;
-  cleanupAndSyncMain(baseBranch?: string): Promise<void>;
+  fetchBaseBranch(baseBranch?: string): Promise<string>;
   generateBranchName(taskDescription: string): string;
   getPRInfo(prNumber: number): Promise<PRInfo>;
-  createWorktree(branchName: string): Promise<string>;
+  createWorktree(branchName: string, startPoint?: string): Promise<string>;
   removeWorktree(branchName: string): Promise<void>;
   switchToWorktree(worktreePath: string): void;
   switchToOriginalDir(): void;
