@@ -1,8 +1,8 @@
 <div align="center">
 
-# Ivan 👺 — AI Coding Agent for Autonomous Pull Requests
+# Ivan 👺 — Ships Code While You Sleep
 
-### The AI engineering teammate that ships code while you sleep — pull requests opened, reviewed, and followed up on, overnight.
+### The AI engineering teammate that ships pull requests — and remembers your team's lessons while doing it.
 
 Ivan is an open-source **autonomous AI coding agent** built on [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) that turns a plain-English task into a real, reviewed **GitHub pull request** — no copy-pasting diffs, no babysitting a chat window.
 
