@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480" role="img" aria-labelledby="ivan-title ivan-desc">
+  <title id="ivan-title">Ivan — the AI engineering teammate</title>
+  <desc id="ivan-desc">A friendly robot mascot wearing a principal-engineer bowtie, coding at a laptop with a git-branch icon and an open pull request, representing Ivan the autonomous AI coding agent that ships and reviews its own pull requests.</desc>
+
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="65%">
+      <stop offset="0%" stop-color="#2a2530"/>
+      <stop offset="100%" stop-color="#16131a"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f2f3f5"/>
+      <stop offset="100%" stop-color="#c9ccd1"/>
+    </linearGradient>
+    <linearGradient id="visor" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a3f4b"/>
+      <stop offset="100%" stop-color="#1d2028"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d97757"/>
+      <stop offset="100%" stop-color="#cb3837"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="480" height="480" rx="28" fill="url(#bg)"/>
+
+  <!-- ambient glow -->
+  <circle cx="240" cy="200" r="170" fill="#d97757" opacity="0.08"/>
+
+  <!-- antenna -->
+  <line x1="240" y1="70" x2="240" y2="96" stroke="#cb3837" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="240" cy="60" r="10" fill="url(#accent)"/>
+
+  <!-- head -->
+  <rect x="155" y="96" width="170" height="130" rx="34" fill="url(#body)" stroke="#8b8f98" stroke-width="2"/>
+  <!-- visor / eyes -->
+  <rect x="180" y="132" width="120" height="56" rx="22" fill="url(#visor)"/>
+  <circle cx="216" cy="160" r="12" fill="#7fd6ff"/>
+  <circle cx="264" cy="160" r="12" fill="#7fd6ff"/>
+  <circle cx="216" cy="160" r="4" fill="#ffffff"/>
+  <circle cx="264" cy="160" r="4" fill="#ffffff"/>
+  <!-- ears -->
+  <rect x="140" y="140" width="16" height="40" rx="8" fill="#c9ccd1"/>
+  <rect x="324" y="140" width="16" height="40" rx="8" fill="#c9ccd1"/>
+
+  <!-- principal-engineer bowtie -->
+  <path d="M225 228 L240 240 L255 228 L255 244 L240 254 L225 244 Z" fill="url(#accent)"/>
+
+  <!-- body -->
+  <rect x="150" y="228" width="180" height="140" rx="30" fill="url(#body)" stroke="#8b8f98" stroke-width="2"/>
+  <!-- chest panel -->
+  <rect x="196" y="256" width="88" height="60" rx="12" fill="#1d2028" opacity="0.85"/>
+  <!-- git branch glyph on chest -->
+  <circle cx="216" cy="270" r="6" fill="#7fd6ff"/>
+  <circle cx="216" cy="300" r="6" fill="#7fd6ff"/>
+  <circle cx="252" cy="286" r="6" fill="#d97757"/>
+  <path d="M216 276 V294" stroke="#7fd6ff" stroke-width="4" fill="none"/>
+  <path d="M216 286 Q234 286 246 286" stroke="#d97757" stroke-width="4" fill="none"/>
+
+  <!-- arms -->
+  <rect x="112" y="248" width="40" height="24" rx="12" fill="#c9ccd1"/>
+  <rect x="328" y="248" width="40" height="24" rx="12" fill="#c9ccd1"/>
+  <!-- left hand on laptop -->
+  <circle cx="118" cy="300" r="16" fill="url(#body)" stroke="#8b8f98" stroke-width="2"/>
+  <!-- right hand raising a pull-request tag -->
+  <circle cx="362" cy="252" r="16" fill="url(#body)" stroke="#8b8f98" stroke-width="2"/>
+
+  <!-- laptop -->
+  <g>
+    <rect x="150" y="336" width="90" height="60" rx="8" fill="#2b2f38" stroke="#8b8f98" stroke-width="2"/>
+    <rect x="158" y="344" width="74" height="42" rx="4" fill="#0f1116"/>
+    <path d="M170 372 l10 -10 l10 10" stroke="#7fd6ff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M198 362 l10 10 l-10 10" stroke="#d97757" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- open pull request tag -->
+  <g transform="translate(330,232) rotate(8)">
+    <rect x="0" y="0" width="86" height="34" rx="8" fill="url(#accent)"/>
+    <text x="43" y="23" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">PR ✓</text>
+  </g>
+
+  <!-- feet -->
+  <rect x="176" y="368" width="30" height="18" rx="8" fill="#c9ccd1"/>
+  <rect x="274" y="368" width="30" height="18" rx="8" fill="#c9ccd1"/>
+
+  <text x="240" y="450" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#f2f3f5" text-anchor="middle" letter-spacing="2">IVAN</text>
+</svg>

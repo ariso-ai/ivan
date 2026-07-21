@@ -1,10 +1,14 @@
 <div align="center">
 
-# Ivan 🤖
+# Ivan 🤖 — AI Coding Agent for Autonomous Pull Requests
 
 ### The AI engineering teammate that ships pull requests — and remembers your team's lessons while doing it.
 
+Ivan is an open-source **autonomous AI coding agent** built on [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) that turns a plain-English task into a real, reviewed **GitHub pull request** — no copy-pasting diffs, no babysitting a chat window.
+
 Give Ivan a sentence. Ivan breaks it into PR-sized tasks, **debates its own design with a principal-engineer persona**, writes the code, reviews it, opens the PR, and then **handles the review comments too**.
+
+<img src="./assets/ivan-mascot.svg" alt="Ivan mascot — a friendly robot AI engineering teammate wearing a principal-engineer bowtie, coding on a laptop next to a git-branch icon and an approved pull-request tag" width="260" />
 
 [![npm version](https://img.shields.io/npm/v/@ariso-ai/ivan?color=cb3837&label=npm&logo=npm)](https://www.npmjs.com/package/@ariso-ai/ivan)
 [![npm downloads](https://img.shields.io/npm/dm/@ariso-ai/ivan?color=cb3837&logo=npm)](https://www.npmjs.com/package/@ariso-ai/ivan)
@@ -24,7 +28,7 @@ npm i -g @ariso-ai/ivan && ivan "Add rate limiting to the public API"
 
 ## Why Ivan?
 
-Most AI coding tools have two problems: they **forget everything** between sessions, and they **ship code that nobody reviewed**. Ivan was built to fix both.
+Most AI coding tools have two problems: they **forget everything** between sessions, and they **ship code that nobody reviewed**. Ivan was built to fix both — as a self-hosted **AI software engineer agent** that behaves like an actual teammate: it plans, argues with itself, implements, opens the PR, and follows up on review comments.
 
 > 🧠 **It remembers.** Ivan distills your team's real PRs and coding sessions into *institutional knowledge*, then injects those hard-won lessons into every future task. The more your team works, the smarter Ivan gets.
 >
@@ -371,6 +375,38 @@ Found a bug or have an idea? [Open an issue](https://github.com/ariso-ai/ivan/is
 
 ---
 
+## ❓ FAQ
+
+<details>
+<summary><strong>What is Ivan?</strong></summary>
+
+Ivan is an open-source, self-hosted **AI coding agent** that converts a plain-English task into a fully-opened, reviewed **GitHub pull request**. It runs on top of [Claude Code](https://docs.anthropic.com/claude/docs/claude-code), using your own Anthropic API key or Claude Max subscription — nothing runs on third-party infrastructure.
+
+</details>
+
+<details>
+<summary><strong>How is Ivan different from GitHub Copilot, Cursor, or Devin?</strong></summary>
+
+Those tools assist you while you write code, or run as a hosted black box. Ivan is a **local, autonomous PR agent**: point it at a repo and a task, and it plans, self-reviews via an architect ↔ implementer loop (Expert mode), opens the pull request, and later goes back to **address human review comments and failing CI checks** — all from your own machine and credentials.
+
+</details>
+
+<details>
+<summary><strong>Does Ivan learn from my team's codebase?</strong></summary>
+
+Yes — `ivan learn` mines merged PR review comments and local Claude Code sessions to build a durable **institutional memory** of your team's conventions and lessons, stored as plain JSONL in `.ivan/` so it travels with the repo in git.
+
+</details>
+
+<details>
+<summary><strong>What models and providers does Ivan support?</strong></summary>
+
+Ivan runs on Claude models (Sonnet, Haiku, Opus) via the Anthropic API (SDK mode) or your local Claude Code CLI (CLI mode, no extra API cost for Claude Max subscribers). GitHub auth works via the `gh` CLI or a personal access token.
+
+</details>
+
+---
+
 ## License
 
 Released under the **MIT License**.
@@ -380,3 +416,5 @@ Released under the **MIT License**.
 **Built with ❤️ to make AI-powered engineering reviewable, repeatable, and a little bit wiser every day.**
 
 If Ivan ships you a good PR, give it a ⭐
+
+<sub>Keywords: AI coding agent · autonomous pull requests · AI code review agent · Claude Code agent · AI pair programmer · GitHub automation · AI software engineer · institutional knowledge for AI coding</sub>
