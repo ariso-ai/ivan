@@ -8,7 +8,7 @@ Ivan is an open-source **autonomous AI coding agent** built on [Claude Code](htt
 
 Give Ivan a sentence. Ivan breaks it into PR-sized tasks, **debates its own design with a principal-engineer persona**, writes the code, reviews it, opens the PR, and then **handles the review comments too**.
 
-<img src="./assets/ivan-mascot.svg" alt="Ivan mascot — a friendly robot AI engineering teammate wearing a principal-engineer bowtie, coding on a laptop next to a git-branch icon and an approved pull-request tag" width="260" />
+<img src="./assets/ivan-mascot.png" alt="Ivan mascot — a caffeinated goblin coder wearing headphones, hunched over a laptop covered in git and GitHub stickers, backpack stuffed with pull requests, under a hand-drawn 'Pull Request Approved' sign, captioned Autonomous. Relentless. Ship it." width="320" />
 
 [![npm version](https://img.shields.io/npm/v/@ariso-ai/ivan?color=cb3837&label=npm&logo=npm)](https://www.npmjs.com/package/@ariso-ai/ivan)
 [![npm downloads](https://img.shields.io/npm/dm/@ariso-ai/ivan?color=cb3837&logo=npm)](https://www.npmjs.com/package/@ariso-ai/ivan)
