@@ -1,8 +1,8 @@
 <div align="center">
 
-# Ivan 🤖 — AI Coding Agent for Autonomous Pull Requests
+# Ivan 👺 — AI Coding Agent for Autonomous Pull Requests
 
-### The AI engineering teammate that ships pull requests — and remembers your team's lessons while doing it.
+### The AI engineering teammate that ships code while you sleep — pull requests opened, reviewed, and followed up on, overnight.
 
 Ivan is an open-source **autonomous AI coding agent** built on [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) that turns a plain-English task into a real, reviewed **GitHub pull request** — no copy-pasting diffs, no babysitting a chat window.
 
@@ -30,9 +30,9 @@ npm i -g @ariso-ai/ivan && ivan "Add rate limiting to the public API"
 
 Most AI coding tools have two problems: they **forget everything** between sessions, and they **ship code that nobody reviewed**. Ivan was built to fix both — as a self-hosted **AI software engineer agent** that behaves like an actual teammate: it plans, argues with itself, implements, opens the PR, and follows up on review comments.
 
-> 🧠 **It remembers.** Ivan distills your team's real PRs and coding sessions into *institutional knowledge*, then injects those hard-won lessons into every future task. The more your team works, the smarter Ivan gets.
+> 🎒 **It remembers.** Ivan distills your team's real PRs and coding sessions into *institutional knowledge*, then injects those hard-won lessons into every future task. The more your team works, the smarter Ivan gets.
 >
-> 🏛️ **It reviews itself.** In **Expert mode**, a separate principal-engineer persona critiques the plan *and* the diff across multiple rounds before a single line reaches your PR — like having a senior reviewer pair with the implementer, automatically.
+> 🧌 **It reviews itself.** In **Expert mode**, a separate principal-engineer persona critiques the plan *and* the diff across multiple rounds before a single line reaches your PR — like having a senior reviewer pair with the implementer, automatically.
 >
 > 🔁 **It closes the loop.** Ivan doesn't stop at "PR opened." It addresses inline review comments, replies with the fixing commit, and can be triggered straight from a GitHub issue with `@ivan-agent /build`.
 
@@ -40,7 +40,7 @@ Ivan runs **locally, with your credentials**, on top of [Claude Code](https://do
 
 ---
 
-## 🚀 Quick Start
+## 🍄 Quick Start
 
 ```bash
 # 1. Install
@@ -52,10 +52,10 @@ ivan "Add user authentication with JWT tokens"
 
 That's it. Ivan will:
 
-1. 🧩 **Break down** your request into manageable, PR-ready tasks
+1. 🗺️ **Break down** your request into manageable, PR-ready tasks
 2. 🌿 **Branch & implement** each one using Claude Code
-3. ✍️ **Write** conventional commit messages and a detailed PR description
-4. 📬 **Open the PR** with context-specific review instructions
+3. 🪶 **Write** conventional commit messages and a detailed PR description
+4. 🪧 **Open the PR** with context-specific review instructions
 
 Want Ivan to think harder? Add one flag:
 
@@ -73,7 +73,7 @@ also add rate-limit headers to the responses ⏎
 
 ---
 
-## 🏛️ Expert Mode: an AI that argues with itself so you don't have to
+## 🧌 Expert Mode: an AI that argues with itself so you don't have to
 
 Ivan ships two execution modes. Pick per-run with `--mode`:
 
@@ -85,16 +85,16 @@ Ivan ships two execution modes. Pick per-run with `--mode`:
 In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the code. A separate **Architect** session — adopting a principal-engineer persona that *holds your team's institutional knowledge* — challenges it. They go back and forth on the **design**, then on the **diff**, and the Architect decides when the work is good enough to ship.
 
 ```
-            📚 Institutional knowledge  (your past PRs + coding sessions)
+            🎒 Institutional knowledge  (your past PRs + coding sessions)
                           │  injected into every round, weighed heavily
                           ▼
    ┌──────────────────┐   plan ──▶ critique ──▶ revise         ┌──────────────────────────┐
-   │  🔨 Implementer  │  ═════════════════════════════════════▶ │  🏛️  Architect           │
+   │  ⚒️  Implementer  │  ═════════════════════════════════════▶ │  🧌  Architect           │
    │   writes code    │ ◀═════════════════════════════════════ │  principal engineer      │
    └──────────────────┘   APPROVE / APPROVE_WITH_NITS / REVISE │  read-only, never edits  │
                           │                                    └──────────────────────────┘
                           ▼
-     📐 Design rounds  ──▶  🛠️  Implementation  ──▶  🔎 Code-review rounds  ──▶  ✅ PR
+     🗺️ Design rounds  ──▶  ⚒️  Implementation  ──▶  🧌 Code-review rounds  ──▶  🪧 PR
 ```
 
 - The Architect is **read-only** — it inspects the codebase to ground its critique but never touches the code.
@@ -116,7 +116,7 @@ In **Expert mode**, Ivan splits into two minds. The **Implementer** writes the c
 
 ---
 
-## 🧠 Institutional Memory: Ivan learns your team
+## 🎒 Institutional Memory: Ivan learns your team
 
 Ivan's edge is that it doesn't start every task from zero. The `ivan learn` command builds a durable, queryable store of your team's engineering wisdom — and Expert mode reads from it on every task.
 
@@ -136,9 +136,9 @@ ivan learn query --repo /path/to/repo --text "error handling for async locks"
 
 **How it works:**
 
-- 📥 **`ingest-pr` / `ingest-repo`** — fetches PR review feedback from GitHub and distills it into reusable *engineering lessons* and *repo conventions*.
+- 💰 **`ingest-pr` / `ingest-repo`** — fetches PR review feedback from GitHub and distills it into reusable *engineering lessons* and *repo conventions*.
 - 🧬 **`coding-sessions`** — analyzes your local Claude Code transcripts to extract **thinking patterns** (how you reason about architecture, product, and quality) and **example interactions** (the questions and corrections that reveal how a senior engineer thinks).
-- 💾 **Canonical & committable** — learnings are stored as plain JSONL under `.ivan/`, so they live in git, travel with the repo, and are reviewable like any other artifact. A derived local `.ivan/db.sqlite` powers fast semantic retrieval; queries never hit the network.
+- 📦 **Canonical & committable** — learnings are stored as plain JSONL under `.ivan/`, so they live in git, travel with the repo, and are reviewable like any other artifact. A derived local `.ivan/db.sqlite` powers fast semantic retrieval; queries never hit the network.
 - 🪝 **`install-hooks`** — wires Ivan's retrieval surface into Claude Code itself (`UserPromptSubmit` and `PostToolUse(Edit|Write|MultiEdit)`), so the right lesson surfaces at the right moment.
 
 ```bash
@@ -148,7 +148,7 @@ ivan learn rebuild --repo /path/to/repo          # rebuild the derived index
 
 ---
 
-## 💬 Address review comments — automatically
+## 🦆 Address review comments — automatically
 
 Ivan treats review feedback and red CI as first-class workflows, not an afterthought.
 
@@ -164,7 +164,7 @@ For each unresolved inline comment, Ivan implements the fix, commits it with co-
 
 ---
 
-## ⚙️ GitHub Actions: trigger Ivan from an issue
+## 🪤 GitHub Actions: trigger Ivan from an issue
 
 Turn any issue into a PR. Run once:
 
@@ -184,7 +184,7 @@ This installs a workflow so that when someone comments `@ivan-agent /build` on a
 
 ---
 
-## 🔌 Drivers: run it your way
+## 🗝️ Drivers: run it your way
 
 Ivan is deliberately flexible about *how* it talks to Claude and to GitHub.
 
@@ -200,7 +200,7 @@ Ivan is deliberately flexible about *how* it talks to Claude and to GitHub.
 
 ---
 
-## 🛠️ Configuration
+## ⚒️ Configuration
 
 Ivan prompts for everything it needs on first run. Settings live in `~/.ivan/config.json`; the local database in `~/.ivan/db.sqlite`.
 
@@ -228,7 +228,7 @@ ivan config-blocked-tools     # block specific tools (least-privilege by repo)
 
 ---
 
-## 📋 CLI Reference
+## 📜 CLI Reference
 
 <details>
 <summary><strong>Core</strong></summary>
@@ -292,7 +292,7 @@ Open http://localhost:3000 to watch jobs, task progress, execution logs, and PR 
 
 ---
 
-## 🔍 How It Works
+## 🕯️ How It Works
 
 **Build workflow**
 
@@ -308,7 +308,7 @@ request ─▶ task breakdown ─▶ branch ─▶ implement ─▶ smart commit
 
 ---
 
-## 🏗️ Architecture
+## 🕸️ Architecture
 
 ```
 ivan/
@@ -335,7 +335,7 @@ ivan/
 
 ---
 
-## 🤝 Contributing
+## ☕ Contributing
 
 Ivan is open source and contributions are genuinely welcome — whether it's a bug fix, a new driver, better learnings extraction, or docs.
 
@@ -358,7 +358,7 @@ Found a bug or have an idea? [Open an issue](https://github.com/ariso-ai/ivan/is
 
 ---
 
-## 🔐 Security
+## 🛡️ Security
 
 - **Keys stay local** — stored in `~/.ivan/config.json`, never in the database, and masked on entry.
 - **Your environment, your credentials** — tasks run locally; nothing is executed on someone else's infrastructure.
@@ -367,7 +367,7 @@ Found a bug or have an idea? [Open an issue](https://github.com/ariso-ai/ivan/is
 
 ---
 
-## 📦 Limitations
+## 🕳️ Limitations
 
 - **GitHub-first** — GitLab / Bitbucket support is on the roadmap.
 - **Internet required** — Claude and OpenAI are called over the network.
@@ -413,7 +413,7 @@ Released under the **MIT License**.
 
 © ariso.ai
 
-**Built with ❤️ to make AI-powered engineering reviewable, repeatable, and a little bit wiser every day.**
+**Built with 💚 to make AI-powered engineering reviewable, repeatable, and a little bit wiser every day.**
 
 If Ivan ships you a good PR, give it a ⭐
 
