@@ -16,7 +16,7 @@ export class PRServiceCLI implements IPRService {
     try {
       // Get specific PR
       const prJson = execSync(
-        `gh pr view ${prNumber} --json number,title,headRefName,url,state`,
+        `gh pr view ${prNumber} --json number,title,headRefName,url,state,mergeable`,
         {
           cwd: this.workingDir,
           encoding: 'utf-8'
@@ -43,7 +43,8 @@ export class PRServiceCLI implements IPRService {
         unaddressedComments: [],
         failingChecks: [],
         hasTestOrLintFailures: false,
-        testOrLintFailures: []
+        testOrLintFailures: [],
+        hasMergeConflicts: pr.mergeable === 'CONFLICTING'
       };
 
       // Check for unaddressed comments
@@ -70,7 +71,11 @@ export class PRServiceCLI implements IPRService {
       }
 
       // Only include PR if it has issues
-      if (pullRequest.hasUnaddressedComments || pullRequest.hasFailingChecks) {
+      if (
+        pullRequest.hasUnaddressedComments ||
+        pullRequest.hasFailingChecks ||
+        pullRequest.hasMergeConflicts
+      ) {
         return [pullRequest];
       }
 
@@ -94,7 +99,7 @@ export class PRServiceCLI implements IPRService {
     try {
       // Get all open PRs, optionally filtered by author
       let command =
-        'gh pr list --state open --json number,title,headRefName,url,author';
+        'gh pr list --state open --json number,title,headRefName,url,author,mergeable';
       if (fromUser) {
         command += ` --author ${fromUser}`;
       }
@@ -118,7 +123,8 @@ export class PRServiceCLI implements IPRService {
           unaddressedComments: [],
           failingChecks: [],
           hasTestOrLintFailures: false,
-          testOrLintFailures: []
+          testOrLintFailures: [],
+          hasMergeConflicts: pr.mergeable === 'CONFLICTING'
         };
 
         // Check for unaddressed comments
@@ -147,7 +153,8 @@ export class PRServiceCLI implements IPRService {
         // Only include PRs that have issues
         if (
           pullRequest.hasUnaddressedComments ||
-          pullRequest.hasFailingChecks
+          pullRequest.hasFailingChecks ||
+          pullRequest.hasMergeConflicts
         ) {
           pullRequests.push(pullRequest);
         }

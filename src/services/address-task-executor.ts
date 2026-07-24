@@ -165,10 +165,24 @@ export class AddressTaskExecutor {
         }
 
         // Handle lint_and_test tasks separately
+        const mergeConflictTasks = branchTasks.filter(
+          (t) => t.type === 'merge_conflict'
+        );
         const lintAndTestTasks = branchTasks.filter(
           (t) => t.type === 'lint_and_test'
         );
         const addressTasks = branchTasks.filter((t) => t.type === 'address');
+
+        // Resolve merge conflicts first so all other fixes are applied on a
+        // branch that is in sync with the base branch
+        for (const task of mergeConflictTasks) {
+          await this.resolveMergeConflicts(
+            task,
+            branch,
+            worktreePath || this.workingDir,
+            quiet
+          );
+        }
 
         // Process lint_and_test tasks first
         for (const task of lintAndTestTasks) {
@@ -362,6 +376,18 @@ export class AddressTaskExecutor {
 
         // Skip comment processing if there are no address tasks
         if (addressTasks.length === 0) {
+          // Clean up worktree before moving on to the next branch
+          if (this.gitManager && worktreePath) {
+            try {
+              this.gitManager.switchToOriginalDir();
+              await this.gitManager.removeWorktree(branch);
+            } catch (error) {
+              if (!quiet)
+                console.log(
+                  chalk.yellow(`⚠️ Could not clean up worktree: ${error}`)
+                );
+            }
+          }
           continue;
         }
 
@@ -1078,6 +1104,174 @@ Return ONLY the review request text, without any prefix like "Please review" sin
       console.error('Error generating review instructions:', error);
       // Fallback to a generic message if OpenAI fails
       return 'please review the latest changes and verify all review comments have been properly addressed';
+    }
+  }
+
+  private async resolveMergeConflicts(
+    task: Task,
+    branch: string,
+    workingDir: string,
+    quiet: boolean = false
+  ): Promise<void> {
+    if (!quiet) {
+      console.log('');
+      console.log(chalk.blue('🔀 Resolving merge conflicts'));
+    }
+
+    await this.jobManager.updateTaskStatus(task.uuid, 'active');
+
+    let spinner: Ora | null = null;
+    let mergeInProgress = false;
+
+    try {
+      if (!this.gitManager) {
+        throw new Error('GitManager not initialized');
+      }
+
+      const baseBranch = this.gitManager.getMainBranch();
+
+      if (!quiet)
+        spinner = ora(`Merging origin/${baseBranch} into ${branch}...`).start();
+
+      execSync(`git fetch origin "${baseBranch.replace(/"/g, '\\"')}"`, {
+        cwd: workingDir,
+        stdio: 'pipe'
+      });
+
+      let hadConflicts = false;
+      try {
+        execSync(
+          `git merge "origin/${baseBranch.replace(/"/g, '\\"')}" --no-edit`,
+          {
+            cwd: workingDir,
+            stdio: 'pipe'
+          }
+        );
+      } catch {
+        mergeInProgress = true;
+        hadConflicts = true;
+      }
+
+      if (!hadConflicts) {
+        if (spinner)
+          spinner.succeed(`Merged origin/${baseBranch} without conflicts`);
+      } else {
+        const conflictedFiles = execSync(
+          'git diff --name-only --diff-filter=U',
+          {
+            cwd: workingDir,
+            encoding: 'utf-8'
+          }
+        )
+          .trim()
+          .split('\n')
+          .filter(Boolean);
+
+        if (conflictedFiles.length === 0) {
+          throw new Error(
+            `Merge of origin/${baseBranch} failed without conflicted files - manual intervention required`
+          );
+        }
+
+        if (spinner)
+          spinner.warn(
+            `Merge has conflicts in ${conflictedFiles.length} file(s)`
+          );
+
+        if (!quiet)
+          spinner = claudeSpinner(
+            'Running Claude Code to resolve merge conflicts...'
+          ).start();
+
+        let prompt = `A merge of origin/${baseBranch} into the branch ${branch} is in progress and has conflicts.\n\n`;
+        prompt += 'The following files have merge conflicts:\n';
+        prompt += conflictedFiles.map((f) => `- ${f}`).join('\n') + '\n\n';
+        prompt +=
+          'Please resolve all merge conflicts by editing the conflicted files. ';
+        prompt +=
+          'Remove all conflict markers (<<<<<<<, =======, >>>>>>>) and produce a resolution that preserves the intent of both branches. ';
+        prompt +=
+          'Stage the resolved files with "git add", but do NOT commit - the commit will be created for you.';
+
+        if (this.repoInstructions) {
+          prompt += `\n\nRepository-specific instructions:\n${this.repoInstructions}`;
+        }
+
+        const result = await this.getClaudeExecutor().executeTask(
+          prompt,
+          workingDir
+        );
+        if (spinner) spinner.succeed('Claude Code execution completed');
+
+        await this.jobManager.updateTaskExecutionLog(task.uuid, result.log);
+
+        // Verify all conflicts are actually resolved
+        execSync('git add -A', { cwd: workingDir, stdio: 'pipe' });
+        const remainingConflicts = execSync(
+          'git diff --name-only --diff-filter=U',
+          {
+            cwd: workingDir,
+            encoding: 'utf-8'
+          }
+        ).trim();
+
+        if (remainingConflicts) {
+          throw new Error(
+            `Merge conflicts remain unresolved in: ${remainingConflicts}`
+          );
+        }
+
+        if (!quiet) spinner = ora('Creating merge commit...').start();
+        // Use tryCommitWithFixes so pre-commit hook failures (formatting,
+        // lint, etc.) are fixed by Claude and the commit is retried
+        const commitResult = await this.tryCommitWithFixes(
+          `Merge branch '${baseBranch}' into ${branch} and resolve conflicts`,
+          task,
+          workingDir,
+          spinner,
+          quiet
+        );
+        if (!commitResult.succeeded) {
+          throw new Error('Pre-commit hook failures could not be fixed');
+        }
+        mergeInProgress = false;
+        if (spinner) spinner.succeed('Merge conflicts resolved and committed');
+      }
+
+      // Save the merge commit hash to the task
+      const commitHash = execSync('git rev-parse HEAD', {
+        cwd: workingDir,
+        encoding: 'utf-8'
+      }).trim();
+      await this.jobManager.updateTaskCommit(task.uuid, commitHash);
+
+      // Push the merge commit
+      if (!quiet) spinner = ora('Pushing merge commit...').start();
+      await this.gitManager.pushBranch(branch);
+      if (spinner) spinner.succeed('Merge commit pushed successfully');
+
+      await this.jobManager.updateTaskStatus(task.uuid, 'completed');
+    } catch (error) {
+      if (spinner && spinner.isSpinning)
+        spinner.fail('Failed to resolve merge conflicts');
+      if (!quiet) console.error(error);
+
+      // Abort the merge so the worktree is left in a clean state for
+      // the remaining tasks on this branch
+      if (mergeInProgress) {
+        try {
+          execSync('git merge --abort', { cwd: workingDir, stdio: 'pipe' });
+        } catch {
+          // Ignore - there may be nothing to abort
+        }
+      }
+
+      const errorLog = error instanceof Error ? error.message : String(error);
+      await this.jobManager.updateTaskExecutionLog(
+        task.uuid,
+        `ERROR: ${errorLog}`
+      );
+      await this.jobManager.updateTaskStatus(task.uuid, 'not_started');
     }
   }
 

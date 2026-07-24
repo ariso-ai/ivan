@@ -16,6 +16,8 @@ export interface GitHubPRInfo {
   author?: {
     login: string;
   };
+  // true = mergeable, false = merge conflicts, null/undefined = unknown (GitHub is still computing it)
+  mergeable?: boolean | null;
 }
 
 export interface GitHubCheck {
@@ -280,6 +282,7 @@ export class GitHubAPIClient {
       html_url: string;
       state: string;
       user?: { login: string };
+      mergeable?: boolean | null;
     }>(`/repos/${owner}/${repo}/pulls/${prNumber}`);
 
     return {
@@ -289,7 +292,8 @@ export class GitHubAPIClient {
       ...(response.head.sha !== undefined && { headSha: response.head.sha }),
       url: response.html_url,
       state: response.state,
-      ...(response.user && { author: { login: response.user.login } })
+      ...(response.user && { author: { login: response.user.login } }),
+      mergeable: response.mergeable ?? null
     };
   }
 

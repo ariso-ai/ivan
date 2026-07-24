@@ -24,7 +24,7 @@ export interface Task {
   pr_link: string | null;
   execution_log: string | null;
   branch: string | null;
-  type: 'build' | 'address' | 'lint_and_test';
+  type: 'build' | 'address' | 'lint_and_test' | 'merge_conflict';
   comment_url: string | null;
   comment_id: string | null;
   commit_sha: string | null;

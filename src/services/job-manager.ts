@@ -390,7 +390,7 @@ export class JobManager {
     jobUuid: string,
     description: string,
     repositoryId: number,
-    type: 'build' | 'address' | 'lint_and_test' = 'build',
+    type: 'build' | 'address' | 'lint_and_test' | 'merge_conflict' = 'build',
     commentId?: string
   ): Promise<string> {
     const task: Task = {

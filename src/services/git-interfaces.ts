@@ -13,6 +13,7 @@ export interface PullRequest {
   failingChecks: string[];
   hasTestOrLintFailures: boolean;
   testOrLintFailures: string[];
+  hasMergeConflicts: boolean;
 }
 
 export interface PRComment {

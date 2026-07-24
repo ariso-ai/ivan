@@ -46,7 +46,8 @@ export class PRServicePAT implements IPRService {
         unaddressedComments: [],
         failingChecks: [],
         hasTestOrLintFailures: false,
-        testOrLintFailures: []
+        testOrLintFailures: [],
+        hasMergeConflicts: pr.mergeable === false
       };
 
       // Check for unaddressed comments
@@ -73,7 +74,11 @@ export class PRServicePAT implements IPRService {
       }
 
       // Only include PR if it has issues
-      if (pullRequest.hasUnaddressedComments || pullRequest.hasFailingChecks) {
+      if (
+        pullRequest.hasUnaddressedComments ||
+        pullRequest.hasFailingChecks ||
+        pullRequest.hasMergeConflicts
+      ) {
         return [pullRequest];
       }
 
@@ -107,6 +112,19 @@ export class PRServicePAT implements IPRService {
       const pullRequests: PullRequest[] = [];
 
       for (const pr of prs) {
+        // The list endpoint doesn't include mergeable status, so fetch the PR details
+        let hasMergeConflicts = false;
+        try {
+          const prDetails = await this.githubClient.getPR(
+            this.owner,
+            this.repo,
+            pr.number
+          );
+          hasMergeConflicts = prDetails.mergeable === false;
+        } catch {
+          // If we can't determine mergeable status, assume no conflicts
+        }
+
         const pullRequest: PullRequest = {
           number: pr.number,
           title: pr.title,
@@ -117,7 +135,8 @@ export class PRServicePAT implements IPRService {
           unaddressedComments: [],
           failingChecks: [],
           hasTestOrLintFailures: false,
-          testOrLintFailures: []
+          testOrLintFailures: [],
+          hasMergeConflicts
         };
 
         // Check for unaddressed comments
@@ -146,7 +165,8 @@ export class PRServicePAT implements IPRService {
         // Only include PRs that have issues
         if (
           pullRequest.hasUnaddressedComments ||
-          pullRequest.hasFailingChecks
+          pullRequest.hasFailingChecks ||
+          pullRequest.hasMergeConflicts
         ) {
           pullRequests.push(pullRequest);
         }

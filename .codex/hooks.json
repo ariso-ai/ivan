@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/maxheckel/Sites/ivan/.codex/hooks/ivan-learnings-post-edit.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/maxheckel/Sites/ivan/.codex/hooks/ivan-learnings-user-prompt.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
