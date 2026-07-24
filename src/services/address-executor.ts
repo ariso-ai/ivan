@@ -120,7 +120,7 @@ export class AddressExecutor {
             ...pr,
             hasUnaddressedComments: pr.unaddressedComments.length > 0
           }))
-          .filter((pr) => pr.hasUnaddressedComments);
+          .filter((pr) => pr.hasUnaddressedComments || pr.hasMergeConflicts);
       }
 
       spinner.succeed(
@@ -161,6 +161,9 @@ export class AddressExecutor {
         } else if (pr.hasFailingChecks) {
           issues.push(`${pr.failingChecks.length} failing check(s)`);
         }
+        if (pr.hasMergeConflicts) {
+          issues.push('merge conflicts');
+        }
 
         return {
           name: `PR #${pr.number}: ${pr.title} - ${chalk.yellow(issues.join(', '))}`,
@@ -196,11 +199,22 @@ export class AddressExecutor {
         description: string;
         prNumber: number;
         prBranch: string;
-        type: 'address' | 'lint_and_test';
+        type: 'address' | 'lint_and_test' | 'merge_conflict';
         commentId?: string;
       }> = [];
 
       for (const pr of selectedPRs) {
+        // Create a task to resolve merge conflicts first so subsequent
+        // fixes are applied on a branch that is in sync with the base branch
+        if (pr.hasMergeConflicts) {
+          tasks.push({
+            description: `Resolve merge conflicts in PR #${pr.number}`,
+            prNumber: pr.number,
+            prBranch: pr.branch,
+            type: 'merge_conflict'
+          });
+        }
+
         // Create tasks for unaddressed comments
         for (const comment of pr.unaddressedComments) {
           let description = `Address PR #${pr.number} comment from @${comment.author}: "${comment.body}"`;

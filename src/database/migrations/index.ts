@@ -14,6 +14,7 @@ import { migration as addOriginalDescriptionColumn } from './014_add_original_de
 import { migration as createLearningsTables } from './015_create_learnings_tables.js';
 import { migration as createSessionAnalysesTable } from './016_create_session_analyses_table.js';
 import { migration as createPrReviewsTable } from './017_create_pr_reviews_table.js';
+import { migration as addMergeConflictTaskType } from './018_add_merge_conflict_task_type.js';
 
 export const migrations: Migration[] = [
   createJobsTable,
@@ -29,7 +30,8 @@ export const migrations: Migration[] = [
   addCommentIdToTasks,
   addOriginalDescriptionColumn,
   createSessionAnalysesTable,
-  createPrReviewsTable
+  createPrReviewsTable,
+  addMergeConflictTaskType
 ];
 
 export const learningsMigrations: Migration[] = [createLearningsTables];
