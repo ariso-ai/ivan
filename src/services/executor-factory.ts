@@ -11,11 +11,15 @@ import { ConfigManager } from '../config.js';
 export const NO_BACKGROUND_WORK_PROMPT =
   'You are running unattended inside an automation pipeline. The moment your ' +
   'turn ends, your work is committed and a pull request is opened — nothing ' +
-  'running in the background survives past your final message. Therefore: ' +
-  'never run agents, subtasks, or shell commands in the background ' +
-  '(run_in_background must always be false), never defer work with phrases ' +
-  "like \"I'll report back\" or \"running in the background\", and never end " +
-  'your turn until every part of the task is fully implemented.';
+  'running in the background survives past your final message, and scheduled ' +
+  'wakeups or completion notifications will never fire. Therefore: never run ' +
+  'agents, subtasks, or shell commands in the background — always pass ' +
+  'run_in_background: false explicitly, including on subagent tools where ' +
+  'omitting it defaults to background. Wait for every subagent and command ' +
+  'synchronously and use its results before continuing. Never schedule ' +
+  'wakeups or defer work with phrases like "I\'ll report back" or "running ' +
+  'in the background", and never end your turn until every part of the task ' +
+  'is fully implemented.';
 
 export interface TurnResult {
   log: string;

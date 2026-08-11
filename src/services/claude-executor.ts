@@ -20,33 +20,80 @@ import {
 import { NO_BACKGROUND_WORK_PROMPT } from './executor-factory.js';
 
 /**
+ * Subagent tools run in the background BY DEFAULT when run_in_background is
+ * omitted, so these need it forced to false even when the model never set it.
+ */
+const BACKGROUND_BY_DEFAULT_TOOLS = new Set(['Task', 'Agent']);
+
+/**
  * Ivan commits and opens a PR as soon as the turn ends, so anything Claude
- * backgrounds (Task subagents, Bash shells) is orphaned and its work lost.
+ * backgrounds (subagents, background shells) is orphaned and its work lost.
  * Rewrite any run_in_background request to run in the foreground instead of
  * denying it, so the work still happens — just synchronously, inside the turn.
+ * For subagent tools the rewrite also fires when the flag is omitted, because
+ * omitted means background there.
  */
 const forceForegroundTools: HookCallback = async (input) => {
   if (input.hook_event_name !== 'PreToolUse') return {};
   const toolInput = input.tool_input;
-  if (
-    toolInput &&
-    typeof toolInput === 'object' &&
-    (toolInput as Record<string, unknown>).run_in_background === true
-  ) {
+  if (!toolInput || typeof toolInput !== 'object') return {};
+  const record = toolInput as Record<string, unknown>;
+  const needsRewrite = BACKGROUND_BY_DEFAULT_TOOLS.has(input.tool_name)
+    ? record.run_in_background !== false
+    : record.run_in_background === true;
+  if (!needsRewrite) return {};
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      updatedInput: { ...record, run_in_background: false },
+      additionalContext:
+        'run_in_background was forced to false: background work is not ' +
+        'allowed in this pipeline, so this call runs in the foreground.'
+    }
+  };
+};
+
+/**
+ * Cap on how many times the Stop safety net will refuse to end a turn, so a
+ * permanently stuck background task can't trap the pipeline in an endless
+ * block-stop/retry loop.
+ */
+const MAX_STOP_BLOCKS = 10;
+
+/**
+ * Safety net behind forceForegroundTools: refuse to let the turn end while
+ * background work is still in flight or a wakeup is scheduled. Blocking the
+ * Stop returns control to the model with instructions to collect the results
+ * and finish the task now, instead of exiting and orphaning the work.
+ */
+const makeBlockStopWhileWorkPending = (): HookCallback => {
+  let blocks = 0;
+  return async (input) => {
+    if (input.hook_event_name !== 'Stop') return {};
+    const tasks = input.background_tasks ?? [];
+    const crons = input.session_crons ?? [];
+    if (tasks.length === 0 && crons.length === 0) return {};
+    if (blocks >= MAX_STOP_BLOCKS) return {};
+    blocks++;
+    const taskList = tasks
+      .map((t) => `- [${t.type}] ${t.description} (status: ${t.status})`)
+      .join('\n');
+    const cronNote =
+      crons.length > 0
+        ? `\nYou also have ${crons.length} scheduled wakeup(s). Wakeups never fire in this pipeline — do the deferred work now instead of waiting.`
+        : '';
     return {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        updatedInput: {
-          ...(toolInput as Record<string, unknown>),
-          run_in_background: false
-        },
-        additionalContext:
-          'run_in_background was forced to false: background work is not ' +
-          'allowed in this pipeline, so this call runs in the foreground.'
-      }
+      decision: 'block',
+      reason:
+        'You must not end your turn: background work is still running and ' +
+        'will be lost the moment you stop.\n' +
+        (taskList ? `In-flight background tasks:\n${taskList}\n` : '') +
+        cronNote +
+        '\nRetrieve each task result (AgentOutputTool/BashOutput), finish ' +
+        'implementing the requested task completely, and only end your turn ' +
+        'once no background work remains.'
     };
-  }
-  return {};
+  };
 };
 
 export class ClaudeExecutor implements IClaudeExecutor {
@@ -149,11 +196,16 @@ export class ClaudeExecutor implements IClaudeExecutor {
       // Always block EnterPlanMode and AskUserQuestion globally. Also block
       // ExitPlanMode outside explicit plan-mode turns — otherwise the model can
       // call it to end the turn after only planning the change, with no edits.
-      // In read-only (architect) turns, also block file-mutating tools so the
-      // reviewer can inspect the worktree without changing it.
+      // Block the wakeup/cron schedulers: Ivan tears the session down when the
+      // turn ends, so a scheduled wakeup never fires — the model must do the
+      // work now instead of deferring it. In read-only (architect) turns, also
+      // block file-mutating tools so the reviewer can inspect the worktree
+      // without changing it.
       const globallyBlockedTools = [
         'EnterPlanMode',
         'AskUserQuestion',
+        'ScheduleWakeup',
+        'CronCreate',
         ...(permissionMode === 'plan' ? [] : ['ExitPlanMode']),
         ...(readOnly ? ['Edit', 'Write', 'NotebookEdit'] : [])
       ];
@@ -311,9 +363,11 @@ export class ClaudeExecutor implements IClaudeExecutor {
                     append: NO_BACKGROUND_WORK_PROMPT
                   },
             // Hard enforcement of the same rule: rewrite any backgrounded
-            // Task/Bash call to run in the foreground.
+            // tool call to run in the foreground, and refuse to end the turn
+            // while background work or scheduled wakeups are still pending.
             hooks: {
-              PreToolUse: [{ hooks: [forceForegroundTools] }]
+              PreToolUse: [{ hooks: [forceForegroundTools] }],
+              Stop: [{ hooks: [makeBlockStopWhileWorkPending()] }]
             },
             ...(allowedTools !== undefined && { allowedTools }),
             disallowedTools: allBlockedTools,

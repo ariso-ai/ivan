@@ -102,10 +102,15 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
       // Always block EnterPlanMode and AskUserQuestion globally. Also block
       // ExitPlanMode outside explicit plan-mode turns — otherwise the model can
       // call it to end the turn after only planning the change, with no edits.
-      // In read-only (architect) turns, also block file-mutating tools.
+      // Block the wakeup/cron schedulers: the session is torn down when the
+      // turn ends, so a scheduled wakeup never fires — the model must do the
+      // work now instead of deferring it. In read-only (architect) turns, also
+      // block file-mutating tools.
       const globallyBlockedTools = [
         'EnterPlanMode',
         'AskUserQuestion',
+        'ScheduleWakeup',
+        'CronCreate',
         ...(permissionMode === 'plan' ? [] : ['ExitPlanMode']),
         ...(readOnly ? ['Edit', 'Write', 'NotebookEdit'] : [])
       ];
