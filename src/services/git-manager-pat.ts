@@ -191,6 +191,22 @@ export class GitManagerPAT implements IGitManager {
     }
   }
 
+  private async findExistingOpenPR(
+    branch: string
+  ): Promise<{ number: number; url: string } | null> {
+    try {
+      const prs = await this.githubClient.listPRs(this.owner, this.repo, {
+        state: 'open',
+        head: `${this.owner}:${branch}`
+      });
+      return prs.length > 0
+        ? { number: prs[0].number, url: prs[0].url }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   async createPullRequest(title: string, body: string): Promise<string> {
     this.ensureGitRepo();
 
@@ -213,6 +229,40 @@ export class GitManagerPAT implements IGitManager {
     try {
       const currentBranch = this.getCurrentBranch();
       const mainBranch = this.getMainBranch();
+
+      // The agent may have already opened a PR for this branch during
+      // execution or self-review; reuse it instead of failing on create.
+      const existingPR = await this.findExistingOpenPR(currentBranch);
+      if (existingPR) {
+        if (!this.quietMode)
+          console.log(
+            chalk.yellow(
+              `⚠️  Pull request already exists for this branch, reusing it: ${existingPR.url}`
+            )
+          );
+        try {
+          await this.githubClient.updatePR(
+            this.owner,
+            this.repo,
+            existingPR.number,
+            { title, body: finalBody }
+          );
+        } catch {
+          // Keep the agent-authored title/body if the update fails
+        }
+        try {
+          await this.githubClient.updatePR(
+            this.owner,
+            this.repo,
+            existingPR.number,
+            { assignees: ['ivan-agent'] }
+          );
+        } catch {
+          // Ignore assignment errors
+        }
+        await this.addReviewComment(existingPR.url, existingPR.number);
+        return existingPR.url;
+      }
 
       // Retry creating the PR with exponential backoff
       // GitHub API needs time to process the push before the ref is readable
@@ -320,6 +370,18 @@ export class GitManagerPAT implements IGitManager {
 
       return prUrl;
     } catch (error) {
+      // A PR may have appeared between our reuse check and the create
+      // (e.g. the agent opened one itself) — recover by reusing it.
+      const racedPR = await this.findExistingOpenPR(this.getCurrentBranch());
+      if (racedPR) {
+        if (!this.quietMode)
+          console.log(
+            chalk.yellow(
+              `⚠️  Pull request already exists for this branch, reusing it: ${racedPR.url}`
+            )
+          );
+        return racedPR.url;
+      }
       throw new Error(`Failed to create pull request: ${error}`);
     }
   }

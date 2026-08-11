@@ -213,6 +213,27 @@ export class GitManagerCLI implements IGitManager {
     }
   }
 
+  private findExistingOpenPRUrl(): string | null {
+    try {
+      const branch = this.getCurrentBranch();
+      if (!branch) {
+        return null;
+      }
+      const escapedBranch = branch.replace(/"/g, '\\"');
+      const result = execSync(
+        `gh pr list --head "${escapedBranch}" --state open --json url --jq ".[0].url"`,
+        {
+          cwd: this.workingDir,
+          encoding: 'utf8',
+          stdio: 'pipe'
+        }
+      );
+      return result.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   async createPullRequest(title: string, body: string): Promise<string> {
     this.ensureGitRepo();
 
@@ -240,13 +261,45 @@ export class GitManagerCLI implements IGitManager {
     const tmpFile = path.join(tmpDir, `pr-body-${Date.now()}.md`);
     writeFileSync(tmpFile, finalBody, 'utf8');
 
-    try {
-      const escapedTitle = title
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/`/g, '\\`')
-        .replace(/\$/g, '\\$');
+    const escapedTitle = title
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/`/g, '\\`')
+      .replace(/\$/g, '\\$');
 
+    // The agent may have already opened a PR for this branch during execution
+    // or self-review; reuse it instead of failing on `gh pr create`.
+    const existingPrUrl = this.findExistingOpenPRUrl();
+    if (existingPrUrl) {
+      console.log(
+        chalk.yellow(
+          `⚠️  Pull request already exists for this branch, reusing it: ${existingPrUrl}`
+        )
+      );
+      try {
+        execSync(
+          `gh pr edit "${existingPrUrl}" --title "${escapedTitle}" --body-file "${tmpFile}"`,
+          {
+            cwd: this.workingDir,
+            stdio: 'pipe'
+          }
+        );
+        console.log(
+          chalk.green(`✅ Updated existing pull request: ${existingPrUrl}`)
+        );
+      } catch {
+        // Keep the agent-authored title/body if the edit fails
+      }
+      try {
+        unlinkSync(tmpFile);
+      } catch {
+        // Ignore file deletion errors
+      }
+      await this.addReviewComment(existingPrUrl);
+      return existingPrUrl;
+    }
+
+    try {
       // Create PR and optionally assign to ivan-agent (will fail silently if user doesn't have permissions)
       const result = execSync(
         `gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}" --assignee ivan-agent`,
@@ -274,11 +327,6 @@ export class GitManagerCLI implements IGitManager {
     } catch {
       // If assignee fails, try without it
       try {
-        const escapedTitle = title
-          .replace(/\\/g, '\\\\')
-          .replace(/"/g, '\\"')
-          .replace(/`/g, '\\`')
-          .replace(/\$/g, '\\$');
         const result = execSync(
           `gh pr create --draft --title "${escapedTitle}" --body-file "${tmpFile}"`,
           {
@@ -296,6 +344,17 @@ export class GitManagerCLI implements IGitManager {
 
         return prUrl;
       } catch (fallbackError) {
+        // A PR may have appeared between our reuse check and the create
+        // (e.g. the agent opened one itself) — recover by reusing it.
+        const racedPrUrl = this.findExistingOpenPRUrl();
+        if (racedPrUrl) {
+          console.log(
+            chalk.yellow(
+              `⚠️  Pull request already exists for this branch, reusing it: ${racedPrUrl}`
+            )
+          );
+          return racedPrUrl;
+        }
         throw new Error(`Failed to create pull request: ${fallbackError}`);
       } finally {
         // Clean up temp file

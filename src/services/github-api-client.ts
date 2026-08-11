@@ -607,8 +607,17 @@ export class GitHubAPIClient {
       assignees?: string[];
       reviewers?: string[];
       labels?: string[];
+      title?: string;
+      body?: string;
     }
   ): Promise<void> {
+    if (updates.title !== undefined || updates.body !== undefined) {
+      await this.makeRequest(`/repos/${owner}/${repo}/pulls/${prNumber}`, 'PATCH', {
+        ...(updates.title !== undefined && { title: updates.title }),
+        ...(updates.body !== undefined && { body: updates.body })
+      });
+    }
+
     if (updates.assignees) {
       await this.makeRequest(
         `/repos/${owner}/${repo}/issues/${prNumber}/assignees`,
