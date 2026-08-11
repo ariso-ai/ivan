@@ -9,6 +9,7 @@ import type {
   TurnOptions,
   TurnResult
 } from './executor-factory.js';
+import { NO_BACKGROUND_WORK_PROMPT } from './executor-factory.js';
 import {
   InterjectionManager,
   appendInterjections,
@@ -170,10 +171,15 @@ export class ClaudeCliExecutor implements IClaudeExecutor {
         permissionMode
       ];
 
-      // Add an architect/reviewer persona or other per-turn system prompt
-      if (systemPrompt) {
-        baseArgs.push('--append-system-prompt', systemPrompt);
-      }
+      // Add an architect/reviewer persona or other per-turn system prompt,
+      // always followed by the no-background-work rules — backgrounded
+      // subagents/shells are orphaned when the turn ends and their work lost.
+      baseArgs.push(
+        '--append-system-prompt',
+        systemPrompt
+          ? `${systemPrompt}\n\n${NO_BACKGROUND_WORK_PROMPT}`
+          : NO_BACKGROUND_WORK_PROMPT
+      );
 
       // Add allowed tools if specified
       if (

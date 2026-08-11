@@ -1,5 +1,8 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  HookCallback,
+  SDKUserMessage
+} from '@anthropic-ai/claude-agent-sdk';
 import chalk from 'chalk';
 import { ConfigManager } from '../config.js';
 import path from 'path';
@@ -14,6 +17,37 @@ import {
   appendInterjections,
   interjectionMessage
 } from './interjection-manager.js';
+import { NO_BACKGROUND_WORK_PROMPT } from './executor-factory.js';
+
+/**
+ * Ivan commits and opens a PR as soon as the turn ends, so anything Claude
+ * backgrounds (Task subagents, Bash shells) is orphaned and its work lost.
+ * Rewrite any run_in_background request to run in the foreground instead of
+ * denying it, so the work still happens — just synchronously, inside the turn.
+ */
+const forceForegroundTools: HookCallback = async (input) => {
+  if (input.hook_event_name !== 'PreToolUse') return {};
+  const toolInput = input.tool_input;
+  if (
+    toolInput &&
+    typeof toolInput === 'object' &&
+    (toolInput as Record<string, unknown>).run_in_background === true
+  ) {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        updatedInput: {
+          ...(toolInput as Record<string, unknown>),
+          run_in_background: false
+        },
+        additionalContext:
+          'run_in_background was forced to false: background work is not ' +
+          'allowed in this pipeline, so this call runs in the foreground.'
+      }
+    };
+  }
+  return {};
+};
 
 export class ClaudeExecutor implements IClaudeExecutor {
   public quietMode: boolean = false;
@@ -265,7 +299,22 @@ export class ClaudeExecutor implements IClaudeExecutor {
             // settings so hooks configured there are honored (the SDK skips
             // filesystem settings by default).
             settingSources: ['user', 'project', 'local'],
-            ...(systemPrompt !== undefined && { systemPrompt }),
+            // Always append the no-background-work rules: onto the caller's
+            // custom system prompt when one is given, otherwise onto Claude
+            // Code's default prompt via the preset-append form.
+            systemPrompt:
+              systemPrompt !== undefined
+                ? `${systemPrompt}\n\n${NO_BACKGROUND_WORK_PROMPT}`
+                : {
+                    type: 'preset',
+                    preset: 'claude_code',
+                    append: NO_BACKGROUND_WORK_PROMPT
+                  },
+            // Hard enforcement of the same rule: rewrite any backgrounded
+            // Task/Bash call to run in the foreground.
+            hooks: {
+              PreToolUse: [{ hooks: [forceForegroundTools] }]
+            },
             ...(allowedTools !== undefined && { allowedTools }),
             disallowedTools: allBlockedTools,
             model: model,

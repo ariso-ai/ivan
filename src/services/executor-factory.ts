@@ -2,6 +2,21 @@ import { ClaudeExecutor } from './claude-executor.js';
 import { ClaudeCliExecutor } from './claude-cli-executor.js';
 import { ConfigManager } from '../config.js';
 
+/**
+ * Appended to every turn's system prompt. Ivan runs unattended: the moment the
+ * turn ends it commits, pushes, and opens a PR — any work still running in the
+ * background (subagents, background shells) is silently lost, which surfaces
+ * as an empty branch and a failed `gh pr create`.
+ */
+export const NO_BACKGROUND_WORK_PROMPT =
+  'You are running unattended inside an automation pipeline. The moment your ' +
+  'turn ends, your work is committed and a pull request is opened — nothing ' +
+  'running in the background survives past your final message. Therefore: ' +
+  'never run agents, subtasks, or shell commands in the background ' +
+  '(run_in_background must always be false), never defer work with phrases ' +
+  "like \"I'll report back\" or \"running in the background\", and never end " +
+  'your turn until every part of the task is fully implemented.';
+
 export interface TurnResult {
   log: string;
   lastMessage: string;

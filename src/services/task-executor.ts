@@ -741,12 +741,15 @@ export class TaskExecutor {
       }
       // Uncommitted working-tree changes still waiting to be committed.
       const changedFiles = this.gitManager.getChangedFiles();
-      // Total diff vs. the base branch: covers changes Claude already
+      // Total diff vs. the branch's start point: covers changes Claude already
       // committed itself during execution (e.g. mid-task or via self-review),
       // which leave a clean working tree but still need to be pushed/PR'd.
+      // Diff against startPoint (usually origin/<base>), not the local base
+      // branch — a stale local base makes an unchanged branch look like it has
+      // committed work, leading to an empty push and a failed PR creation.
       const changedFilesFromBase =
         changedFiles.length === 0
-          ? this.gitManager.getChangedFiles(targetBranch)
+          ? this.gitManager.getChangedFiles(startPoint)
           : changedFiles;
       if (changedFilesFromBase.length === 0) {
         if (!quiet)
