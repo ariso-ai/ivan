@@ -251,6 +251,11 @@ export class AddressTaskExecutor {
           }
 
           try {
+            const headBefore = execSync('git rev-parse HEAD', {
+              cwd: worktreePath || this.workingDir,
+              encoding: 'utf-8'
+            }).trim();
+
             const result = await this.getClaudeExecutor().executeTask(
               prompt,
               worktreePath || this.workingDir
@@ -262,37 +267,46 @@ export class AddressTaskExecutor {
             if (!this.gitManager) {
               throw new Error('GitManager not initialized');
             }
+            // Claude may have committed its changes itself, leaving a clean
+            // tree but a moved HEAD — that still counts as changes to push.
             const changedFiles = this.gitManager.getChangedFiles();
-            if (changedFiles.length === 0) {
+            const claudeCommitted =
+              execSync('git rev-parse HEAD', {
+                cwd: worktreePath || this.workingDir,
+                encoding: 'utf-8'
+              }).trim() !== headBefore;
+            if (changedFiles.length === 0 && !claudeCommitted) {
               if (!quiet) console.log(chalk.yellow('⚠️  No changes made'));
               await this.jobManager.updateTaskStatus(task.uuid, 'completed');
               continue;
             }
 
-            // Create commit with co-author
-            if (!quiet) spinner = ora('Creating commit...').start();
-            const commitMessage =
-              'Fix test and lint failures\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>';
+            if (changedFiles.length > 0) {
+              // Create commit with co-author
+              if (!quiet) spinner = ora('Creating commit...').start();
+              const commitMessage =
+                'Fix test and lint failures\n\nCo-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>';
 
-            if (!this.gitManager) {
-              throw new Error('GitManager not initialized');
-            }
+              // Try to commit, handling pre-commit hook failures
+              const commitResult = await this.tryCommitWithFixes(
+                commitMessage,
+                task,
+                worktreePath || this.workingDir,
+                spinner,
+                quiet
+              );
 
-            // Try to commit, handling pre-commit hook failures
-            const commitResult = await this.tryCommitWithFixes(
-              commitMessage,
-              task,
-              worktreePath || this.workingDir,
-              spinner,
-              quiet
-            );
-
-            if (commitResult.succeeded) {
-              if (spinner) spinner.succeed('Changes committed');
-            } else {
-              if (spinner)
-                spinner.fail('Failed to commit after multiple attempts');
-              throw new Error('Pre-commit hook failures could not be fixed');
+              if (commitResult.succeeded) {
+                if (spinner) spinner.succeed('Changes committed');
+              } else {
+                if (spinner)
+                  spinner.fail('Failed to commit after multiple attempts');
+                throw new Error('Pre-commit hook failures could not be fixed');
+              }
+            } else if (!quiet) {
+              console.log(
+                chalk.gray('Changes were already committed during execution')
+              );
             }
 
             // Get the commit hash
@@ -409,7 +423,11 @@ export class AddressTaskExecutor {
 
         const snapshotWorkingTree = (): string => {
           const cwd = worktreePath || this.workingDir;
+          // Include HEAD so changes Claude committed on its own still count
+          // as changes — otherwise a self-committed change looks identical to
+          // "no changes" (clean tree before and after) and never gets pushed.
           return (
+            execSync('git rev-parse HEAD', { cwd, encoding: 'utf-8' }) +
             execSync('git status --porcelain', { cwd, encoding: 'utf-8' }) +
             execSync('git diff HEAD', { cwd, encoding: 'utf-8' })
           );
@@ -574,7 +592,14 @@ export class AddressTaskExecutor {
         let addressCommitHash: string | null = null;
         const changedResults = taskResults.filter((r) => r.madeChanges);
         if (changedResults.length > 0) {
-          if (!quiet) spinner = ora('Creating commit...').start();
+          // Claude may have committed the changes itself during execution, in
+          // which case the tree is clean and there is nothing left to commit —
+          // but the new commit still needs to be recorded and pushed.
+          const hasUncommittedChanges =
+            execSync('git status --porcelain', {
+              cwd: worktreePath || this.workingDir,
+              encoding: 'utf-8'
+            }).trim().length > 0;
 
           const authors = [
             ...new Set(changedResults.map((r) => `@${r.comment.author}`))
@@ -592,19 +617,27 @@ ${commentSummaries}
 Co-authored-by: ivan-agent <ivan-agent@users.noreply.github.com>`;
 
           try {
-            // Try to commit, handling pre-commit hook failures
-            const commitResult = await this.tryCommitWithFixes(
-              commitMessage,
-              changedResults[0].task,
-              worktreePath || this.workingDir,
-              spinner,
-              quiet
-            );
+            if (hasUncommittedChanges) {
+              if (!quiet) spinner = ora('Creating commit...').start();
 
-            if (!commitResult.succeeded) {
-              throw new Error('Pre-commit hook failures could not be fixed');
+              // Try to commit, handling pre-commit hook failures
+              const commitResult = await this.tryCommitWithFixes(
+                commitMessage,
+                changedResults[0].task,
+                worktreePath || this.workingDir,
+                spinner,
+                quiet
+              );
+
+              if (!commitResult.succeeded) {
+                throw new Error('Pre-commit hook failures could not be fixed');
+              }
+              if (spinner) spinner.succeed('Changes committed');
+            } else if (!quiet) {
+              console.log(
+                chalk.gray('Changes were already committed during execution')
+              );
             }
-            if (spinner) spinner.succeed('Changes committed');
 
             // Get the commit hash and save it to every task it covers
             addressCommitHash = execSync('git rev-parse HEAD', {

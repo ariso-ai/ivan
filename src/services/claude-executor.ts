@@ -70,6 +70,15 @@ export class ClaudeExecutor implements IClaudeExecutor {
       console.log(chalk.yellow('💡 Press Ctrl+C to cancel the task'));
     }
 
+    let result = '';
+    let currentResponse = '';
+    let lastMessage = '';
+    let currentSessionId = sessionId;
+    // Set once the CLI has streamed us a completed turn. If the process then
+    // dies during shutdown, the turn still succeeded and must not be thrown
+    // away.
+    let receivedResult = false;
+
     try {
       // Set the API key in environment for the SDK
       process.env.ANTHROPIC_API_KEY = await this.getApiKey();
@@ -166,10 +175,6 @@ export class ClaudeExecutor implements IClaudeExecutor {
         console.log(chalk.yellow('⏳ Starting Claude Code execution...'));
       }
 
-      let result = '';
-      let currentResponse = '';
-      let lastMessage = '';
-      let currentSessionId = sessionId; // Move this outside the try block
       const abortController = new globalThis.AbortController();
 
       // Handle Ctrl+C
@@ -235,9 +240,10 @@ export class ClaudeExecutor implements IClaudeExecutor {
         }
       }
 
+      // Change to working directory (restored in the finally below so an
+      // error mid-turn doesn't leave the process stranded in the worktree)
+      const originalDir = process.cwd();
       try {
-        // Change to working directory
-        const originalDir = process.cwd();
         process.chdir(workingDir);
 
         // Execute the task using the SDK
@@ -315,6 +321,7 @@ export class ClaudeExecutor implements IClaudeExecutor {
             }
           } else if (message.type === 'result') {
             // Final result message
+            receivedResult = true;
             if ('result' in message) {
               if (!this.quietMode)
                 console.log(chalk.green(`Result: ${message.result}`));
@@ -373,10 +380,8 @@ export class ClaudeExecutor implements IClaudeExecutor {
         if (currentResponse.trim()) {
           result += currentResponse + '\n' + '─'.repeat(80) + '\n\n';
         }
-
-        // Restore original directory
-        process.chdir(originalDir);
       } finally {
+        process.chdir(originalDir);
         inputDone = true;
         wakeUp();
         releaseLive();
@@ -395,6 +400,26 @@ export class ClaudeExecutor implements IClaudeExecutor {
 
       if (err.message?.includes('abort')) {
         throw new Error('Task execution cancelled by user');
+      }
+
+      // The CLI sometimes exits non-zero while shutting down even though the
+      // turn completed and its result was already streamed to us. Don't
+      // discard a finished turn over a shutdown crash — return what we got.
+      if (
+        receivedResult &&
+        (err.message?.includes('process exited with code') ||
+          err.message?.includes('terminated by signal'))
+      ) {
+        if (currentResponse.trim()) {
+          result += currentResponse + '\n' + '─'.repeat(80) + '\n\n';
+        }
+        if (!this.quietMode)
+          console.log(
+            chalk.yellow(
+              `⚠️  Claude Code crashed during shutdown after completing the turn (${err.message}) — using the received result`
+            )
+          );
+        return { log: result, lastMessage, sessionId: currentSessionId || '' };
       }
 
       if (!this.quietMode)
