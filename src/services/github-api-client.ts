@@ -612,10 +612,14 @@ export class GitHubAPIClient {
     }
   ): Promise<void> {
     if (updates.title !== undefined || updates.body !== undefined) {
-      await this.makeRequest(`/repos/${owner}/${repo}/pulls/${prNumber}`, 'PATCH', {
-        ...(updates.title !== undefined && { title: updates.title }),
-        ...(updates.body !== undefined && { body: updates.body })
-      });
+      await this.makeRequest(
+        `/repos/${owner}/${repo}/pulls/${prNumber}`,
+        'PATCH',
+        {
+          ...(updates.title !== undefined && { title: updates.title }),
+          ...(updates.body !== undefined && { body: updates.body })
+        }
+      );
     }
 
     if (updates.assignees) {
