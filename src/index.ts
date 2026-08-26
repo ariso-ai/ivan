@@ -91,14 +91,22 @@ program
 
 program
   .command('choose-model')
-  .description('Configure which Claude model to use for code tasks')
+  .description(
+    'Configure which model to use for code tasks (Claude or Codex, based on the configured executor)'
+  )
   .action(async () => {
-    await configManager.promptForModel();
+    if (configManager.getExecutorType() === 'codex') {
+      await configManager.promptForCodexModel();
+    } else {
+      await configManager.promptForModel();
+    }
   });
 
 program
   .command('configure-executor')
-  .description('Configure how to run Claude Code (SDK or CLI)')
+  .description(
+    'Configure which coding agent to run (Claude Code SDK/CLI or Codex CLI)'
+  )
   .action(async () => {
     await configManager.promptForExecutorType();
   });
@@ -164,14 +172,21 @@ program
     }
 
     console.log('');
-    console.log(chalk.cyan('Claude Model:'));
-    const model = config.claudeModel || 'claude-sonnet-4-6';
-    console.log('  ' + model);
-
-    console.log('');
     console.log(chalk.cyan('Executor Type:'));
     const executorType = config.executorType || 'sdk';
     console.log('  ' + executorType.toUpperCase());
+
+    console.log('');
+    if (executorType === 'codex') {
+      console.log(chalk.cyan('Codex Model:'));
+      console.log(
+        '  ' + (configManager.getCodexModel() || '(codex CLI default)')
+      );
+    } else {
+      console.log(chalk.cyan('Claude Model:'));
+      const model = config.claudeModel || 'claude-sonnet-4-6';
+      console.log('  ' + model);
+    }
 
     console.log('');
     console.log(chalk.cyan('Review Agent:'));
