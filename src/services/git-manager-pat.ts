@@ -199,9 +199,7 @@ export class GitManagerPAT implements IGitManager {
         state: 'open',
         head: `${this.owner}:${branch}`
       });
-      return prs.length > 0
-        ? { number: prs[0].number, url: prs[0].url }
-        : null;
+      return prs.length > 0 ? { number: prs[0].number, url: prs[0].url } : null;
     } catch {
       return null;
     }
