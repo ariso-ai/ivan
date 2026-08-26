@@ -1,5 +1,6 @@
 import { ClaudeExecutor } from './claude-executor.js';
 import { ClaudeCliExecutor } from './claude-cli-executor.js';
+import { CodexCliExecutor } from './codex-cli-executor.js';
 import { ConfigManager } from '../config.js';
 
 /**
@@ -76,6 +77,10 @@ export class ExecutorFactory {
 
     if (executorType === 'cli') {
       return new ClaudeCliExecutor();
+    }
+
+    if (executorType === 'codex') {
+      return new CodexCliExecutor();
     }
 
     return new ClaudeExecutor();
