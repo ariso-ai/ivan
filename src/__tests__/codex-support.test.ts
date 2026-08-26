@@ -220,9 +220,8 @@ describe('ExecutorFactory.getExecutor()', () => {
   it('returns a different executor class for "sdk"', async () => {
     savedConfig = writeConfig({ executorType: 'sdk' });
     const { ExecutorFactory } = await import('../services/executor-factory.js');
-    const { CodexCliExecutor } = await import(
-      '../services/codex-cli-executor.js'
-    );
+    const { CodexCliExecutor } =
+      await import('../services/codex-cli-executor.js');
     const executor = ExecutorFactory.getExecutor();
     assert.ok(
       !(executor instanceof CodexCliExecutor),
@@ -233,9 +232,8 @@ describe('ExecutorFactory.getExecutor()', () => {
   it('returns CodexCliExecutor instance for "codex"', async () => {
     savedConfig = writeConfig({ executorType: 'codex' });
     const { ExecutorFactory } = await import('../services/executor-factory.js');
-    const { CodexCliExecutor } = await import(
-      '../services/codex-cli-executor.js'
-    );
+    const { CodexCliExecutor } =
+      await import('../services/codex-cli-executor.js');
     const executor = ExecutorFactory.getExecutor();
     assert.ok(
       executor instanceof CodexCliExecutor,
@@ -250,9 +248,8 @@ describe('ExecutorFactory.getExecutor()', () => {
 
 describe('CodexCliExecutor.validateClaudeCodeInstallation()', () => {
   it('throws a meaningful error when the codex binary is not on PATH', async () => {
-    const { CodexCliExecutor } = await import(
-      '../services/codex-cli-executor.js'
-    );
+    const { CodexCliExecutor } =
+      await import('../services/codex-cli-executor.js');
     const executor = new CodexCliExecutor();
     executor.quietMode = true;
 
@@ -287,9 +284,8 @@ describe('CodexCliExecutor.validateClaudeCodeInstallation()', () => {
 
 describe('CodexCliExecutor — composePrompt', () => {
   it('returns the user prompt unchanged when no system prompt is given', async () => {
-    const { CodexCliExecutor } = await import(
-      '../services/codex-cli-executor.js'
-    );
+    const { CodexCliExecutor } =
+      await import('../services/codex-cli-executor.js');
     const executor = new CodexCliExecutor();
     // composePrompt is private; access via cast to any for the test
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -298,9 +294,8 @@ describe('CodexCliExecutor — composePrompt', () => {
   });
 
   it('prepends system instructions when a system prompt is provided', async () => {
-    const { CodexCliExecutor } = await import(
-      '../services/codex-cli-executor.js'
-    );
+    const { CodexCliExecutor } =
+      await import('../services/codex-cli-executor.js');
     const executor = new CodexCliExecutor();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (executor as any).composePrompt(
@@ -321,16 +316,14 @@ describe('CodexCliExecutor — composePrompt', () => {
     );
     // System block must come before the user prompt
     assert.ok(
-      result.indexOf('<system_instructions>') <
-        result.indexOf('do the thing'),
+      result.indexOf('<system_instructions>') < result.indexOf('do the thing'),
       'System instructions should precede the user prompt'
     );
   });
 
   it('wraps system instructions in the expected XML tags', async () => {
-    const { CodexCliExecutor } = await import(
-      '../services/codex-cli-executor.js'
-    );
+    const { CodexCliExecutor } =
+      await import('../services/codex-cli-executor.js');
     const executor = new CodexCliExecutor();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (executor as any).composePrompt('task', 'sys');
