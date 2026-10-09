@@ -16,7 +16,7 @@
  * Run via: npx tsx --test src/__tests__/codex-support.test.ts
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +27,15 @@ import { execSync } from 'node:child_process';
 // Helpers
 // ---------------------------------------------------------------------------
 
-const configDir = path.join(os.homedir(), '.ivan');
+// ConfigManager reads os.homedir(); keep test writes out of the user's config.
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ivan-codex-test-'));
+const homeMock = mock.method(os, 'homedir', () => testHome);
+after(() => {
+  homeMock.mock.restore();
+  fs.rmSync(testHome, { recursive: true, force: true });
+});
+
+const configDir = path.join(testHome, '.ivan');
 const configPath = path.join(configDir, 'config.json');
 
 /** Write a minimal config JSON and return the previous content (or null). */

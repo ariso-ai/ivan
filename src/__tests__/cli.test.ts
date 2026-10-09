@@ -1,28 +1,32 @@
 import { describe, it, before, after } from 'node:test';
-import { execSync, spawn } from 'node:child_process';
-import { unlinkSync, existsSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert';
 
 describe('CLI behavior', () => {
   const cliPath = join(process.cwd(), 'dist', 'index.js');
-  let testConfigPath: string;
+  const testHome = mkdtempSync(join(tmpdir(), 'ivan-cli-test-'));
+  const testSetupPath = join(testHome, 'setup.cjs');
 
   before(() => {
-    // Create a temporary config file to avoid interactive prompts
-    testConfigPath = join(tmpdir(), `ivan-test-config-${Date.now()}.json`);
+    // The CLI runs in a child process; redirect its config without touching
+    // the developer's settings or changing the process environment's home.
+    writeFileSync(
+      testSetupPath,
+      `require('node:os').homedir = () => ${JSON.stringify(testHome)};`
+    );
   });
 
   after(() => {
-    // Clean up test config file
-    if (existsSync(testConfigPath)) {
-      unlinkSync(testConfigPath);
-    }
+    rmSync(testHome, { recursive: true, force: true });
   });
 
+  const cliArgs = ['--require', testSetupPath, cliPath];
+
   it('should display help when --help flag is passed', () => {
-    const output = execSync(`node ${cliPath} --help`, {
+    const output = execFileSync(process.execPath, [...cliArgs, '--help'], {
       encoding: 'utf-8'
     });
 
@@ -38,7 +42,7 @@ describe('CLI behavior', () => {
   });
 
   it('should display help when -h flag is passed', () => {
-    const output = execSync(`node ${cliPath} -h`, {
+    const output = execFileSync(process.execPath, [...cliArgs, '-h'], {
       encoding: 'utf-8'
     });
 
@@ -50,7 +54,7 @@ describe('CLI behavior', () => {
   });
 
   it('should display version when --version flag is passed', () => {
-    const output = execSync(`node ${cliPath} --version`, {
+    const output = execFileSync(process.execPath, [...cliArgs, '--version'], {
       encoding: 'utf-8'
     });
 
@@ -62,7 +66,7 @@ describe('CLI behavior', () => {
   });
 
   it('should display version when -V flag is passed', () => {
-    const output = execSync(`node ${cliPath} -V`, {
+    const output = execFileSync(process.execPath, [...cliArgs, '-V'], {
       encoding: 'utf-8'
     });
 
@@ -74,7 +78,7 @@ describe('CLI behavior', () => {
   });
 
   it('should enter standard interactive flow when no arguments are passed', (t, done) => {
-    const child = spawn('node', [cliPath], {
+    const child = spawn(process.execPath, cliArgs, {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
@@ -132,7 +136,7 @@ describe('CLI behavior', () => {
   });
 
   it('should show recognized commands in help', () => {
-    const output = execSync(`node ${cliPath} --help`, {
+    const output = execFileSync(process.execPath, [...cliArgs, '--help'], {
       encoding: 'utf-8'
     });
 
