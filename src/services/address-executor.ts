@@ -67,7 +67,7 @@ export class AddressExecutor {
       // Validate dependencies
       console.log(chalk.blue('🔍 Validating dependencies...'));
       await this.getClaudeExecutor().validateClaudeCodeInstallation();
-      console.log(chalk.green('✅ Claude Code SDK configured'));
+      console.log(chalk.green('✅ Coding agent executor configured'));
 
       this.workingDir = await this.repositoryManager.getValidWorkingDirectory();
       this.gitManager = createGitManager(this.workingDir);

@@ -57,7 +57,8 @@ export class AddressTaskExecutor {
 
       // Validate dependencies
       await this.getClaudeExecutor().validateClaudeCodeInstallation();
-      if (!quiet) console.log(chalk.green('✅ Claude Code SDK configured'));
+      if (!quiet)
+        console.log(chalk.green('✅ Coding agent executor configured'));
 
       // Get working directory from first task's job
       const db = this.jobManager['dbManager'].getKysely();

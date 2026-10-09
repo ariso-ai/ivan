@@ -199,9 +199,7 @@ export class GitManagerPAT implements IGitManager {
         state: 'open',
         head: `${this.owner}:${branch}`
       });
-      return prs.length > 0
-        ? { number: prs[0].number, url: prs[0].url }
-        : null;
+      return prs.length > 0 ? { number: prs[0].number, url: prs[0].url } : null;
     } catch {
       return null;
     }
@@ -372,9 +370,7 @@ export class GitManagerPAT implements IGitManager {
     } catch (error) {
       // A PR may have appeared between our reuse check and the create
       // (e.g. the agent opened one itself) — recover by reusing it.
-      const racedPR = await this.findExistingOpenPR(
-        this.getCurrentBranch()
-      );
+      const racedPR = await this.findExistingOpenPR(this.getCurrentBranch());
       if (racedPR) {
         if (!this.quietMode)
           console.log(

@@ -36,7 +36,7 @@ Most AI coding tools have two problems: they **forget everything** between sessi
 >
 > 🔁 **It closes the loop.** Ivan doesn't stop at "PR opened." It addresses inline review comments, replies with the fixing commit, and can be triggered straight from a GitHub issue with `@ivan-agent /build`.
 
-Ivan runs **locally, with your credentials**, on top of [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) — bring your Anthropic API key, or a Claude Max subscription via the CLI driver.
+Ivan runs **locally, with your credentials**, on top of [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) — bring your Anthropic API key, or a Claude Max subscription via the CLI driver. Prefer OpenAI? Ivan can drive the [Codex CLI](https://github.com/openai/codex) instead.
 
 ---
 
@@ -63,7 +63,7 @@ Want Ivan to think harder? Add one flag:
 ivan --mode expert "Refactor the billing module to support proration"
 ```
 
-**💬 Changed your mind mid-run?** While Ivan is working, just type a message and press Enter — your context is streamed straight into the running Claude session (SDK executor) or applied in an automatic follow-up turn (CLI executor), exactly like interjecting in an interactive Claude Code session.
+**💬 Changed your mind mid-run?** While Ivan is working, just type a message and press Enter — your context is streamed straight into the running Claude session (SDK executor) or applied in an automatic follow-up turn (Claude CLI and Codex executors), exactly like interjecting in an interactive session.
 
 ```
 ⠸ Executing task with Claude Code...
@@ -186,12 +186,13 @@ This installs a workflow so that when someone comments `@ivan-agent /build` on a
 
 ## 🗝️ Drivers: run it your way
 
-Ivan is deliberately flexible about *how* it talks to Claude and to GitHub.
+Ivan is deliberately flexible about *how* it talks to its coding agent and to GitHub.
 
-**Claude execution** — switch anytime with `ivan configure-executor`:
+**Coding agent execution** — switch anytime with `ivan configure-executor`:
 
-- **SDK mode** *(default)* — uses the Anthropic API directly. Reliable, CI/CD-friendly. Needs an `sk-ant-...` key.
+- **SDK mode** *(default)* — uses the Anthropic API directly via the Claude Code SDK. Reliable, CI/CD-friendly. Needs an `sk-ant-...` key.
 - **CLI mode** — drives your locally installed Claude Code CLI. **No API costs for Claude Max subscribers**, with real-time streaming output.
+- **Codex mode** — drives your locally installed OpenAI Codex CLI (`codex exec`). **No API costs for ChatGPT subscribers**; every workflow (build, address, review, risk analysis, expert mode) works unchanged.
 
 **GitHub auth** — chosen during setup:
 
@@ -206,8 +207,8 @@ Ivan prompts for everything it needs on first run. Settings live in `~/.ivan/con
 
 ```bash
 ivan reconfigure              # re-run the full setup
-ivan configure-executor       # SDK (API) vs CLI (Claude Max)
-ivan choose-model             # pick the implementer model
+ivan configure-executor       # Claude SDK (API) vs Claude CLI (Max) vs Codex CLI
+ivan choose-model             # pick the implementer model (Claude or Codex)
 ivan configure-review-agent   # which bot to tag for PR reviews
 ivan show-config              # view current settings
 ```
@@ -252,8 +253,8 @@ ivan add-action               # install the GitHub Actions workflow
 
 ```bash
 ivan reconfigure
-ivan configure-executor       # SDK vs CLI
-ivan choose-model             # Sonnet / Haiku / Opus
+ivan configure-executor       # Claude SDK vs Claude CLI vs Codex CLI
+ivan choose-model             # Sonnet / Haiku / Opus (or a Codex model)
 ivan configure-review-agent   # PR review bot
 ivan show-config
 ivan edit-repo-instructions
@@ -318,6 +319,7 @@ ivan/
 │   │   ├── collaborative-executor.ts # the architect ↔ implementer loop (expert mode)
 │   │   ├── claude-executor.ts        # Claude Code SDK driver
 │   │   ├── claude-cli-executor.ts    # Claude Code CLI driver (Claude Max)
+│   │   ├── codex-cli-executor.ts     # OpenAI Codex CLI driver (ChatGPT subscribers)
 │   │   ├── address-executor.ts       # PR comment addressing workflow
 │   │   ├── git-manager-*.ts          # git ops over gh CLI or PAT
 │   │   └── openai-service.ts         # commit messages & PR descriptions
@@ -401,7 +403,7 @@ Yes — `ivan learn` mines merged PR review comments and local Claude Code sessi
 <details>
 <summary><strong>What models and providers does Ivan support?</strong></summary>
 
-Ivan runs on Claude models (Sonnet, Haiku, Opus) via the Anthropic API (SDK mode) or your local Claude Code CLI (CLI mode, no extra API cost for Claude Max subscribers). GitHub auth works via the `gh` CLI or a personal access token.
+Ivan runs on Claude models (Sonnet, Haiku, Opus) via the Anthropic API (SDK mode) or your local Claude Code CLI (CLI mode, no extra API cost for Claude Max subscribers), and on OpenAI models (e.g. gpt-5-codex) via the Codex CLI (no extra API cost for ChatGPT subscribers). GitHub auth works via the `gh` CLI or a personal access token.
 
 </details>
 

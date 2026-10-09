@@ -73,7 +73,7 @@ export class ReviewExecutor {
   ): Promise<void> {
     try {
       await this.claudeExecutor.validateClaudeCodeInstallation();
-      console.log(chalk.green('✅ Claude Code SDK configured'));
+      console.log(chalk.green('✅ Coding agent executor configured'));
 
       const workingDir =
         await this.repositoryManager.getValidWorkingDirectory();

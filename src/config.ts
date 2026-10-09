@@ -12,7 +12,8 @@ interface Config {
   anthropicApiKey: string;
   version: string;
   claudeModel?: string;
-  executorType?: 'sdk' | 'cli';
+  codexModel?: string;
+  executorType?: 'sdk' | 'cli' | 'codex';
   reviewAgent?: string;
   githubAuthType?: 'gh-cli' | 'pat';
   githubPat?: string;
@@ -225,15 +226,19 @@ export class ConfigManager {
       {
         type: 'list',
         name: 'executorType',
-        message: 'How do you want to run Claude Code?',
+        message: 'Which coding agent do you want Ivan to drive?',
         choices: [
           {
-            name: 'SDK - Use Anthropic API directly (requires API key)',
+            name: 'Claude Code SDK - Use Anthropic API directly (requires API key)',
             value: 'sdk' as const
           },
           {
-            name: 'CLI - Use Claude Code CLI installed on your machine (for Claude Max users)',
+            name: 'Claude Code CLI - Use Claude Code CLI installed on your machine (for Claude Max users)',
             value: 'cli' as const
+          },
+          {
+            name: 'Codex CLI - Use OpenAI Codex CLI installed on your machine (for ChatGPT subscribers)',
+            value: 'codex' as const
           }
         ],
         default: 'sdk'
@@ -765,6 +770,58 @@ export class ConfigManager {
   }
 
   /**
+   * The model to pass to `codex --model`, or undefined to let the Codex CLI
+   * use its own configured default. No hardcoded fallback on purpose: which
+   * models an account may use varies by plan and CLI version, so a stale
+   * default here would break runs that would otherwise just work.
+   */
+  getCodexModel(): string | undefined {
+    const config = this.getConfig();
+    return config?.codexModel?.trim() || undefined;
+  }
+
+  async promptForCodexModel(): Promise<void> {
+    console.log(chalk.blue.bold('🤖 Choose Codex Model'));
+    console.log('');
+    console.log(
+      chalk.yellow('Select which model the Codex CLI should use for code tasks')
+    );
+    console.log(
+      chalk.gray("Leave empty to use the Codex CLI's own default model")
+    );
+    console.log('');
+
+    const currentModel = this.getCodexModel();
+    const answers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'model',
+        message:
+          'Enter the Codex model to use (e.g. gpt-5-codex), or leave empty for the CLI default:',
+        default: currentModel || ''
+      }
+    ]);
+
+    const config = this.getConfig();
+    if (!config) {
+      throw new Error('Configuration not found');
+    }
+
+    const model = answers.model.trim();
+    config.codexModel = model || undefined;
+    await this.saveConfig(config);
+
+    console.log('');
+    console.log(
+      chalk.green(
+        model
+          ? `✅ Codex model set to: ${model}`
+          : '✅ Codex model cleared (using the Codex CLI default)'
+      )
+    );
+  }
+
+  /**
    * Settings for "expert" (collaborative) execution mode, where a separate
    * architect Claude session critiques the implementer across design and review
    * rounds. Defaults favor a strong reasoning model for the architect role.
@@ -786,29 +843,41 @@ export class ConfigManager {
       typeof value === 'number' && Number.isFinite(value) && value >= 1
         ? Math.floor(value)
         : fallback;
+    // The architect default must match the active executor's provider: a
+    // Claude model id passed to `codex --model` (or vice versa) fails the run.
+    // On Codex, an empty string means "no override — use the CLI's default".
+    const defaultArchitectModel =
+      this.getExecutorType() === 'codex'
+        ? this.getCodexModel() || ''
+        : 'claude-opus-4-8';
     return {
-      architectModel: c?.architectModel?.trim() || 'claude-opus-4-8',
+      architectModel: c?.architectModel?.trim() || defaultArchitectModel,
       maxDesignRounds: sanitizeRounds(c?.maxDesignRounds, 5),
       maxReviewRounds: sanitizeRounds(c?.maxReviewRounds, 3)
     };
   }
 
   async promptForExecutorType(): Promise<void> {
-    console.log(chalk.blue.bold('🔧 Choose Claude Executor'));
+    console.log(chalk.blue.bold('🔧 Choose Coding Agent Executor'));
     console.log('');
-    console.log(chalk.yellow('Select how you want to run Claude Code'));
+    console.log(chalk.yellow('Select which coding agent Ivan should drive'));
     console.log('');
 
     const executors = [
       {
-        name: 'SDK - Use Anthropic API directly (requires API key)',
+        name: 'Claude Code SDK - Use Anthropic API directly (requires API key)',
         value: 'sdk' as const,
-        short: 'SDK'
+        short: 'Claude SDK'
       },
       {
-        name: 'CLI - Use Claude Code CLI installed on your machine (for Claude Max users)',
+        name: 'Claude Code CLI - Use Claude Code CLI installed on your machine (for Claude Max users)',
         value: 'cli' as const,
-        short: 'CLI'
+        short: 'Claude CLI'
+      },
+      {
+        name: 'Codex CLI - Use OpenAI Codex CLI installed on your machine (for ChatGPT subscribers)',
+        value: 'codex' as const,
+        short: 'Codex CLI'
       }
     ];
 
@@ -841,12 +910,12 @@ export class ConfigManager {
     );
   }
 
-  getExecutorType(): 'sdk' | 'cli' {
+  getExecutorType(): 'sdk' | 'cli' | 'codex' {
     const config = this.getConfig();
     return config?.executorType || 'sdk';
   }
 
-  async setExecutorType(executorType: 'sdk' | 'cli'): Promise<void> {
+  async setExecutorType(executorType: 'sdk' | 'cli' | 'codex'): Promise<void> {
     const config = this.getConfig();
     if (!config) {
       throw new Error('Configuration not found');
